@@ -1,0 +1,85 @@
+// Row shapes mirror packages/persistence/migrations/001_init.sql. Keep in sync (Golden Rule 1).
+// LMSR-scaled columns are TEXT decimal strings (ADR-006); parse to BigInt at the boundary with the
+// helpers below. Plain sat amounts are stored/read as JS numbers (they fit int64 and stay < 2^53 here).
+
+export type Network = 'testnet' | 'mainnet';
+export type KeyRole = 'platform' | 'oracle' | 'user';
+export type Side = 'yes' | 'no';
+export type TradeAction = 'buy' | 'sell';
+export type MarketState =
+  | 'imported' | 'reviewed' | 'deployed' | 'trading' | 'closed'
+  | 'awaiting_result' | 'resolved' | 'settled' | 'voided' | 'refunded';
+
+export interface KeyRefRow {
+  id: number;
+  label: string;
+  role: KeyRole;
+  pubkey: string;
+  network: Network;
+  note: string | null;
+  created_at: string;
+}
+
+export interface MarketRow {
+  id: number;
+  question: string;
+  description: string | null;
+  b: string;          // BigInt as decimal string
+  scale: string;      // BigInt as decimal string
+  payout_unit: number;
+  fee_bps: number;
+  oracle_key_id: number;
+  platform_key_id: number;
+  network: Network;
+  state: MarketState;
+  resolution: Side | null;
+  close_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface PoolUtxoRow {
+  id: number;
+  market_id: number;
+  version: number;
+  txid: string;
+  vout: number;
+  sats: number;
+  q_yes: string;      // BigInt as decimal string
+  q_no: string;
+  e_yes: string;
+  e_no: string;
+  spent: 0 | 1;
+  created_at: string;
+}
+
+export interface TradeRow {
+  id: number;
+  market_id: number;
+  from_version: number;
+  to_version: number;
+  side: Side;
+  action: TradeAction;
+  shares: string;     // BigInt as decimal string
+  cost_sats: number;
+  fee_sats: number;
+  buyer_key_id: number | null;
+  txid: string | null;
+  created_at: string;
+}
+
+export interface TokenRow {
+  id: number;
+  market_id: number;
+  side: Side;
+  shares: string;     // BigInt as decimal string
+  txid: string;
+  vout: number;
+  owner_key_id: number | null;
+  burned: 0 | 1;
+  created_at: string;
+}
+
+/** BigInt <-> DB TEXT boundary helpers. */
+export const toText = (v: bigint): string => v.toString();
+export const fromText = (s: string): bigint => BigInt(s);

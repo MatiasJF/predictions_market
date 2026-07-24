@@ -1,0 +1,22 @@
+{
+  "name": "bsv-prediction-market",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Feasibility spike: native on-chain UTXO LMSR prediction market on BSV via Rúnar",
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --import tsx apps/spike/src/migrate.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

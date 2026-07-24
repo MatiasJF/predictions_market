@@ -1,0 +1,26 @@
+# deps & build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# local spike state (never commit databases)
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Rúnar compiled artifacts
+artifacts/
+
+# secrets — NEVER commit (Golden Rule 6)
+.env
+.env.*
+!.env.example
+*.wif
+*.key
+keys/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
