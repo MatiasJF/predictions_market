@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dry-run": "tsx src/dry-run.ts"
+    "dry-run": "tsx src/dry-run.ts",
+    "keygen": "tsx src/keygen.ts"
   },
   "dependencies": {
+    "@bsv/sdk": "^2.1.9",
     "@pm/lmsr": "workspace:*",
     "runar-compiler": "^0.4.6",
     "runar-lang": "^0.4.6",

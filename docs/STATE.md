@@ -67,11 +67,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     buy ≈ **5,100 B** (~255 sat @0.05/B; ~5,100 sat @1/B) — dominated by the OP_PUSH_TX preimage + stateful
     continuation. Buy sizes are stable across trades. Files: `apps/spike/src/{market,measure,dry-run}.ts`,
     `apps/spike/test/deploy.test.ts`. Verified (51 tests). `pnpm --filter @pm/spike dry-run` prints the table.
-  - ○ **001b (mainnet, gated) — BLOCKED ON FUNDING:** `keygen` → address (WIF into git-ignored `.env`, never
-    handled by me); user funds a small amount; deploy + buys on mainnet with `WhatsOnChainProvider`; confirm
-    real miner fee + confirmation/throughput (#2, single-UTXO serialization / 0-conf). Each broadcast confirmed
-    explicitly. Small `b` → tiny collateral. **Also owed here:** harden collateral↔UTXO-sats binding
-    (`extractAmount`, `outputSatoshis == in + payment`) — compile-only offline, real-validated on mainnet.
+  - ◐ **001b (mainnet, gated) — AWAITING FUNDING.** `keygen` done: fresh mainnet key generated, WIF in
+    git-ignored `.env` (never seen/committed by Claude). **Funding address: `1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`**
+    — user to send ~0.01–0.02 BSV. Once funded: build deploy (dry first → show tx/fee → gated broadcast) + buys
+    on mainnet with `WhatsOnChainProvider`; confirm real miner fee + confirmation/throughput (#2, single-UTXO
+    serialization / 0-conf). **Also owed here:** harden collateral↔UTXO-sats binding (`extractAmount`,
+    `outputSatoshis == in + payment`) — compile-only offline, real-validated on mainnet.
+    Tooling: `apps/spike/src/keygen.ts` (done); deploy/buy mainnet scripts built once funding confirmed.
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
 ## Known issues
