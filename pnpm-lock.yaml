@@ -30,6 +30,9 @@ importers:
         specifier: ^0.4.6
         version: 0.4.6
     devDependencies:
+      '@pm/lmsr':
+        specifier: workspace:*
+        version: link:../lmsr
       fast-check:
         specifier: ^4.9.0
         version: 4.9.0

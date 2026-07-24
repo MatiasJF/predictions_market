@@ -9,6 +9,7 @@
     "runar-sdk": "^0.4.6"
   },
   "devDependencies": {
+    "@pm/lmsr": "workspace:*",
     "fast-check": "^4.9.0",
     "runar-cli": "^0.4.6",
     "runar-testing": "^0.4.6"

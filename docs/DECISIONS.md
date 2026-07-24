@@ -152,3 +152,24 @@ Template:
   `payment ≥ buyChargeApproxSats`. Design rule: **cap trade size to Δ/b ≤ ~0.01** (overcharge <~0.13% of
   notional) — matches the source docs' per-trade caps + `b`-scaling. The buyer pays a tiny, bounded premium
   for not having `ln` on-chain; this premium accrues to the pool (extra safety margin).
+
+## ADR-012 · LMSRMarket contract shape for the feasibility spike · Accepted · 2026-07-24
+- Context: CONTRACT-002 needed a Rúnar contract proving the on-chain LMSR buy math, exercisable in the
+  offline interpreter.
+- Decisions:
+  - **`addOutput` continuation pattern** — compute new values as locals, `this.addOutput(outputSatoshis,
+    ...newState)`, no `this` reassignment. This is the pattern proven by Rúnar's own FungibleToken /
+    multi-output tests; the compiler's state-continuation hash constrains the untouched side + readonly
+    params. The new state appears in `result.outputs[0]`, not `this`.
+  - **Collateral tracked as STATE** (a bigint field, like a token balance), NOT bound to the UTXO's
+    satoshis. Binding it to real sats via `extractAmount(txPreimage)` compiles but can't be exercised in
+    the offline interpreter (needs a real BIP-143 preimage), so it's deferred to DEPLOY-001. Keeps the
+    buy-math fully testable now.
+  - **`unit == scale`** (one-share unit, WAD) so the charge needs no unit factor; multi-unit trades (via
+    `pow`) deferred to a later ticket.
+- Verification: 1 adversarial agent could not refute correctness or test adequacy — contract charge ≡
+  reference exactly (algebra + independent 120-step feedback loop), all 6 mutations caught red. Captured a
+  60-step feedback-loop regression test in the suite.
+- Consequences: On-chain LMSR buy proven feasible (software). Owed at DEPLOY-001: bind collateral to UTXO
+  sats (`extractAmount`), constrain `outputSatoshis`, handle buyer change / token mint as additional
+  outputs, and measure real throughput/fees. Resolves unknown #1 fully; completes P1.

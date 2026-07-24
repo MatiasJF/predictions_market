@@ -22,13 +22,13 @@ verdict, not a product.
 | Phase | Name | Covers unknowns | Status |
 |---|---|---|---|
 | **P0** | Foundation (repo + KB + data model) | — | ● done |
-| **P1** | Feasibility core (LMSR math + Rúnar toolchain gate) | 1 (partial), 4 | ◐ CONTRACT-002 left |
-| **P2** | On-chain lifecycle (cost-verify, tokens, settlement, first deploy) | 1, 2, 3, 5, 6 | ○ planned |
+| **P1** | Feasibility core (LMSR math + on-chain buy in Rúnar) | 1, 4 | ● done |
+| **P2** | On-chain lifecycle (collateral↔sats, tokens, sell, settlement, first deploy) | 2, 3, 5, 6 | ◐ next |
 | **P3** | Mainnet proof + written feasibility verdict | all | ○ planned |
 
 ## Milestone → ticket map (see STATE.md for live status)
 - **M0 — de-risk math off-chain:** LMSR-001 ●, LMSR-002 ● (on-chain cost-without-`ln`, ADR-011).
-- **M1 — contract feasibility:** CONTRACT-001 ● (gate), CONTRACT-002 ◐ (LMSR buy in Rúnar).
+- **M1 — contract feasibility:** CONTRACT-001 ● (gate), CONTRACT-002 ● (LMSR buy in Rúnar, verified).
 - **M2 — on-chain cost verification + tokens:** CONTRACT-003, TOKEN-001.
 - **M3 — oracle + redemption + first real deploy:** SETTLE-001, DEPLOY-001 (throughput + fee numbers — decides native vs hybrid).
 - **M4 — mainnet proof + verdict:** OPS-004 (gated mainnet run + report on all six unknowns with real data).

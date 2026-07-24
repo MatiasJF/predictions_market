@@ -1,14 +1,15 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — LMSR-002 done: on-chain cost-without-ln solved (post-trade price, MM-safe). Open Q1 resolved. Next: CONTRACT-002._
+_Last updated: 2026-07-24 — P1 COMPLETE. On-chain LMSR buy in Rúnar verified (40 tests). Next: P2 (tokens/sell/oracle → mainnet deploy)._
 
 ## Current phase
-**P1 — Feasibility core.** LMSR-001 (math), CONTRACT-001 (toolchain gate), and LMSR-002 (on-chain cost
-verification) all complete. The contract can price trades without `ln` by charging at the post-trade
-marginal price (`mulDiv` only) — proven MM-safe with error bounded by trade÷liquidity (≤0.13% of notional at
-Δ/b=1e-2). See ADR-011. **Next ticket: CONTRACT-002** — now fully unblocked: build `LMSRMarket.buy()` in
-Rúnar enforcing the multiplicative state update + `payment ≥ buyChargeApproxSats`, test vs `@pm/lmsr`.
-Nothing on real chain yet (offline VM only).
+**P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
+adversarially verified: `LMSRMarket.buyYes/buyNo` compiles to 466 bytes of Script and produces output state
+**exactly matching** the `@pm/lmsr` reference (verified over a 60-step feedback loop; all 6 tamper-mutations
+caught). 40 tests green, typecheck clean. **All software-side feasibility unknowns are resolved.** The only
+open unknowns are on-chain reality — single-UTXO throughput (#2) and per-trade fees (#6) — answerable only by
+a mainnet deploy. **Next phase P2:** bind collateral to real UTXO sats (`extractAmount`) + constrain
+`outputSatoshis`, tokens (`runar-lang/tokens`), sell, Rabin oracle, then the gated DEPLOY-001.
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -38,9 +39,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   +run a stateful contract", not "can we broadcast"): `Counter.runar.ts` compiles to 148 bytes of Script and
   executes 0→1→2 via `runar-testing`'s VM. 2 tests green. Gate met → no scrypt-ts fallback. See ADR-009.
   Files: `packages/contracts/src/Counter.runar.ts`, `packages/contracts/test/counter.gate.test.ts`.
-- ◐ CONTRACT-002 — **NEXT, unblocked.** `LMSRMarket` buy() in Rúnar: enforce the multiplicative state update
-  (`mulDiv`; `pow` for multi-unit) + `payment ≥ buyChargeApproxSats` (ADR-011), with trade-size cap Δ/b≤~0.01.
-  Compile + unit-test vs `@pm/lmsr` via `runar-testing`. **The crux math-feasibility ticket.**
+- ● CONTRACT-002 — `LMSRMarket.buyYes/buyNo` in Rúnar: multiplicative update (`mulDiv`) + MM-safe ceil charge
+  (`safediv`), state continued via `addOutput`. Compiles to 466 B; 5 tests: output state == `@pm/lmsr`
+  reference across skewed states + both sides, exact-charge boundary, underpayment rejected, and a 60-step
+  feedback-loop lockstep. **Adversarially verified** (charge ≡ reference via 120-step run; all 6 mutations
+  caught). ADR-012. Files: `packages/contracts/src/LMSRMarket.runar.ts`, `.../test/lmsr-market.test.ts`.
+  **Caveats (→ DEPLOY-001):** collateral is STATE not real UTXO sats; `outputSatoshis` unconstrained; single
+  output (buyer change/token mint = P2); interpreter ≠ mainnet.
 
 ### Phase P2 — On-chain lifecycle (see ROADMAP for M2–M4; tickets created when P1 clears)
 - ○ CONTRACT-003 (planned) — sell/burn path in Rúnar (uses `sellPayoutApproxSats`, ADR-011).
