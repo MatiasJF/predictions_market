@@ -45,8 +45,9 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
 - ○ CONTRACT-003 (planned) — sell/burn path + on-chain cost-verification approach (resolves Open Q1) in Rúnar.
 - ○ TOKEN-001 (planned) — YES/NO tokens via `runar-lang/tokens`; mint on buy, redeem on settle.
 - ○ SETTLE-001 (planned) — Rabin oracle resolution (`runar-lang/oracle`) + winner redemption sighash composition.
-- ○ DEPLOY-001 (planned) — FIRST real testnet deploy+spend of the pool UTXO; measure single-UTXO
-  serialization, throughput, and per-trade fee (Open Q3, unknowns #2/#6). **Chain interaction — gated.**
+- ○ DEPLOY-001 (planned) — FIRST real **mainnet** deploy+spend of the pool UTXO (ADR-010); measure
+  single-UTXO serialization, throughput, and per-trade fee (Open Q3, unknowns #2/#6). **Real-money chain
+  interaction — gated per-action; tiny amounts.**
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
 ## Known issues
@@ -74,7 +75,7 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
    (`runar-lang/oracle`), cheaper on-chain than ECDSA.
 
 ## Decisions needing user input before proceeding
-- None for CONTRACT-002 (offline, proceeds on defaults). **DEPLOY-001** (first real testnet spend) will need a
-  testnet funding decision: plan is to generate a fresh testnet key locally, surface only the address for
-  faucet funding — never accept a pasted private key (Golden Rule 6). Any **mainnet** broadcast (OPS-004) is
-  gated behind explicit confirmation per ADR-005.
+- None for CONTRACT-002 (offline, proceeds on defaults). **DEPLOY-001** (first real **mainnet** spend, ADR-010)
+  will need a funding decision: plan is to generate a fresh key locally and surface only the address for the
+  user to fund from their own wallet — never accept a pasted private key (Golden Rule 6). Every mainnet
+  broadcast is gated behind explicit per-action confirmation.

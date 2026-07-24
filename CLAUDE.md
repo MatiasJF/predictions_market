@@ -47,8 +47,8 @@ truth and a local SQLite store (`@pm/persistence`) tracking market/UTXO/token li
 - **Tx assembly / chain I/O:** `@bsv/sdk`; chain queries via WhatsOnChain.
 - **Local state:** SQLite (`better-sqlite3`), migrations in `packages/persistence/migrations`.
 - **Tests:** Vitest. **Oracle:** mocked Kalshi (signed message).
-- **Network:** develop/iterate on **testnet** (free); one canonical proof run on **mainnet** with tiny
-  amounts (ADR-005).
+- **Network:** **mainnet only, no testnet** (ADR-010). Develop/execute offline in the Rúnar VM (free); only
+  actual broadcasts touch mainnet, with tiny amounts, each gated behind explicit user confirmation.
 
 ## In scope
 Native on-chain LMSR contract (buy, sell, resolve, redeem); multiplicative-state math; single-UTXO trade

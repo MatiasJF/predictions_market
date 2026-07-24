@@ -50,7 +50,7 @@ Template:
 - Consequences: Highest technical risk and the highest-value answer for BSVA. Confronts single-UTXO
   serialization, on-chain math limits, token mint/redeem, and oracle settlement head-on.
 
-## ADR-005 · Testnet dev loop, single mainnet proof run · Accepted · 2026-07-24
+## ADR-005 · Testnet dev loop, single mainnet proof run · Superseded by ADR-010 · 2026-07-24
 - Context: User chose "mainnet" as the target environment; iterating a novel contract on mainnet burns
   real sats on every failed broadcast, and fee/Script semantics are identical on testnet.
 - Options: (a) mainnet from trade #1 · (b) testnet-only · (c) testnet dev loop + one mainnet proof.
@@ -119,3 +119,18 @@ Template:
 - Consequences: Unblocks CONTRACT-002 (LMSRMarket buy in Rúnar). `fast-check` added as a devDep (an
   undeclared transitive of runar-testing). Contract sources are valid TS and are typechecked. Single-UTXO
   throughput / fee economics (Open Q3, unknowns #2/#6) still require a real-chain ticket to measure.
+
+## ADR-010 · Mainnet only; no testnet · Accepted · 2026-07-24 (supersedes ADR-005)
+- Context: User directive — "we will never touch testnet, we will do all in mainnet." Avoids testnet
+  faucet/coin friction.
+- Options: (a) testnet dev loop + mainnet proof (ADR-005) · (b) mainnet only.
+- Decision: **(b) all on-chain interaction targets BSV mainnet; no testnet at all.** Development,
+  compilation, and full contract execution still happen **offline** in the Rúnar VM (`runar-testing`) —
+  free, no chain — and only actual broadcasts (deploy pool, trades, settle, redeem) touch mainnet, with
+  tiny satoshi amounts.
+- Safety floors (unchanged, non-negotiable): (1) every mainnet broadcast is gated behind explicit
+  per-action user confirmation before sending; (2) Golden Rule 6 — never handle/echo/store a private key
+  or WIF; keys stay in the user's wallet or a user-funded key; I build/inspect txs and surface addresses /
+  unsigned txs only; (3) prove each contract path offline in the VM before any broadcast.
+- Consequences: Supersedes ADR-005. `DEPLOY-001` and later are mainnet. Real-money risk bounded by
+  tiny amounts + offline-first verification. Throughput/fee unknowns (#2/#6) get measured on mainnet.

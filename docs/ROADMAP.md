@@ -35,4 +35,4 @@ verdict, not a product.
 
 ## Exit criteria (what "done" means for the spike)
 A written verdict: **native viable / native-for-settlement-only / hybrid required**, each unknown answered
-with evidence (test results, a testnet txid trail, measured fee & throughput), and a recommended next step.
+with evidence (test results, a mainnet txid trail, measured fee & throughput), and a recommended next step.

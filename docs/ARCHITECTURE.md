@@ -31,7 +31,7 @@ The chain is the real ledger; everything local is either ground-truth math or an
 3. CLI builds a tx spending pool v_n (+ buyer funding), producing pool v_{n+1} with updated `e_yes/e_no`
    and a YES/NO token UTXO to the buyer. The Rúnar contract enforces the multiplicative state transition
    and the payment rule in Script (OP_PUSH_TX carries the new state).
-4. Broadcast (testnet loop; mainnet only on the gated proof run). On confirm, SQLite records v_{n+1},
+4. Broadcast to mainnet (ADR-010; gated per-action, tiny amounts). On confirm, SQLite records v_{n+1},
    marks v_n spent, inserts the trade + token rows.
 
 ## The central constraint (why this is a real spike)
