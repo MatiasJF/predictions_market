@@ -1,0 +1,19 @@
+{
+  "name": "@pm/spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dry-run": "tsx src/dry-run.ts"
+  },
+  "dependencies": {
+    "@pm/lmsr": "workspace:*",
+    "runar-compiler": "^0.4.6",
+    "runar-lang": "^0.4.6",
+    "runar-sdk": "^0.4.6"
+  },
+  "devDependencies": {
+    "runar-testing": "^0.4.6",
+    "tsx": "^4.19.2"
+  }
+}

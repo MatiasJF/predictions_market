@@ -189,3 +189,22 @@ Template:
 - Consequences: **Resolves unknown #5.** Owed later: winner REDEMPTION (burn winning token for
   `payoutUnit`) needs tokens → TOKEN-001; production hardening = bind `marketTag` to the UTXO outpoint (not a
   static tag) to stop cross-instance replay, and consider a 2-of-2 / multi-oracle scheme.
+
+## ADR-014 · DEPLOY-001 approach: SDK tooling, offline dry-run first, gated mainnet, key-safety · Accepted · 2026-07-24
+- Context: The only unresolved unknowns (#2 throughput, #6 fees) need real mainnet trades against the single
+  pool UTXO. User chose the mainnet-deploy path. Rúnar's `runar-sdk` provides the full stack.
+- Tooling (in `apps/spike`): `RunarContract(artifact, constructorArgs).connect(provider, signer)` →
+  `.deploy({satoshis})` and `.call(method, args, {newState, satoshis})` (SDK builds the OP_PUSH_TX
+  continuation). Providers: `WhatsOnChainProvider` (mainnet broadcast + UTXO fetch), `MockProvider` (offline
+  dry-run that yields the real `@bsv/sdk` tx objects → exact byte sizes). Signer: `LocalSigner` (WIF/hex).
+- Decisions:
+  - **Offline dry-run first (DEPLOY-001a):** compile → emit `artifacts/LMSRMarket.json`, then deploy + N buys
+    through `MockProvider`, measuring tx byte-sizes → fee/trade (#6) with zero spend. Also harden the contract
+    to bind collateral to real UTXO sats (`extractAmount`, enforce `outputSatoshis == inAmount + payment`) —
+    compile-verifiable offline (interpreter can't exercise extractAmount), validated for real on mainnet.
+  - **Gated mainnet (DEPLOY-001b):** a `keygen` script generates a fresh key, writes the WIF to the
+    git-ignored `.env` (PM_FUNDING_WIF) and prints ONLY the address; the user funds it from their wallet. The
+    tooling loads the WIF at runtime (`LocalSigner`); **I never see, echo, or commit the key** (Golden Rule 6).
+    Each broadcast pauses for explicit user confirmation. Use a small `b` so `b·ln2` collateral is tiny.
+- Consequences: #6 gets a strong offline answer from tx sizes; #2 (throughput / single-UTXO serialization,
+  0-conf behaviour) and real fees confirmed on mainnet. Completes the six-unknown verdict.

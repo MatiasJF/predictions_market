@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — SETTLE-001 done: on-chain Rabin oracle resolve (unknown #5 proven), 50 tests. Next: TOKEN-001._
+_Last updated: 2026-07-24 — DEPLOY-001a done: offline tx tooling; buy ≈5.1 KB / ~255 sat (#6 answered). 51 tests. Next: 001b needs funding._
 
 ## Current phase
 **P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
@@ -61,9 +61,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `resolved`/`winner`; buy/sell now `assert(resolved==0)`. 6 tests (valid YES/NO, forged rejected,
   wrong-outcome rejected, trading disabled after resolve, no double-resolve). Resolves unknown #5. ADR-013.
   **Winner redemption** (burn winning token for 100k) deferred to TOKEN-001.
-- ○ DEPLOY-001 (planned) — FIRST real **mainnet** deploy+spend of the pool UTXO (ADR-010); measure
-  single-UTXO serialization, throughput, and per-trade fee (Open Q3, unknowns #2/#6). **Real-money chain
-  interaction — gated per-action; tiny amounts.**
+- ◐ DEPLOY-001 — first real deploy of the pool UTXO. Split (ADR-014):
+  - ● **001a (offline) DONE:** `apps/spike` deploy+buy tooling on `runar-sdk`; dry-run through `MockProvider`
+    builds the real txs. **Measured tx sizes → fee/trade (#6):** deploy ≈ **1,751 B** (~88 sat @0.05/B),
+    buy ≈ **5,100 B** (~255 sat @0.05/B; ~5,100 sat @1/B) — dominated by the OP_PUSH_TX preimage + stateful
+    continuation. Buy sizes are stable across trades. Files: `apps/spike/src/{market,measure,dry-run}.ts`,
+    `apps/spike/test/deploy.test.ts`. Verified (51 tests). `pnpm --filter @pm/spike dry-run` prints the table.
+  - ○ **001b (mainnet, gated) — BLOCKED ON FUNDING:** `keygen` → address (WIF into git-ignored `.env`, never
+    handled by me); user funds a small amount; deploy + buys on mainnet with `WhatsOnChainProvider`; confirm
+    real miner fee + confirmation/throughput (#2, single-UTXO serialization / 0-conf). Each broadcast confirmed
+    explicitly. Small `b` → tiny collateral. **Also owed here:** harden collateral↔UTXO-sats binding
+    (`extractAmount`, `outputSatoshis == in + payment`) — compile-only offline, real-validated on mainnet.
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
 ## Known issues

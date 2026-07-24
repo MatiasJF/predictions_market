@@ -16,8 +16,8 @@ verdict, not a product.
 5. ✅ **Oracle settlement** — **RESOLVED (SETTLE-001, ADR-013):** `resolve()` verifies a Rabin oracle sig
    (`runar-lang/oracle`, market-bound via `marketTag`) and flips the pool to resolved; trading then disabled.
    Winner *redemption* (token burn for 100k) is part of TOKEN-001.
-6. **Per-trade fee economics** — every micro-trade is a full tx. Fee-to-trade-size at realistic sizes?
-   **Needs real chain.** → DEPLOY-001.
+6. 🟡 **Per-trade fee economics** — **mostly answered offline (DEPLOY-001a):** a buy is a ≈5.1 KB tx
+   (~255 sat @0.05/B, ~5,100 sat @1/B); deploy ≈1.75 KB. Real miner fee confirmed on mainnet at DEPLOY-001b.
 
 ## Phases
 | Phase | Name | Covers unknowns | Status |

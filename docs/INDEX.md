@@ -34,8 +34,11 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | SQLite open/migrate helpers | `packages/persistence/src/db.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |
 | Persistence package entry | `packages/persistence/src/index.ts` |
-| CLI spike harness (deploy/trade/settle experiments) | `apps/spike/src/` (stub) |
-| Migration CLI entry | `apps/spike/src/migrate.ts` (planned) |
+| Market config: compile artifact + constructor args/state | `apps/spike/src/market.ts` |
+| Offline deploy+buy measurement (tx sizes → fees) | `apps/spike/src/measure.ts` |
+| Dry-run CLI (`pnpm --filter @pm/spike dry-run`) | `apps/spike/src/dry-run.ts` |
+| Deploy tooling test | `apps/spike/test/deploy.test.ts` |
+| Mainnet keygen / deploy / buy (gated) | `apps/spike/src/` (planned, DEPLOY-001b) |
 
 ## Config / ops
 | Topic | Path |
