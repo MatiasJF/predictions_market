@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — P1 COMPLETE. On-chain LMSR buy in Rúnar verified (40 tests). Next: P2 (tokens/sell/oracle → mainnet deploy)._
+_Last updated: 2026-07-24 — P2 started: on-chain sell (CONTRACT-003) matches reference, 44 tests. Next: SETTLE-001 (Rabin oracle)._
 
 ## Current phase
 **P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
@@ -8,8 +8,9 @@ adversarially verified: `LMSRMarket.buyYes/buyNo` compiles to 466 bytes of Scrip
 **exactly matching** the `@pm/lmsr` reference (verified over a 60-step feedback loop; all 6 tamper-mutations
 caught). 40 tests green, typecheck clean. **All software-side feasibility unknowns are resolved.** The only
 open unknowns are on-chain reality — single-UTXO throughput (#2) and per-trade fees (#6) — answerable only by
-a mainnet deploy. **Next phase P2:** bind collateral to real UTXO sats (`extractAmount`) + constrain
-`outputSatoshis`, tokens (`runar-lang/tokens`), sell, Rabin oracle, then the gated DEPLOY-001.
+a mainnet deploy. **P2 in progress:** sell done (CONTRACT-003). Remaining: Rabin oracle resolve (SETTLE-001, offline-testable),
+YES/NO tokens + ownership (TOKEN-001), bind collateral to real UTXO sats (`extractAmount`) + constrain
+`outputSatoshis`, then the gated mainnet DEPLOY-001.
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -47,8 +48,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   **Caveats (→ DEPLOY-001):** collateral is STATE not real UTXO sats; `outputSatoshis` unconstrained; single
   output (buyer change/token mint = P2); interpreter ≠ mainnet.
 
-### Phase P2 — On-chain lifecycle (see ROADMAP for M2–M4; tickets created when P1 clears)
-- ○ CONTRACT-003 (planned) — sell/burn path in Rúnar (uses `sellPayoutApproxSats`, ADR-011).
+### Phase P2 — On-chain lifecycle
+- ● CONTRACT-003 — sell path in Rúnar. `LMSRMarket.sellYes/sellNo`: inverse multiplicative update
+  (`mulDiv` by readonly `invMult` = exp(−unit/b)·scale, to match the reference's rounding exactly), MM-safe
+  floor proceeds (`safediv`, no +sum−1), guard `q ≥ unit`, `collateral −= proceeds`. 4 tests: output ==
+  `@pm/lmsr` reference (both sides), empty-position guard rejects, and buy→sell round-trip leaves the pool
+  collateral ≥ start (spread favours the pool). 44 tests total. **Caveat:** ownership check (burning the
+  seller's token) is TOKEN-001; same offline-VM/real-sats deferral as buy.
 - ○ TOKEN-001 (planned) — YES/NO tokens via `runar-lang/tokens`; mint on buy, redeem on settle.
 - ○ SETTLE-001 (planned) — Rabin oracle resolution (`runar-lang/oracle`) + winner redemption sighash composition.
 - ○ DEPLOY-001 (planned) — FIRST real **mainnet** deploy+spend of the pool UTXO (ADR-010); measure

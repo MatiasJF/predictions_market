@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { compile } from 'runar-compiler';
 import { TestContract } from 'runar-testing';
 import {
-  WAD, initState, unitMultiplier, applyUnitBuy, buyChargeApproxSats, maxLossSats,
+  WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
+  buyChargeApproxSats, sellPayoutApproxSats, maxLossSats,
   type MarketParams, type MarketState, type Side,
 } from '@pm/lmsr';
 
@@ -15,6 +16,7 @@ const FILE = 'LMSRMarket.runar.ts';
 
 const p: MarketParams = { b: 1000n * WAD, payoutUnit: 100_000n, unit: WAD };
 const MULT = unitMultiplier(p);
+const INVMULT = unitInverseMultiplier(p);
 const COLLATERAL0 = maxLossSats(p);
 const bn = (x: unknown): bigint => BigInt(x as string | bigint);
 
@@ -22,7 +24,7 @@ const bn = (x: unknown): bigint => BigInt(x as string | bigint);
 function contractState(s: MarketState, collateral: bigint) {
   return {
     eYes: s.eYes, eNo: s.eNo, qYes: s.qYes, qNo: s.qNo, collateral,
-    mult: MULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+    mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
   };
 }
 /** Skew the market by buying `n` units of `side` off a fresh pool (via the reference). */
@@ -118,8 +120,63 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
       ref = next;
       st = {
         eYes: bn(o.eYes), eNo: bn(o.eNo), qYes: bn(o.qYes), qNo: bn(o.qNo), collateral: bn(o.collateral),
-        mult: MULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+        mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
       };
     }
+  });
+});
+
+describe('CONTRACT-003 — LMSRMarket sell() in Rúnar matches the @pm/lmsr reference', () => {
+  it('sellYes: output state equals the reference inverse update, collateral −= proceeds', () => {
+    // Build a stocked YES position first, then sell one unit back.
+    const stocked = applyUnitBuy(applyUnitBuy(initState(p), 'yes', MULT, p), 'yes', MULT, p); // qYes = 2 units
+    const afterSell = applyUnitSell(stocked, 'yes', INVMULT, p);
+    const proceeds = sellPayoutApproxSats(afterSell, 'yes', p.unit, p);
+
+    const c = TestContract.fromSource(source, contractState(stocked, COLLATERAL0), FILE);
+    const res = c.call('sellYes', { outputSatoshis: 1n });
+    expect(res.success, res.error).toBe(true);
+    const o = res.outputs[0]!;
+    expect(bn(o.eYes)).toBe(afterSell.eYes);
+    expect(bn(o.eNo)).toBe(afterSell.eNo);
+    expect(bn(o.qYes)).toBe(afterSell.qYes); // one unit removed
+    expect(bn(o.collateral)).toBe(COLLATERAL0 - proceeds);
+  });
+
+  it('sellNo: symmetric', () => {
+    const stocked = applyUnitBuy(applyUnitBuy(initState(p), 'no', MULT, p), 'no', MULT, p);
+    const afterSell = applyUnitSell(stocked, 'no', INVMULT, p);
+    const proceeds = sellPayoutApproxSats(afterSell, 'no', p.unit, p);
+
+    const res = TestContract.fromSource(source, contractState(stocked, COLLATERAL0), FILE).call('sellNo', { outputSatoshis: 1n });
+    expect(res.success, res.error).toBe(true);
+    const o = res.outputs[0]!;
+    expect(bn(o.eNo)).toBe(afterSell.eNo);
+    expect(bn(o.qNo)).toBe(afterSell.qNo);
+    expect(bn(o.collateral)).toBe(COLLATERAL0 - proceeds);
+  });
+
+  it('cannot sell with no outstanding shares (q < unit) — guard rejects', () => {
+    const res = TestContract.fromSource(source, contractState(initState(p), COLLATERAL0), FILE).call('sellYes', { outputSatoshis: 1n });
+    expect(res.success).toBe(false);
+  });
+
+  it('sell proceeds ≤ the buy charge for the same unit (bid/ask spread favours the pool)', () => {
+    // Buy one YES from fresh, then sell it straight back; the pool must not lose on the round-trip.
+    const s0 = initState(p);
+    const s1 = applyUnitBuy(s0, 'yes', MULT, p);
+    const charge = buyChargeApproxSats(s1, 'yes', p.unit, p);
+    const back = applyUnitSell(s1, 'yes', INVMULT, p);
+    const proceeds = sellPayoutApproxSats(back, 'yes', p.unit, p);
+    expect(proceeds <= charge, `proceeds ${proceeds} > charge ${charge}`).toBe(true);
+
+    // and the contract's collateral after buy-then-sell ends ≥ where it started (pool never loses)
+    const afterBuy = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE)
+      .call('buyYes', { paymentSats: charge, outputSatoshis: 1n }).outputs[0]!;
+    const afterSell = TestContract.fromSource(source, {
+      eYes: bn(afterBuy.eYes), eNo: bn(afterBuy.eNo), qYes: bn(afterBuy.qYes), qNo: bn(afterBuy.qNo),
+      collateral: bn(afterBuy.collateral), mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+    }, FILE).call('sellYes', { outputSatoshis: 1n }).outputs[0]!;
+    expect(bn(afterSell.collateral) >= COLLATERAL0).toBe(true);
   });
 });
