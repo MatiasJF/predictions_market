@@ -5,8 +5,10 @@ _Last updated: 2026-07-24 — CONTRACT-001 gate PASSED offline (Rúnar compiles+
 ## Current phase
 **P1 — Feasibility core.** LMSR-001 (math) and CONTRACT-001 (Rúnar toolchain gate) both complete. Rúnar
 compiles a `StatefulSmartContract` to Script and executes state transitions offline — toolchain proven, no
-scrypt-ts fallback needed. **Next ticket: CONTRACT-002** (LMSRMarket buy() in Rúnar via multiplicative
-state — the real on-chain-math feasibility test). Nothing on real chain yet (offline VM only).
+scrypt-ts fallback needed. **Next ticket: LMSR-002** — measure the error of an on-chain-expressible
+(price-based, no-`ln`) cost approximation vs exact LMSR. This gates CONTRACT-002, because the contract's
+payment check cannot use `ln` and must instead enforce an MM-safe approximate cost. Then CONTRACT-002 builds
+the buy() around whatever LMSR-002 validates. Nothing on real chain yet (offline VM only).
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -28,14 +30,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   agents: math correct (max rel err ~9e-13), satoshi-safe (real pool ≥ liability to 1M trades), and
   test-quality findings all closed (sell implemented + tested, NO-side/non-unit/strict-price-discovery
   coverage added). See ADR-008. Files: `packages/lmsr/src/{fixed,lmsr,index}.ts`, `.../test/{fixed,lmsr}.test.ts`.
-- ○ LMSR-002 — Quantify **exact LMSR cost** vs on-chain-expressible approximations (price-based / unit-quantized).
-  Output: max error in sats per trade size → decides whether an on-chain cost check is acceptable. Feeds Open Q1.
+- ◐ LMSR-002 — **NEXT.** Quantify **exact LMSR cost** vs on-chain-expressible approximations (price-based /
+  unit-quantized). Output: max error in sats per trade size, and an MM-safe charge rule (which way to round so
+  the pool never undercharges). Decides CONTRACT-002's on-chain cost check. Feeds/resolves Open Q1.
 - ● CONTRACT-001 — Rúnar toolchain gate. **Re-scoped to OFFLINE** (the real unknown was "does Rúnar compile
   +run a stateful contract", not "can we broadcast"): `Counter.runar.ts` compiles to 148 bytes of Script and
   executes 0→1→2 via `runar-testing`'s VM. 2 tests green. Gate met → no scrypt-ts fallback. See ADR-009.
   Files: `packages/contracts/src/Counter.runar.ts`, `packages/contracts/test/counter.gate.test.ts`.
-- ◐ CONTRACT-002 — `LMSRMarket` buy() in Rúnar using multiplicative state (`mulDiv`/`pow`); compiles; unit
-  test vs `@pm/lmsr` reference via `runar-testing`. **The crux math-feasibility ticket. Next up.**
+- ○ CONTRACT-002 — `LMSRMarket` buy() in Rúnar using multiplicative state (`mulDiv`/`pow`) + the MM-safe
+  cost check validated by LMSR-002; compiles; unit test vs `@pm/lmsr` reference via `runar-testing`. **The
+  crux math-feasibility ticket** (blocked on LMSR-002's cost-approximation result).
 
 ### Phase P2 — On-chain lifecycle (see ROADMAP for M2–M4; tickets created when P1 clears)
 - ○ CONTRACT-003 (planned) — sell/burn path + on-chain cost-verification approach (resolves Open Q1) in Rúnar.
