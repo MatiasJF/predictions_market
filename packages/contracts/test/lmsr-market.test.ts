@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compile } from 'runar-compiler';
-import { TestContract } from 'runar-testing';
+import { TestContract, RABIN_TEST_KEY, rabinSign, hexToBytes } from 'runar-testing';
 import {
   WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
   buyChargeApproxSats, sellPayoutApproxSats, maxLossSats,
@@ -18,14 +18,30 @@ const p: MarketParams = { b: 1000n * WAD, payoutUnit: 100_000n, unit: WAD };
 const MULT = unitMultiplier(p);
 const INVMULT = unitInverseMultiplier(p);
 const COLLATERAL0 = maxLossSats(p);
+const ORACLE_N = RABIN_TEST_KEY.n;
+const MARKET_TAG = 'a1b2c3d4'; // hex; binds the oracle sig to this market
 const bn = (x: unknown): bigint => BigInt(x as string | bigint);
 
 /** Build the Rúnar constructor/init state from an @pm/lmsr market state. */
 function contractState(s: MarketState, collateral: bigint) {
   return {
-    eYes: s.eYes, eNo: s.eNo, qYes: s.qYes, qNo: s.qNo, collateral,
+    eYes: s.eYes, eNo: s.eNo, qYes: s.qYes, qNo: s.qNo, collateral, resolved: 0n, winner: 0n,
     mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+    oracleN: ORACLE_N, marketTag: MARKET_TAG,
   };
+}
+
+/** Little-endian hex of a bigint (padding is read as an unsigned LE bigint by verifyRabinSig). */
+function leHex(n: bigint): string {
+  if (n === 0n) return '00';
+  let h = n.toString(16);
+  if (h.length % 2) h = '0' + h;
+  return (h.match(/../g) as string[]).reverse().join('');
+}
+/** The exact message the contract hashes: marketTag ‖ num2bin(outcome, 1). */
+function oracleMsgBytes(outcome: bigint): Uint8Array {
+  const tag = hexToBytes(MARKET_TAG);
+  return new Uint8Array([...tag, Number(outcome)]);
 }
 /** Skew the market by buying `n` units of `side` off a fresh pool (via the reference). */
 function skewed(side: Side, n: number): MarketState {
@@ -120,7 +136,9 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
       ref = next;
       st = {
         eYes: bn(o.eYes), eNo: bn(o.eNo), qYes: bn(o.qYes), qNo: bn(o.qNo), collateral: bn(o.collateral),
+        resolved: bn(o.resolved), winner: bn(o.winner),
         mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+        oracleN: ORACLE_N, marketTag: MARKET_TAG,
       };
     }
   });
@@ -175,8 +193,67 @@ describe('CONTRACT-003 — LMSRMarket sell() in Rúnar matches the @pm/lmsr refe
       .call('buyYes', { paymentSats: charge, outputSatoshis: 1n }).outputs[0]!;
     const afterSell = TestContract.fromSource(source, {
       eYes: bn(afterBuy.eYes), eNo: bn(afterBuy.eNo), qYes: bn(afterBuy.qYes), qNo: bn(afterBuy.qNo),
-      collateral: bn(afterBuy.collateral), mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+      collateral: bn(afterBuy.collateral), resolved: 0n, winner: 0n,
+      mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
+      oracleN: ORACLE_N, marketTag: MARKET_TAG,
     }, FILE).call('sellYes', { outputSatoshis: 1n }).outputs[0]!;
     expect(bn(afterSell.collateral) >= COLLATERAL0).toBe(true);
+  });
+});
+
+describe('SETTLE-001 — oracle resolution via Rabin signature', () => {
+  function signOutcome(outcome: bigint) {
+    const { sig, padding } = rabinSign(oracleMsgBytes(outcome), RABIN_TEST_KEY);
+    return { sig, padding: leHex(padding) };
+  }
+
+  it('resolve(YES): a valid oracle signature flips the pool to resolved, winner=YES', () => {
+    const { sig, padding } = signOutcome(1n);
+    const c = TestContract.fromSource(source, contractState(initState(p), COLLATERAL0), FILE);
+    const res = c.call('resolve', { sig, padding, outcome: 1n, outputSatoshis: 1n });
+    expect(res.success, res.error).toBe(true);
+    const o = res.outputs[0]!;
+    expect(bn(o.resolved)).toBe(1n);
+    expect(bn(o.winner)).toBe(1n);
+    expect(bn(o.collateral)).toBe(COLLATERAL0); // unchanged by resolution
+  });
+
+  it('resolve(NO): valid signature over outcome=0 sets winner=NO', () => {
+    const { sig, padding } = signOutcome(0n);
+    const res = TestContract.fromSource(source, contractState(initState(p), COLLATERAL0), FILE)
+      .call('resolve', { sig, padding, outcome: 0n, outputSatoshis: 1n });
+    expect(res.success, res.error).toBe(true);
+    expect(bn(res.outputs[0]!.winner)).toBe(0n);
+  });
+
+  it('rejects a forged signature', () => {
+    const { padding } = signOutcome(1n);
+    const res = TestContract.fromSource(source, contractState(initState(p), COLLATERAL0), FILE)
+      .call('resolve', { sig: 123456789n, padding, outcome: 1n, outputSatoshis: 1n });
+    expect(res.success).toBe(false);
+  });
+
+  it('rejects a signature for a different outcome (message binding)', () => {
+    // Oracle signed YES(1); caller claims NO(0) with the YES signature → message mismatch → reject.
+    const { sig, padding } = signOutcome(1n);
+    const res = TestContract.fromSource(source, contractState(initState(p), COLLATERAL0), FILE)
+      .call('resolve', { sig, padding, outcome: 0n, outputSatoshis: 1n });
+    expect(res.success).toBe(false);
+  });
+
+  it('trading is disabled after resolution (buy and sell rejected)', () => {
+    const resolved = { ...contractState(initState(p), COLLATERAL0), resolved: 1n, winner: 1n };
+    const buy = TestContract.fromSource(source, resolved, FILE).call('buyYes', { paymentSats: 10_000_000n, outputSatoshis: 1n });
+    expect(buy.success).toBe(false);
+    const stocked = { ...contractState(applyUnitBuy(initState(p), 'yes', MULT, p), COLLATERAL0), resolved: 1n, winner: 1n };
+    const sell = TestContract.fromSource(source, stocked, FILE).call('sellYes', { outputSatoshis: 1n });
+    expect(sell.success).toBe(false);
+  });
+
+  it('cannot resolve an already-resolved market', () => {
+    const { sig, padding } = signOutcome(1n);
+    const resolved = { ...contractState(initState(p), COLLATERAL0), resolved: 1n, winner: 1n };
+    const res = TestContract.fromSource(source, resolved, FILE).call('resolve', { sig, padding, outcome: 1n, outputSatoshis: 1n });
+    expect(res.success).toBe(false);
   });
 });

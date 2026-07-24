@@ -13,8 +13,9 @@ verdict, not a product.
    (not "BRC-100"). → TOKEN-001.
 4. ✅ **Contract toolchain** — does Rúnar compile & run a stateful contract? **RESOLVED:** yes, offline gate
    passed (CONTRACT-001, ADR-009). No scrypt-ts fallback.
-5. **Oracle settlement sighash** — redeem token + resolved pool via ANYONECANPAY/SINGLE for exactly 100k.
-   **Primitive found:** Rabin sigs (`runar-lang/oracle`). → SETTLE-001.
+5. ✅ **Oracle settlement** — **RESOLVED (SETTLE-001, ADR-013):** `resolve()` verifies a Rabin oracle sig
+   (`runar-lang/oracle`, market-bound via `marketTag`) and flips the pool to resolved; trading then disabled.
+   Winner *redemption* (token burn for 100k) is part of TOKEN-001.
 6. **Per-trade fee economics** — every micro-trade is a full tx. Fee-to-trade-size at realistic sizes?
    **Needs real chain.** → DEPLOY-001.
 

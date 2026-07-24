@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — P2 started: on-chain sell (CONTRACT-003) matches reference, 44 tests. Next: SETTLE-001 (Rabin oracle)._
+_Last updated: 2026-07-24 — SETTLE-001 done: on-chain Rabin oracle resolve (unknown #5 proven), 50 tests. Next: TOKEN-001._
 
 ## Current phase
 **P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
@@ -8,9 +8,9 @@ adversarially verified: `LMSRMarket.buyYes/buyNo` compiles to 466 bytes of Scrip
 **exactly matching** the `@pm/lmsr` reference (verified over a 60-step feedback loop; all 6 tamper-mutations
 caught). 40 tests green, typecheck clean. **All software-side feasibility unknowns are resolved.** The only
 open unknowns are on-chain reality — single-UTXO throughput (#2) and per-trade fees (#6) — answerable only by
-a mainnet deploy. **P2 in progress:** sell done (CONTRACT-003). Remaining: Rabin oracle resolve (SETTLE-001, offline-testable),
-YES/NO tokens + ownership (TOKEN-001), bind collateral to real UTXO sats (`extractAmount`) + constrain
-`outputSatoshis`, then the gated mainnet DEPLOY-001.
+a mainnet deploy. **P2 in progress:** sell (CONTRACT-003) + oracle resolve (SETTLE-001) done. Remaining: YES/NO tokens +
+ownership/redemption (TOKEN-001), bind collateral to real UTXO sats (`extractAmount`) + constrain
+`outputSatoshis`, then the gated mainnet DEPLOY-001 (measures #2 throughput / #6 fees; needs funding).
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -56,7 +56,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   collateral ≥ start (spread favours the pool). 44 tests total. **Caveat:** ownership check (burning the
   seller's token) is TOKEN-001; same offline-VM/real-sats deferral as buy.
 - ○ TOKEN-001 (planned) — YES/NO tokens via `runar-lang/tokens`; mint on buy, redeem on settle.
-- ○ SETTLE-001 (planned) — Rabin oracle resolution (`runar-lang/oracle`) + winner redemption sighash composition.
+- ● SETTLE-001 — Oracle resolution via Rabin signature. `LMSRMarket.resolve(sig, padding, outcome, ...)`
+  verifies `verifyRabinSig(cat(marketTag, outcome), sig, padding, oracleN)` and flips the pool to
+  `resolved`/`winner`; buy/sell now `assert(resolved==0)`. 6 tests (valid YES/NO, forged rejected,
+  wrong-outcome rejected, trading disabled after resolve, no double-resolve). Resolves unknown #5. ADR-013.
+  **Winner redemption** (burn winning token for 100k) deferred to TOKEN-001.
 - ○ DEPLOY-001 (planned) — FIRST real **mainnet** deploy+spend of the pool UTXO (ADR-010); measure
   single-UTXO serialization, throughput, and per-trade fee (Open Q3, unknowns #2/#6). **Real-money chain
   interaction — gated per-action; tiny amounts.**

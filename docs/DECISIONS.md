@@ -173,3 +173,19 @@ Template:
 - Consequences: On-chain LMSR buy proven feasible (software). Owed at DEPLOY-001: bind collateral to UTXO
   sats (`extractAmount`), constrain `outputSatoshis`, handle buyer change / token mint as additional
   outputs, and measure real throughput/fees. Resolves unknown #1 fully; completes P1.
+
+## ADR-013 · Oracle resolution via Rabin signature on the pool contract · Accepted · 2026-07-24 (resolves unknown #5)
+- Context: SETTLE-001 needed to prove the market can be resolved on-chain by a trusted oracle. Rúnar
+  provides `verifyRabinSig` (`runar-lang/oracle`) — cheaper on-chain than ECDSA.
+- Decisions:
+  - `resolve()` lives on `LMSRMarket` (faithful lifecycle): the pool UTXO flips `resolved` 0→1 and records
+    `winner`. buy/sell `assert(resolved == 0)`, so trading is disabled post-resolution; no double-resolve.
+  - The oracle Rabin-signs `msg = cat(marketTag, num2bin(outcome,1))`; the readonly `marketTag` binds the
+    signature to THIS market (stops replaying an outcome sig elsewhere). `oracleN` (Rabin modulus) is baked
+    in readonly. `padding` is passed as LE-hex ByteString (read as unsigned LE bigint); `sig`/`oracleN` are bigints.
+- Evidence: 6 tests via `runar-testing` `rabinSign`/`RABIN_TEST_KEY` — valid YES/NO resolve, forged sig
+  rejected, wrong-outcome sig rejected (binding), trading disabled after resolve, double-resolve rejected.
+  Offline-testable (verifyRabinSig is preimage-independent).
+- Consequences: **Resolves unknown #5.** Owed later: winner REDEMPTION (burn winning token for
+  `payoutUnit`) needs tokens → TOKEN-001; production hardening = bind `marketTag` to the UTXO outpoint (not a
+  static tag) to stop cross-instance replay, and consider a 2-of-2 / multi-oracle scheme.
