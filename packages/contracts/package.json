@@ -1,0 +1,16 @@
+{
+  "name": "@pm/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "runar-compiler": "^0.4.6",
+    "runar-lang": "^0.4.6",
+    "runar-sdk": "^0.4.6"
+  },
+  "devDependencies": {
+    "fast-check": "^4.9.0",
+    "runar-cli": "^0.4.6",
+    "runar-testing": "^0.4.6"
+  }
+}

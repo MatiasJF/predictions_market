@@ -95,3 +95,27 @@ Template:
   **Known, benign property:** the two sides' displayed prices can differ by 1 sat (floor asymmetry); the
   on-chain contract must respect the same rounding direction. The exact-vs-multiplicative drift is
   ~5e-13 relative and non-compounding (measured to 1M trades).
+
+## ADR-009 · Rúnar toolchain gate passed; token & oracle primitives chosen; offline test harness · Accepted · 2026-07-24
+- Context: CONTRACT-001 had to prove Rúnar compiles+runs a stateful contract before building the LMSR
+  market on it. Inspected the installed v0.4.6 packages directly (not the earlier page summary).
+- Findings:
+  - `StatefulSmartContract` (runar-lang) is exactly the Market Pool pattern: mutable props → state via
+    OP_PUSH_TX; `addOutput(sats, ...stateValues)` enforces the continuation output; the compiler
+    auto-injects the preimage check + state-continuation assert.
+  - Compiled a minimal `Counter` to **148 bytes of Bitcoin Script** and executed 0→1→2 **offline** via
+    `runar-testing`'s `TestContract` (Script VM + mock preimage). No chain, no funds needed for the gate.
+  - Script math available: `mulDiv(a,b,c)`, `pow`, `sqrt`, `log2` (approx floor), `percentOf` (bps),
+    `min/max/within/clamp`, `safediv`. Still **no exp/ln** (confirms ADR-002) — but mulDiv+pow are what the
+    multiplicative-state trick (ADR-007) needs.
+- Decisions:
+  - Contract toolchain = Rúnar, gate met → **ADR-002 fallback (scrypt-ts) not needed.**
+  - **Token primitive = `runar-lang/tokens`** (`FungibleToken`/`NonFungibleToken`), replacing the docs'
+    vague "BRC-100" → resolves Open Q4.
+  - **Oracle = Rabin signatures** via `runar-lang/oracle#verifyRabinSig` (cheaper on-chain than ECDSA);
+    sign/verify in tests with `runar-testing`'s rabin helpers.
+  - **Contract development is offline** via `runar-testing` (`TestContract`, `ScriptVM`, mock preimage);
+    real testnet/mainnet deploy is a separate, later, explicitly-gated ticket (DEPLOY-001).
+- Consequences: Unblocks CONTRACT-002 (LMSRMarket buy in Rúnar). `fast-check` added as a devDep (an
+  undeclared transitive of runar-testing). Contract sources are valid TS and are typechecked. Single-UTXO
+  throughput / fee economics (Open Q3, unknowns #2/#6) still require a real-chain ticket to measure.

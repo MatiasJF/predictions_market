@@ -20,7 +20,12 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 |---|---|
 | Pure integer LMSR reference (price, cost, buy/sell, max-loss) | `packages/lmsr/src/` (stub) |
 | LMSR invariant / stress tests | `packages/lmsr/test/` (stub) |
-| Rúnar stateful contract(s) — counter gate, LMSRMarket | `packages/contracts/src/` (stub) |
+| Rúnar toolchain gate — stateful Counter contract | `packages/contracts/src/Counter.runar.ts` |
+| Rúnar gate test (compile + execute offline) | `packages/contracts/test/counter.gate.test.ts` |
+| Rúnar LMSR market contract | `packages/contracts/src/LMSRMarket.runar.ts` (planned, CONTRACT-002) |
+| Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
+| Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |
+| Oracle Rabin-sig verification | `runar-lang/oracle#verifyRabinSig` |
 | SQLite migrations | `packages/persistence/migrations/` |
 | SQLite open/migrate helpers | `packages/persistence/src/db.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |
