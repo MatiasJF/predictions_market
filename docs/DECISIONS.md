@@ -79,3 +79,19 @@ Template:
   *cost* on-chain still needs `ln`; candidate resolutions — quantize to unit trades, bounded price-based
   cost approximation (quantify error in LMSR-002), or bounded lookup. Variable trade sizes without loops
   is the second open question.
+
+## ADR-008 · MM-safe rounding directions + q≥0 invariant for sells · Accepted · 2026-07-24
+- Context: LMSR-001 adversarial verification (3 agents) confirmed the buy math is correct/solvent but found:
+  (a) sell was advertised yet unimplemented/untested; (b) the div-by-zero / negative-`C` branches become
+  reachable the moment a sell drives `e` below WAD.
+- Options: (a) implement sell with an explicit non-negativity guard · (b) ship buy-only and drop the sell
+  claim from the docs.
+- Decision: (a). **Buys charge `ceil` (round up), sells pay `floor` (round down)** — the tiny bid/ask
+  rounding spread always favors the pool, so it can never overpay. **Sells guard `delta ≤ q`** so net
+  shares stay ≥ 0; since `q ≥ 0 ⇒ e = exp(q/b) ≥ WAD`, the sum is always ≥ 2·WAD and the underflow
+  branches stay unreachable. Exact buy/sell paths also reject negative deltas.
+- Consequences: Reference now matches the market lifecycle (early-exit before close). Verified: buy→sell
+  round-trips return to the opening state; real pool (`seed + Σcost`) ≥ liability every trade over 100k.
+  **Known, benign property:** the two sides' displayed prices can differ by 1 sat (floor asymmetry); the
+  on-chain contract must respect the same rounding direction. The exact-vs-multiplicative drift is
+  ~5e-13 relative and non-compounding (measured to 1M trades).

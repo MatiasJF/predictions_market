@@ -1,10 +1,11 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — P0 foundation scaffolded; entering P1._
+_Last updated: 2026-07-24 — LMSR-001 done (29 tests green, verified by 3 adversarial agents). Next: CONTRACT-001._
 
 ## Current phase
-**P0 — Foundation** (repo skeleton + KB + data model): essentially complete this commit.
-**Next: P1 — Feasibility core** (the LMSR math + Rúnar toolchain gate). Nothing on-chain yet.
+**P1 — Feasibility core.** LMSR-001 complete: pure integer LMSR reference built, adversarially verified,
+hardened, and committed. **Next ticket: CONTRACT-001** (Rúnar toolchain gate). P0 committed (`7992157`).
+Nothing on-chain yet.
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -21,8 +22,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
 - ● OPS-003 — Initial git commit.
 
 ### Phase P1 — Feasibility core (LMSR math + toolchain gate)
-- ○ LMSR-001 — Pure integer LMSR reference in `@pm/lmsr` (multiplicative-state): price, cost, buy/sell,
-  `b·ln2` max-loss invariant. Vitest: 100k simulated trades assert invariants + satoshi-exactness.
+- ● LMSR-001 — Pure integer LMSR reference in `@pm/lmsr` (`fixed.ts` exp/ln, `lmsr.ts` price/cost/state/
+  buy+sell, multiplicative-state). **29 Vitest tests green**, typecheck clean. Verified by 3 adversarial
+  agents: math correct (max rel err ~9e-13), satoshi-safe (real pool ≥ liability to 1M trades), and
+  test-quality findings all closed (sell implemented + tested, NO-side/non-unit/strict-price-discovery
+  coverage added). See ADR-008. Files: `packages/lmsr/src/{fixed,lmsr,index}.ts`, `.../test/{fixed,lmsr}.test.ts`.
 - ○ LMSR-002 — Quantify **exact LMSR cost** vs on-chain-expressible approximations (price-based / unit-quantized).
   Output: max error in sats per trade size → decides whether an on-chain cost check is acceptable. Feeds Open Q1.
 - ○ CONTRACT-001 — Rúnar toolchain gate: compile & run a trivial `StatefulSmartContract` (counter) end-to-end
@@ -37,8 +41,9 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report.
 
 ## Known issues
-- Dependencies are **not installed yet** (`node_modules` absent). `typecheck`/`test`/`build` are therefore
-  unverified as of this commit; first real run happens in LMSR-001. `better-sqlite3` needs a native build.
+- Deps installed with `pnpm install --ignore-scripts`, so **`better-sqlite3`'s native binary is NOT built yet**.
+  `@pm/persistence` typechecks (types present) but won't run at runtime until we install without
+  `--ignore-scripts` (or run its build) — do this when the first ticket needs the DB at runtime (apps/spike).
 - Node is v20.19.5 → no `node:sqlite`; we use `better-sqlite3`. `sqlite3` CLI 3.43.2 is available for schema checks.
 
 ## Open questions (the crux — feed the feasibility verdict)

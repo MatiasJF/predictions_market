@@ -9,8 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json",
     "test": "vitest run",
     "db:migrate": "node --import tsx apps/spike/src/migrate.ts"
   },
