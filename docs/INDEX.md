@@ -18,8 +18,11 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 ## Code
 | Topic | Path |
 |---|---|
-| Pure integer LMSR reference (price, cost, buy/sell, max-loss) | `packages/lmsr/src/` (stub) |
-| LMSR invariant / stress tests | `packages/lmsr/test/` (stub) |
+| Pure integer LMSR reference (price, cost, buy/sell, max-loss) | `packages/lmsr/src/lmsr.ts` |
+| Fixed-point BigInt exp/ln | `packages/lmsr/src/fixed.ts` |
+| On-chain cost approx (post-trade price, no-`ln`, MM-safe) | `buyChargeApproxSats`/`sellPayoutApproxSats` in `packages/lmsr/src/lmsr.ts` |
+| LMSR invariant / stress tests | `packages/lmsr/test/{fixed,lmsr}.test.ts` |
+| Cost-approximation error + MM-safety tests | `packages/lmsr/test/cost-approx.test.ts` |
 | Rúnar toolchain gate — stateful Counter contract | `packages/contracts/src/Counter.runar.ts` |
 | Rúnar gate test (compile + execute offline) | `packages/contracts/test/counter.gate.test.ts` |
 | Rúnar LMSR market contract | `packages/contracts/src/LMSRMarket.runar.ts` (planned, CONTRACT-002) |

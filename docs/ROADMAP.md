@@ -4,9 +4,9 @@ Feasibility spike. Each milestone attacks the cheapest-to-falsify unknown first.
 verdict, not a product.
 
 ## The six feasibility unknowns (the spike exists to answer these)
-1. **LMSR exp/log on-chain** — Rúnar has no exp/log/loops. Can the contract price/verify a trade at all?
-   → multiplicative-state trick (ADR-007); `mulDiv`/`pow` confirmed available. **Partly de-risked** (LMSR-001);
-   on-chain *cost verification without `ln`* still open (Open Q1). → CONTRACT-002/003.
+1. ✅ **LMSR exp/log on-chain** — Rúnar has no exp/log/loops. **RESOLVED:** multiplicative-state trick (ADR-007)
+   for state; post-trade marginal price (ADR-011, LMSR-002) for MM-safe cost — both need only `mulDiv`. Error
+   bounded by trade÷liquidity (cap Δ/b≤~0.01). Remaining work is to enforce it in the Rúnar contract → CONTRACT-002.
 2. **Single-UTXO serialization** — one pool UTXO; concurrent trades race. Real throughput/UX? **Still fully
    open — needs real chain.** → DEPLOY-001.
 3. **Token mint per trade** — mint YES/NO on buy, redeemable on settle. **Primitive found:** `runar-lang/tokens`
@@ -27,8 +27,8 @@ verdict, not a product.
 | **P3** | Mainnet proof + written feasibility verdict | all | ○ planned |
 
 ## Milestone → ticket map (see STATE.md for live status)
-- **M0 — de-risk math off-chain:** LMSR-001 ●, LMSR-002.
-- **M1 — contract feasibility:** CONTRACT-001 ● (gate), CONTRACT-002 (LMSR buy in Rúnar).
+- **M0 — de-risk math off-chain:** LMSR-001 ●, LMSR-002 ● (on-chain cost-without-`ln`, ADR-011).
+- **M1 — contract feasibility:** CONTRACT-001 ● (gate), CONTRACT-002 ◐ (LMSR buy in Rúnar).
 - **M2 — on-chain cost verification + tokens:** CONTRACT-003, TOKEN-001.
 - **M3 — oracle + redemption + first real deploy:** SETTLE-001, DEPLOY-001 (throughput + fee numbers — decides native vs hybrid).
 - **M4 — mainnet proof + verdict:** OPS-004 (gated mainnet run + report on all six unknowns with real data).

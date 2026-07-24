@@ -138,3 +138,29 @@ export function proceedsSats(sFrom: MarketState, sTo: MarketState, p: MarketPara
   if (c <= 0n) return 0n;
   return (c * p.payoutUnit) / WAD; // floor
 }
+
+const eOf = (s: MarketState, side: Side): bigint => (side === 'yes' ? s.eYes : s.eNo);
+
+// ── On-chain-expressible cost, without ln (LMSR-002 / ADR-011) ───────────────────────────────────────
+// The contract can't compute ln, but it CAN compute the marginal price at the POST-trade state with only
+// mul/div. Since LMSR cost is the integral of an increasing price curve, pricing at the post-trade state is
+// a right-Riemann bound: it upper-bounds a buy's true cost (overcharge, MM-safe) and lower-bounds a sell's
+// proceeds (underpay, MM-safe). These are the exact expressions the Rúnar contract mirrors.
+
+/**
+ * MM-safe approximate BUY cost using the POST-trade marginal price. `sTo` is the state AFTER buying
+ * `deltaShares` (WAD-scaled) of `side`. Rounded UP. On-chain: one mulDiv + ceil. Always ≥ exact costSats.
+ */
+export function buyChargeApproxSats(sTo: MarketState, side: Side, deltaShares: bigint, p: MarketParams): bigint {
+  const sum = sTo.eYes + sTo.eNo;
+  return ceilDiv(eOf(sTo, side) * p.payoutUnit * deltaShares, sum * WAD);
+}
+
+/**
+ * MM-safe approximate SELL proceeds using the POST-trade (lower) marginal price. `sTo` is the state AFTER
+ * selling `deltaShares` of `side`. Rounded DOWN. On-chain: one mulDiv + floor. Always ≤ exact proceedsSats.
+ */
+export function sellPayoutApproxSats(sTo: MarketState, side: Side, deltaShares: bigint, p: MarketParams): bigint {
+  const sum = sTo.eYes + sTo.eNo;
+  return (eOf(sTo, side) * p.payoutUnit * deltaShares) / (sum * WAD); // floor
+}

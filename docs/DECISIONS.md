@@ -134,3 +134,21 @@ Template:
   unsigned txs only; (3) prove each contract path offline in the VM before any broadcast.
 - Consequences: Supersedes ADR-005. `DEPLOY-001` and later are mainnet. Real-money risk bounded by
   tiny amounts + offline-first verification. Throughput/fee unknowns (#2/#6) get measured on mainnet.
+
+## ADR-011 · On-chain cost verification without `ln`: post-trade marginal price (MM-safe) · Accepted · 2026-07-24 (resolves Open Q1)
+- Context: Rúnar has no `ln`, so the contract cannot compute exact LMSR cost `C(new)−C(old)`. LMSR-002 had
+  to find an on-chain-expressible cost rule that is MM-safe and low-error.
+- Options: (a) price at the post-trade state (right-Riemann bound) · (b) bounded lookup table for `ln` ·
+  (c) buyer-supplied cost verified on-chain (needs exp/ln — infeasible).
+- Decision: **(a).** The contract charges/pays at the **post-trade marginal price**
+  `eSide'/(eYes'+eNo')·payout·Δ`, computable with one `mulDiv`. **Buys round UP, sells round DOWN.** Because
+  LMSR cost is the integral of an increasing price curve, the post-trade price is a right-Riemann bound:
+  buys overcharge, sells underpay — both MM-safe — and `ceil`/`floor` monotonicity preserves the bound
+  after integer rounding. Implemented as `buyChargeApproxSats` / `sellPayoutApproxSats` in `@pm/lmsr`.
+- Evidence (LMSR-002, measured; `packages/lmsr/test/cost-approx.test.ts`): MM-safe direction holds across a
+  b×side×skew grid (0 undercharges). Overcharge grows with Δ/b (trade ÷ liquidity): **0% for tiny trades,
+  ≤0.13% of notional at Δ/b=1e-2, ~1.3–2.4% at Δ/b=0.1, ~8–19% at Δ/b=1**.
+- Consequences: **Resolves Open Q1 / de-risks unknown #1.** CONTRACT-002's `buy()` enforces
+  `payment ≥ buyChargeApproxSats`. Design rule: **cap trade size to Δ/b ≤ ~0.01** (overcharge <~0.13% of
+  notional) — matches the source docs' per-trade caps + `b`-scaling. The buyer pays a tiny, bounded premium
+  for not having `ln` on-chain; this premium accrues to the pool (extra safety margin).
