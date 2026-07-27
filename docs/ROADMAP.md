@@ -7,8 +7,9 @@ verdict, not a product.
 1. ✅ **LMSR exp/log on-chain** — Rúnar has no exp/log/loops. **RESOLVED:** multiplicative-state trick (ADR-007)
    for state; post-trade marginal price (ADR-011, LMSR-002) for MM-safe cost — both need only `mulDiv`. Error
    bounded by trade÷liquidity (cap Δ/b≤~0.01). Remaining work is to enforce it in the Rúnar contract → CONTRACT-002.
-2. **Single-UTXO serialization** — one pool UTXO; concurrent trades race. Real throughput/UX? **Still fully
-   open — needs real chain.** → DEPLOY-001.
+2. 🟡 **Single-UTXO serialization** — pool contract now DEPLOYED + confirmed on mainnet (one UTXO, valid
+   Script accepted by miners). Live multi-trade throughput still unmeasured: the first spend is blocked by
+   runar-sdk BUG-002 (OP_PUSH_TX tx-construction), not by the design. → workaround the spend, then measure.
 3. **Token mint per trade** — mint YES/NO on buy, redeemable on settle. **Primitive found:** `runar-lang/tokens`
    (not "BRC-100"). → TOKEN-001.
 4. ✅ **Contract toolchain** — does Rúnar compile & run a stateful contract? **RESOLVED:** yes, offline gate

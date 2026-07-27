@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dry-run": "tsx src/dry-run.ts",
-    "keygen": "tsx src/keygen.ts"
+    "keygen": "tsx src/keygen.ts",
+    "mainnet": "tsx src/mainnet.ts"
   },
   "dependencies": {
     "@bsv/sdk": "^2.1.9",

@@ -67,5 +67,6 @@ ledger design, multi-outcome/categorical markets, order books, leverage, mobile 
 - `docs/SCHEMA.md` — the SQLite data model, kept in sync with `packages/persistence/migrations`.
 - `docs/ROADMAP.md` — phases M0–M4 and the six feasibility unknowns.
 - `docs/GLOSSARY.md` — LMSR, `b`, `b·ln2`, OP_PUSH_TX, multiplicative-state, Rúnar constraints, etc.
+- `docs/Runar-bugs.md` — Rúnar/runar-sdk toolchain bugs found + workarounds (append one per bug).
 - `docs/` also holds the two source PDFs and `code_example_runar.js` (original vision; the Rúnar sample
   is all-stubs and not authoritative).

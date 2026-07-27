@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-24 — DEPLOY-001a done: offline tx tooling; buy ≈5.1 KB / ~255 sat (#6 answered). 51 tests. Next: 001b needs funding._
+_Last updated: 2026-07-27 — Pool contract LIVE on mainnet (deploy tx ddbb0b36…, fee 176 sat). First buy blocked by runar-sdk BUG-002 (OP_PUSH_TX spend). Next: hand-build the spend via @bsv/sdk._
 
 ## Current phase
 **P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
@@ -67,13 +67,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     buy ≈ **5,100 B** (~255 sat @0.05/B; ~5,100 sat @1/B) — dominated by the OP_PUSH_TX preimage + stateful
     continuation. Buy sizes are stable across trades. Files: `apps/spike/src/{market,measure,dry-run}.ts`,
     `apps/spike/test/deploy.test.ts`. Verified (51 tests). `pnpm --filter @pm/spike dry-run` prints the table.
-  - ◐ **001b (mainnet, gated) — AWAITING FUNDING.** `keygen` done: fresh mainnet key generated, WIF in
-    git-ignored `.env` (never seen/committed by Claude). **Funding address: `1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`**
-    — user to send ~0.01–0.02 BSV. Once funded: build deploy (dry first → show tx/fee → gated broadcast) + buys
-    on mainnet with `WhatsOnChainProvider`; confirm real miner fee + confirmation/throughput (#2, single-UTXO
-    serialization / 0-conf). **Also owed here:** harden collateral↔UTXO-sats binding (`extractAmount`,
-    `outputSatoshis == in + payment`) — compile-only offline, real-validated on mainnet.
-    Tooling: `apps/spike/src/keygen.ts` (done); deploy/buy mainnet scripts built once funding confirmed.
+  - ◐ **001b (mainnet) — DEPLOY LIVE; SPEND BLOCKED by runar-sdk BUG-002.** Funded 0.02 BSV to
+    `1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`. **Pool contract DEPLOYED + confirmed on mainnet:**
+    txid `ddbb0b368ac54716001ae9cc32fdabfb23548fed31ccb0b3d1232754c16dca88:0` (1000 dust sats; full LMSR
+    5-branch script on-chain). **Real deploy fee: 176 sats** (~0.1 sat/B). Change 1,998,824 sats back at the
+    funding address (sweepable). Had to work around **BUG-001** (runar-sdk `LocalSigner` bad sig) by building
+    the funding tx with `@bsv/sdk`. **The first buy (spend) is BLOCKED by BUG-002** (runar-sdk OP_PUSH_TX
+    preimage/scriptCode for multi-method stateful spend → NULLFAIL). Buy logic itself is proven in the VM (15
+    tests). See `docs/Runar-bugs.md`. Tooling: `apps/spike/src/{keygen,bsv-signer,mainnet}.ts`
+    (`mainnet <balance|deploy|buy> [--broadcast]`).
+    **Next to unblock #2:** hand-build the OP_PUSH_TX spend via `@bsv/sdk` (workaround for BUG-002), then run
+    live buys to measure throughput. Also still owed: collateral↔UTXO-sats binding (`extractAmount`).
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
 ## Known issues

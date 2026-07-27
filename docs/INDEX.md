@@ -38,7 +38,11 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Offline deploy+buy measurement (tx sizes → fees) | `apps/spike/src/measure.ts` |
 | Dry-run CLI (`pnpm --filter @pm/spike dry-run`) | `apps/spike/src/dry-run.ts` |
 | Deploy tooling test | `apps/spike/test/deploy.test.ts` |
-| Mainnet keygen / deploy / buy (gated) | `apps/spike/src/` (planned, DEPLOY-001b) |
+| Mainnet keygen (WIF→.env, prints address) | `apps/spike/src/keygen.ts` |
+| Mainnet ops CLI (`mainnet balance\|deploy\|buy [--broadcast]`) | `apps/spike/src/mainnet.ts` |
+| Correct @bsv/sdk-based Signer (BUG-001 workaround) | `apps/spike/src/bsv-signer.ts` |
+| .env loader | `apps/spike/src/env.ts` |
+| Rúnar toolchain bugs + workarounds | `docs/Runar-bugs.md` |
 
 ## Config / ops
 | Topic | Path |
