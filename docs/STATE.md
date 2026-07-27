@@ -64,8 +64,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     (`tokenCodeYes ‖ supply=1 ‖ holder`). 3 mint tests; existing 15 buy/sell tests updated + green (59 total).
     Tooling (`market.ts`) computes the token codes + 16-arg constructor. **Not yet on mainnet** (needs manual
     multi-output tx build — the SDK's `call()` doesn't emit a foreign-contract output).
-  - ○ **001c:** winner redemption — burn winning token + resolved pool → payoutUnit×supply (multi-input;
-    interpreter can't do multi-input, so compile + hand-built mainnet tx). Also the sell-side token-burn check.
+  - ● **001c DONE (VM):** `ShareToken.burn` (holder consumes the token) + `LMSRMarket.redeem(supply, holder,
+    side, poolOutSats)` — when resolved and `side==winner`, pays `supply×payoutUnit` (P2PKH built as
+    `76a914‖hash160(holder)‖88ac`) and reduces collateral. 3 redeem tests (pays winner, pre-resolution reject,
+    losing-side reject) + burn compiles. Documented **trust gap**: pool trusts the supplied supply/holder/side
+    (production needs SPV/pushdata token verification). Multi-input token+pool combo → verified on mainnet (001d).
   - ○ **001d (mainnet):** hand-build the full loop tx-by-tx — deploy token-market → buy (mint) → resolve →
     redeem — on mainnet. Needs manual multi-output (mint) + multi-input (redeem) tx construction.
 - ● SETTLE-001 — Oracle resolution via Rabin signature. `LMSRMarket.resolve(sig, padding, outcome, ...)`

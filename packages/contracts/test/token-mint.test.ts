@@ -68,3 +68,32 @@ describe('TOKEN-001b — mint-on-buy', () => {
     expect(tokenScript.endsWith('0100000000000000' + BUYER.toLowerCase())).toBe(true);
   });
 });
+
+describe('TOKEN-001c — winner redemption (pool pays the winner)', () => {
+  const resolvedYes = () => ({ ...poolState(), resolved: 1n, winner: 1n });
+
+  it('redeem: resolved-YES pays supply×payoutUnit to the holder, pool collateral reduced', () => {
+    const res = TestContract.fromSource(marketSrc, resolvedYes(), FILE)
+      .call('redeem', { supply: 1n, holderPubKey: BUYER, side: 1n, poolOutSats: 1n });
+    expect(res.success, res.error).toBe(true);
+    const payout = 1n * p.payoutUnit;
+    expect(bn(res.outputs[0]!.collateral)).toBe(maxLossSats(p) - payout); // pool collateral reduced
+    expect(bn(res.outputs[1]!.satoshis)).toBe(payout); // winner paid
+    const script = String(res.outputs[1]!._rawScript).toLowerCase();
+    expect(script.startsWith('76a914')).toBe(true);
+    expect(script.endsWith('88ac')).toBe(true);
+    expect(script.length).toBe(50); // 25-byte P2PKH
+  });
+
+  it('redeem rejected before resolution', () => {
+    const res = TestContract.fromSource(marketSrc, poolState(), FILE)
+      .call('redeem', { supply: 1n, holderPubKey: BUYER, side: 1n, poolOutSats: 1n });
+    expect(res.success).toBe(false);
+  });
+
+  it('redeem rejected for the losing side (YES won, NO token)', () => {
+    const res = TestContract.fromSource(marketSrc, resolvedYes(), FILE)
+      .call('redeem', { supply: 1n, holderPubKey: BUYER, side: 0n, poolOutSats: 1n });
+    expect(res.success).toBe(false);
+  });
+});

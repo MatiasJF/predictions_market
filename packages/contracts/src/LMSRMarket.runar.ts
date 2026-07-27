@@ -1,4 +1,4 @@
-import { StatefulSmartContract, assert, mulDiv, safediv, cat, num2bin } from 'runar-lang';
+import { StatefulSmartContract, assert, mulDiv, safediv, cat, num2bin, hash160, toByteString } from 'runar-lang';
 import { verifyRabinSig } from 'runar-lang/oracle';
 import type { ByteString, PubKey, RabinSig, RabinPubKey } from 'runar-lang';
 
@@ -129,5 +129,26 @@ export class LMSRMarket extends StatefulSmartContract {
     const msg = cat(this.marketTag, num2bin(outcome, 1n));
     assert(verifyRabinSig(msg, sig, padding, this.oracleN));
     this.addOutput(outputSatoshis, this.eYes, this.eNo, this.qYes, this.qNo, this.collateral, 1n, outcome);
+  }
+
+  /**
+   * Redeem a winning share (TOKEN-001c): pays `supply × payoutUnit` sats to `holderPubKey` and continues the
+   * pool with reduced collateral. Requires the market resolved and `side == winner`. The winner's ShareToken
+   * is burned in the same transaction (a separate input) as proof of ownership.
+   *
+   * DOCUMENTED TRUST GAP (spike): the pool trusts the supplied `supply`/`holderPubKey`/`side`. A production
+   * version must cryptographically verify the co-spent token's genesis + supply (SPV/pushdata) — see VERDICT.
+   */
+  public redeem(supply: bigint, holderPubKey: PubKey, side: bigint, poolOutSats: bigint) {
+    assert(this.resolved == 1n);
+    assert(side == this.winner);
+    assert(supply > 0n);
+    const payout = supply * this.payoutUnit;
+    assert(this.collateral >= payout);
+    // output 0: pool continuation with collateral reduced by the payout
+    this.addOutput(poolOutSats, this.eYes, this.eNo, this.qYes, this.qNo, this.collateral - payout, this.resolved, this.winner);
+    // output 1: pay the winner — P2PKH script = 76a914 ‖ hash160(holder) ‖ 88ac
+    const payoutScript = cat(cat(toByteString('76a914'), hash160(holderPubKey)), toByteString('88ac'));
+    this.addRawOutput(payout, payoutScript);
   }
 }

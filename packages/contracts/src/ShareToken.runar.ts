@@ -40,4 +40,9 @@ export class ShareToken extends StatefulSmartContract {
     this.addOutput(outputSatoshis, amount, newHolder);
     this.addOutput(outputSatoshis, this.supply - amount, this.holder);
   }
+
+  /** Burn: the holder consumes the token (no successor output). Used when redeeming a winning share. */
+  public burn(sig: Sig) {
+    assert(checkSig(sig, this.holder));
+  }
 }
