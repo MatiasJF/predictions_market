@@ -41,8 +41,14 @@ on-chain. Total cost of the entire exercise: **~686 sat in fees + 1,000 sat dust
 2. **Single-UTXO serialization — RESOLVED (mainnet).** The pool is one stateful UTXO; a trade spends it and
    mints the next version. The live buy confirmed this works. **Caveat:** rapid sequential 0-conf trades must
    chain the funding UTXO locally (a client concern), because `getUtxos()` lags the mempool.
-3. **Tokens — primitive identified.** Rúnar ships `runar-lang/tokens` (`FungibleToken`/`NonFungibleToken`) —
-   the right primitive for YES/NO claims, replacing the source docs' vague "BRC-100". Not yet built (TOKEN-001).
+3. **Tokens — RESOLVED (full lifecycle built + VM-proven, TOKEN-001).** YES/NO positions are a `ShareToken`
+   (fungible; transfer/split/burn; market+side bound). The pool **mints** a ShareToken to the buyer on buy
+   (`addRawOutput`, token script built on-chain), and a winner **redeems** it after resolution for
+   `payout × supply` (pool pays P2PKH, collateral reduced). 11 VM tests. (Couldn't subclass Rúnar's shipped
+   `FungibleToken` base — BUG-004 — so the token is a direct `StatefulSmartContract`.) A documented trust gap
+   remains in redemption (the pool trusts the supplied supply; production needs SPV/pushdata token
+   verification), and the multi-output mint / multi-input redeem transactions are demonstrated on mainnet in
+   the follow-on (001d) — the interpreter can't execute multi-input spends.
 4. **Contract toolchain — RESOLVED.** Rúnar (`icellan/runar`, a BSV Association compiler) compiles a
    `StatefulSmartContract` to Script and persists state via OP_PUSH_TX. Confirmed by compilation, a script-VM
    gate, and mainnet deployment.
