@@ -9,7 +9,7 @@ logic verified in-VM (51 tests) + adversarially reviewed; and both a **deploy an
 confirmed on mainnet** (deploy `ddbb0b36…`, buy `7106f762…`), fees negligible (176-sat deploy, 510-sat buy).
 **Remaining work is productization, not feasibility:** collateral↔UTXO-sats binding (`extractAmount`),
 funding-UTXO chaining for rapid sequential trades (BUG-003), YES/NO tokens + withdraw/redeem (TOKEN-001).
-Suggested next: write the feasibility-verdict deliverable, then TOKEN-001.
+Suggested next: TOKEN-001, or fix BUG-001 upstream. **Deliverable written: `docs/VERDICT.md`.**
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the

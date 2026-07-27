@@ -60,6 +60,7 @@ Web UI, real Kalshi API, market catalogue/curation, the 4-week team/product plan
 ledger design, multi-outcome/categorical markets, order books, leverage, mobile apps, production ops.
 
 ## Doc map (the KB)
+- `docs/VERDICT.md` — **THE DELIVERABLE.** Feasibility verdict on all six unknowns + mainnet evidence.
 - `docs/STATE.md` — **LIVING.** Current phase, task board (tickets), known issues, open questions. Read 2nd.
 - `docs/INDEX.md` — **LIVING.** "Where is what": topic → file path (planned/stub marked). Read 3rd.
 - `docs/DECISIONS.md` — **APPEND-ONLY** ADR log. Why things are the way they are.
