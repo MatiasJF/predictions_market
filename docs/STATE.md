@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-27 — ALL 6 UNKNOWNS RESOLVED. LMSR pool deployed AND traded live on mainnet (deploy ddbb0b36…, buy 7106f762…). Feasibility verdict: native on-chain LMSR is viable on BSV. Next: write the verdict / harden for production._
+_Last updated: 2026-07-27 — STOPPING POINT. Feasibility proven + traded live on mainnet; full token lifecycle (mint/resolve/redeem) built + VM-proven. Mainnet token-tx demo blocked by runar-sdk BUG-005 (fix upstream). 21 commits._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -9,7 +9,12 @@ logic verified in-VM (51 tests) + adversarially reviewed; and both a **deploy an
 confirmed on mainnet** (deploy `ddbb0b36…`, buy `7106f762…`), fees negligible (176-sat deploy, 510-sat buy).
 **Remaining work is productization, not feasibility:** collateral↔UTXO-sats binding (`extractAmount`),
 funding-UTXO chaining for rapid sequential trades (BUG-003), YES/NO tokens + withdraw/redeem (TOKEN-001).
-Suggested next: TOKEN-001, or fix BUG-001 upstream. **Deliverable written: `docs/VERDICT.md`.**
+**Project stopping point (all committed, KB in sync).** Feasibility fully proven and demonstrated live on
+mainnet; the entire product lifecycle including tokens is built and VM-proven. The only remaining gap is a
+mainnet *demonstration* of the token-carrying transactions, blocked by runar-sdk **BUG-005** (no
+`addRawOutput` tx building) — best unblocked by fixing the SDK upstream, then running the already-built
+lifecycle on mainnet. **Deliverable: `docs/VERDICT.md`.** Funds: ~1,998,314 sats sweepable at
+`1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`.
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the

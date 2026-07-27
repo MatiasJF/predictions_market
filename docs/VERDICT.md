@@ -72,9 +72,10 @@ on-chain. Total cost of the entire exercise: **~686 sat in fees + 1,000 sat dust
 
 ## Rúnar toolchain assessment (v0.4.6)
 
-Rúnar is real, capable, and the right tool — it compiled a non-trivial 5-method stateful financial contract
-to valid, miner-accepted Script. It is early (pre-1.0); two issues cost real debugging time (full detail in
-`docs/Runar-bugs.md`):
+Rúnar is real, capable, and the right tool — it compiled a non-trivial stateful financial contract
+(buy/sell/resolve/redeem + token minting) to valid, miner-accepted Script. It is early (pre-1.0); **five
+issues** were found and cost real debugging time (full detail in `docs/Runar-bugs.md`) — the last three
+should be fixed upstream before a production build:
 
 - **BUG-001 (confirmed):** `WhatsOnChainProvider.getUtxos()` returns UTXOs with an empty `.script`, so
   `runar-sdk`'s signers compute the funding sighash over an empty scriptCode → invalid signatures → mainnet
@@ -83,26 +84,40 @@ to valid, miner-accepted Script. It is early (pre-1.0); two issues cost real deb
 - **BUG-002 (retracted):** the OP_PUSH_TX / multi-method spend was suspected but proven correct — the BIP-143
   preimage was byte-identical to spec and the input validated in a local `@bsv/sdk` `Spend`.
 - **BUG-003 (design note):** sequential 0-conf trades need local funding-UTXO chaining.
+- **BUG-004:** the compiler only detects DIRECT `SmartContract`/`StatefulSmartContract` subclasses, so the
+  shipped `FungibleToken`/`NonFungibleToken` base contracts can't be extended. Worked around (token written as
+  a direct `StatefulSmartContract`). **Recommend fixing upstream.**
+- **BUG-005:** `prepareCall`/`call` don't build `addRawOutput` (multi-output / foreign-contract) outputs, so
+  the SDK can't construct the token-minting buy or the multi-input redeem. **This is the blocker for the
+  on-mainnet token demo; recommend fixing upstream.**
 
 ## Proven vs. owed for production
 
 **Proven:** LMSR pricing correctness & solvency; on-chain buy/sell/resolve; oracle settlement; deploy + live
-trade on mainnet; fee economics.
+trade on mainnet; fee economics; **and the full YES/NO token lifecycle** — mint-on-buy, transfer/split/burn,
+and winner redemption (`payout × supply`) — all verified in the script VM (TOKEN-001a–c).
 
 **Owed before this is a product (all productization, not feasibility):**
+- **Mainnet demonstration of the token transactions.** The token lifecycle is VM-proven but not yet shown on
+  mainnet: the minting buy emits two outputs and redemption is multi-input, and **runar-sdk can't build
+  either** (`prepareCall`/`call` don't construct `addRawOutput`/foreign-contract outputs — BUG-005). This
+  needs a hand-rolled multi-output/multi-input OP_PUSH_TX tx builder, best unblocked by fixing the SDK upstream.
+- **Trustless redemption.** The redeem pool currently trusts the supplied token supply/holder/side; a
+  production version must verify the co-spent token's genesis + supply in Script (SPV/pushdata).
 - Bind the pool's `collateral` to the UTXO's real satoshis (`extractAmount`, enforce `outputSatoshis == in +
-  payment`). The spike tracks collateral as a state number and locks only dust, because there is no
-  withdraw/redeem path yet — so real value must not be locked until that exists.
-- **YES/NO tokens + winner redemption + withdraw** (TOKEN-001) — the missing half of the lifecycle.
+  payment`); the spike tracks collateral as state and locks only dust.
 - Funding-UTXO chaining / a fee-UTXO pool for rapid sequential trades.
 - Production hardening: bind `marketTag` to the pool outpoint (anti-replay), multi-oracle/2-of-2 settlement,
   variable trade sizes (via `pow`), and a client/UI.
 
 ## Recommended path
 
-1. **Fix BUG-001 upstream** in `runar-sdk` (or standardize on the `@bsv/sdk` signing path used here).
-2. **TOKEN-001** — tokens + redemption + withdraw; then re-deploy binding collateral to real sats and run a
-   full lifecycle (buy → sell → resolve → redeem) on mainnet with real value.
+1. **Fix the runar-sdk bugs upstream** — BUG-001 (empty `getUtxos().script`), BUG-004 (token base can't be
+   subclassed), and especially **BUG-005** (no `addRawOutput`/multi-output/multi-input tx building). BUG-005
+   is what currently blocks the token txs on mainnet; fixing it there is far cheaper than a parallel hand-rolled
+   tx builder.
+2. With the SDK fixed, run the **already-built** full token lifecycle (mint → resolve → redeem) on mainnet with
+   real collateral, and add the trustless token verification (SPV/pushdata) for redemption.
 3. Build the client (funding-UTXO chaining, market catalogue, Kalshi ingestion for real questions).
 4. Scale liquidity `b` per the source docs' 3-stage plan once organic volume justifies it.
 
