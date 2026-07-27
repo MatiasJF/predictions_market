@@ -54,3 +54,21 @@ workaround, status. Report upstream (repo `icellan/runar`) where useful.
   multi-output token test pattern. See `packages/contracts/src/ShareToken.runar.ts`.
 - **Status:** worked around. Recommend upstream: resolve the inheritance chain, or ship compilable token
   templates.
+
+## BUG-005 · `prepareCall`/`call` don't build `addRawOutput` outputs (no multi-output / foreign-contract mint)
+- **Package:** `runar-sdk@0.4.6` — `contract.ts` `prepareCall`/`call` + `anf-interpreter` output derivation.
+- **Symptom:** a method that emits a second output via `addRawOutput` (e.g. `LMSRMarket.buyYes` minting a
+  `ShareToken` to the buyer) is built by `prepareCall` with only `[pool continuation, change]` — the token
+  output is **missing**. Verified offline (`apps/spike/src/diag-mint.ts`): `prepared.tx.outputs` = 2 (pool +
+  change), no token. The contract's on-chain output-hash check enforces the token output, so such a tx would
+  be rejected by the node.
+- **Root cause:** the SDK only derives the single `addOutput` continuation (+ change) from a method; it does
+  not simulate `addRawOutput` to include the constructed foreign output in the transaction.
+- **Impact:** the token-minting buy (TOKEN-001b) and the multi-input redeem (TOKEN-001c) can't be built with
+  the SDK. Demonstrating them on mainnet requires **hand-building the transactions** — constructing the exact
+  output set (pool continuation + token) and the OP_PUSH_TX pool-input unlocking script manually, plus the
+  multi-input redeem. That is a substantial standalone tx-engineering effort (the SDK's OP_PUSH_TX unlocking
+  assembly would have to be replicated), not attempted in this spike.
+- **Status:** OPEN — blocks the on-mainnet TOKEN-001d demo via the SDK. The full lifecycle is proven in the
+  runar-testing VM (11 token tests). Recommend upstream: have `prepareCall`/`call` simulate `addRawOutput`
+  and expose a way to supply extra outputs / multi-input contract spends.

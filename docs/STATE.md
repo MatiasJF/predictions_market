@@ -69,8 +69,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     `76a914‖hash160(holder)‖88ac`) and reduces collateral. 3 redeem tests (pays winner, pre-resolution reject,
     losing-side reject) + burn compiles. Documented **trust gap**: pool trusts the supplied supply/holder/side
     (production needs SPV/pushdata token verification). Multi-input token+pool combo → verified on mainnet (001d).
-  - ○ **001d (mainnet):** hand-build the full loop tx-by-tx — deploy token-market → buy (mint) → resolve →
-    redeem — on mainnet. Needs manual multi-output (mint) + multi-input (redeem) tx construction.
+  - ⨯ **001d (mainnet) — BLOCKED by BUG-005.** `prepareCall`/`call` don't build `addRawOutput` outputs, so the
+    SDK can't construct the token-minting buy (proven offline: `prepared.tx.outputs` = [pool, change], no
+    token; `apps/spike/src/diag-mint.ts`). Demonstrating mint/redeem on mainnet needs fully hand-built
+    multi-output (mint) + multi-input (redeem) OP_PUSH_TX transactions — a substantial standalone tx-engineering
+    effort (replicating the SDK's unlocking assembly). Full lifecycle is VM-proven (11 tests); mainnet demo deferred.
 - ● SETTLE-001 — Oracle resolution via Rabin signature. `LMSRMarket.resolve(sig, padding, outcome, ...)`
   verifies `verifyRabinSig(cat(marketTag, outcome), sig, padding, oracleN)` and flips the pool to
   `resolved`/`winner`; buy/sell now `assert(resolved==0)`. 6 tests (valid YES/NO, forged rejected,
