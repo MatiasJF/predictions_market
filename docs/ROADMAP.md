@@ -7,9 +7,9 @@ verdict, not a product.
 1. ✅ **LMSR exp/log on-chain** — Rúnar has no exp/log/loops. **RESOLVED:** multiplicative-state trick (ADR-007)
    for state; post-trade marginal price (ADR-011, LMSR-002) for MM-safe cost — both need only `mulDiv`. Error
    bounded by trade÷liquidity (cap Δ/b≤~0.01). Remaining work is to enforce it in the Rúnar contract → CONTRACT-002.
-2. 🟡 **Single-UTXO serialization** — pool contract now DEPLOYED + confirmed on mainnet (one UTXO, valid
-   Script accepted by miners). Live multi-trade throughput still unmeasured: the first spend is blocked by
-   runar-sdk BUG-002 (OP_PUSH_TX tx-construction), not by the design. → workaround the spend, then measure.
+2. ✅ **Single-UTXO serialization** — **RESOLVED on mainnet:** a live LMSR buy (`7106f762…`) spent the pool
+   UTXO via OP_PUSH_TX and minted the new pool UTXO with advanced state. Works. Caveat (BUG-003): rapid
+   sequential 0-conf trades must chain the funding UTXO locally (getUtxos lags the mempool).
 3. **Token mint per trade** — mint YES/NO on buy, redeemable on settle. **Primitive found:** `runar-lang/tokens`
    (not "BRC-100"). → TOKEN-001.
 4. ✅ **Contract toolchain** — does Rúnar compile & run a stateful contract? **RESOLVED:** yes, offline gate
@@ -17,8 +17,8 @@ verdict, not a product.
 5. ✅ **Oracle settlement** — **RESOLVED (SETTLE-001, ADR-013):** `resolve()` verifies a Rabin oracle sig
    (`runar-lang/oracle`, market-bound via `marketTag`) and flips the pool to resolved; trading then disabled.
    Winner *redemption* (token burn for 100k) is part of TOKEN-001.
-6. 🟡 **Per-trade fee economics** — **mostly answered offline (DEPLOY-001a):** a buy is a ≈5.1 KB tx
-   (~255 sat @0.05/B, ~5,100 sat @1/B); deploy ≈1.75 KB. Real miner fee confirmed on mainnet at DEPLOY-001b.
+6. ✅ **Per-trade fee economics** — **RESOLVED on mainnet:** deploy 1750 B → **176 sat**; buy 5096 B →
+   **510 sat** (~0.1 sat/B). Negligible vs trade size. Matches the offline estimate.
 
 ## Phases
 | Phase | Name | Covers unknowns | Status |

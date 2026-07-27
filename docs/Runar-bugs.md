@@ -1,47 +1,42 @@
 # Rúnar / runar-sdk bugs & workarounds
 
-Issues found in the Rúnar toolchain (v0.4.6) while building this spike. Log each with: symptom, root
-cause (if known), workaround, and status. Report upstream (repo `icellan/runar`) where useful.
+Issues found in the Rúnar toolchain (v0.4.6) while building this spike. Each: symptom, root cause,
+workaround, status. Report upstream (repo `icellan/runar`) where useful.
 
 ---
 
-## BUG-001 · runar-sdk `LocalSigner` produces an invalid BSV signature (mainnet rejects the spend)
-- **Package:** `runar-sdk@0.4.6` — `signers/local.ts` `LocalSigner.sign()`.
-- **Symptom:** broadcasting a `RunarContract.deploy()` / `.call()` tx to mainnet fails at script verification:
-  `mandatory-script-verify-flag-failed (Signature must be zero for failed CHECK(MULTI)SIG operation)`
-  (BIP146 NULLFAIL). The pubkey-hash matches (EQUALVERIFY passes) but CHECKSIG returns false → the P2PKH
-  funding input's signature is wrong.
-- **Root cause (likely):** `LocalSigner.sign` hand-rolls the BIP-143 sighash with
-  `TransactionSignature.format(...)` then `privKey.sign(sha256(preimage))` + raw `signature.toDER('hex')`.
-  `@bsv/sdk`'s own P2PKH template instead uses its internal `formatPreimage(...)` +
-  `new TransactionSignature(r,s,scope).toChecksigFormat()`. The two disagree — either the preimage format
-  differs or the DER encoding isn't low-S normalized — yielding a signature BSV nodes reject.
-- **Workaround (used here):** don't use `LocalSigner`. Sign with `@bsv/sdk`'s P2PKH template directly.
-  For the deploy we build the funding tx entirely with `@bsv/sdk` (`apps/spike/src/mainnet.ts`). For method
-  calls we pass `RunarContract` a custom `Signer` (`apps/spike/src/bsv-signer.ts`) that delegates P2PKH
-  signing to `new P2PKH().unlock(priv, 'all', false, satoshis, subscript)` and returns the sig chunk.
-- **Status:** worked around. Confirmed: `@bsv/sdk`-signed deploy accepted on mainnet
-  (txid `ddbb0b368ac54716001ae9cc32fdabfb23548fed31ccb0b3d1232754c16dca88`).
+## BUG-001 · `WhatsOnChainProvider.getUtxos()` returns UTXOs with an empty `.script` → invalid signatures
+- **Package:** `runar-sdk@0.4.6` — `providers/woc.ts` `getUtxos()` (WhatsOnChain's `/unspent` endpoint doesn't
+  include the locking script, and the provider doesn't backfill it).
+- **Symptom:** broadcasting any `RunarContract.deploy()` / `.call()` tx to mainnet fails at script
+  verification: `mandatory-script-verify-flag-failed (Signature must be zero for failed CHECK(MULTI)SIG)`
+  (BIP146 NULLFAIL).
+- **Root cause (CONFIRMED):** signing uses `utxo.script` as the BIP-143 **subscript/scriptCode**
+  (`contract.ts` deploy line ~146 `signer.sign(hex, i, utxo.script, utxo.satoshis)`; same for funding inputs
+  in `.call()`). Because `getUtxos()` returns `script: ''`, the sighash is computed over an **empty
+  scriptCode** → the signature is valid for the wrong message → the node's CHECKSIG returns false → NULLFAIL.
+  Proven with `@bsv/sdk`'s local `Spend` interpreter (`apps/spike/src/diag-oppushtx.ts`): with the empty
+  script the funding input fails the clean-stack rule; supplying the correct P2PKH locking script → VALID.
+- **Workaround (used here):** reconstruct the funding UTXO's locking script from the address —
+  `new P2PKH().lock(priv.toAddress())` — and sign the funding input(s) with `@bsv/sdk`'s P2PKH template over
+  the final tx (`apps/spike/src/mainnet.ts` `buy()`, `bsv-signer.ts`). For the deploy we build the whole tx
+  with `@bsv/sdk` using the full source transaction, which sidesteps `getUtxos` entirely.
+- **Status:** worked around. **Deploy + buy both live on mainnet**
+  (deploy `ddbb0b36…c16dca88`, buy `7106f762…39ac2ed6`).
 
----
+## BUG-002 (RETRACTED) · "OP_PUSH_TX spend rejected" — MISDIAGNOSIS
+- Initially suspected the multi-method OP_PUSH_TX contract input. **Disproven:** the diagnostic shows the
+  contract input's BIP-143 preimage is **byte-identical** to a spec-correct hand-built preimage (1700 B), the
+  OP_PUSH_TX signature matches a fresh recomputation, and `@bsv/sdk` `Spend` validates the contract input as
+  **VALID**. The spend failure was entirely BUG-001 (empty funding-input scriptCode). runar-sdk's OP_PUSH_TX
+  path (`computeOpPushTx`, code-separator handling) is correct for this 5-method stateful contract.
+- **Status:** not a bug. Kept for the record.
 
-## BUG-002 · OP_PUSH_TX spend of a multi-method stateful contract rejected on mainnet
-- **Package:** `runar-sdk@0.4.6` — `oppushtx.ts` `computeOpPushTx()` / `contract.ts`
-  `computeOpPushTxWithCodeSep()` + `buildStatefulUnlock`.
-- **Symptom:** with BUG-001 worked around (funding input signed by `@bsv/sdk`), broadcasting a `.call('buyYes', …)`
-  spend of the live pool UTXO still fails with the same `mandatory-script-verify-flag-failed (Signature must
-  be zero for failed CHECK(MULTI)SIG)`. The deploy (funding-only, no contract input) succeeds; the buy adds a
-  contract input spent via OP_PUSH_TX — so the failing input is the **contract input's OP_PUSH_TX signature**.
-- **Diagnosis:** `computeOpPushTx` DOES enforce low-S and hashes like the working `@bsv/sdk` P2PKH path, so
-  the bug is upstream of the signature: the BIP-143 **preimage/scriptCode** it signs doesn't match the sighash
-  the node computes. Two suspects: (a) `TransactionSignature.format(...)` (public API) diverges from
-  `@bsv/sdk`'s internal `formatPreimage(...)` used by the working template; (b) the wrong `codeSeparatorIndex`
-  is selected for the buyYes dispatch branch (the LMSRMarket script has 5 methods, each with its own
-  OP_CODESEPARATOR), giving a wrong `scriptCode`. The contract's buy logic itself is proven correct in the
-  `runar-testing` interpreter (15 tests) — this is purely a mainnet tx-construction bug.
-- **Workaround:** NOT YET done. Needs hand-building the OP_PUSH_TX unlocking script (correct BIP-143 preimage
-  with the post-OP_CODESEPARATOR scriptCode for the chosen method, sig with privkey=1, low-S) via `@bsv/sdk`,
-  replacing `computeOpPushTx`. Scoped for a follow-up.
-- **Status:** OPEN. Deploy works on mainnet; the first SPEND (buy) is blocked pending this workaround or an
-  upstream fix. Feasibility impact: the on-chain LMSR is deployable and its logic verified; live multi-trade
-  throughput (#2) can't be measured on mainnet until the spend path works.
+## BUG-003 (finding, not a toolchain bug) · sequential 0-conf trades need explicit UTXO chaining
+- **Symptom:** a second buy immediately after the first fails with `258: txn-mempool-conflict`.
+- **Cause:** rapid trades against the single hot pool UTXO must chain BOTH the pool UTXO (we track this in
+  `data/pool.json`) AND the funding UTXO (use the previous trade's change output). `getUtxos()` lags the
+  mempool and returned the already-spent change, so the new tx double-spent it.
+- **Implication (feasibility unknown #2):** single-hot-UTXO serialization works, but a real client must chain
+  funding outputs locally (or use a dedicated fee UTXO pool) rather than polling `getUtxos()` between trades.
+- **Status:** expected 0-conf behaviour; documented as a design note, not fixed in the spike.

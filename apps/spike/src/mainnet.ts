@@ -116,18 +116,33 @@ async function buy(broadcast: boolean): Promise<void> {
   if (!broadcast) { console.log('[DRY] re-run with --broadcast to send the buy to mainnet.'); return; }
 
   const provider = new WhatsOnChainProvider('mainnet');
-  const signer = new BsvSigner(fundingWif());
+  const wif = fundingWif();
   const contract = RunarContract.fromUtxo(artifact, {
     txid: rec.txid, outputIndex: rec.outputIndex, satoshis: rec.satoshis, script: rec.lockingScript,
   });
-  contract.connect(provider, signer);
+  contract.connect(provider, new BsvSigner(wif));
+
+  // Build via prepareCall (correct OP_PUSH_TX contract input + outputs), then re-sign the funding inputs with
+  // @bsv/sdk over the FINAL tx — works around runar-sdk BUG-001/002 (bad funding-input signature). The
+  // contract input's sig commits to the outputs, which don't change, so it stays valid. See docs/Runar-bugs.md.
+  const prepared = await contract.prepareCall('buyYes', [charge, BigInt(rec.satoshis)], { newState: newMutable, satoshis: rec.satoshis });
+  const tx = prepared.tx;
+  const priv = PrivateKey.fromWif(wif);
+  const fundingLock = new P2PKH().lock(priv.toAddress()); // WoC getUtxos returns empty .script → build it
+  const utxos = await provider.getUtxos(priv.toAddress());
+  const byOutpoint = new Map(utxos.map((u) => [`${u.txid}:${u.outputIndex}`, u]));
+  for (let i = 1; i < tx.inputs.length; i++) {
+    const inp = tx.inputs[i]!;
+    const u = byOutpoint.get(`${inp.sourceTXID}:${inp.sourceOutputIndex}`);
+    if (!u) throw new Error(`funding utxo not found for input ${i} (${inp.sourceTXID}:${inp.sourceOutputIndex})`);
+    inp.unlockingScript = await new P2PKH().unlock(priv, 'all', false, u.satoshis, fundingLock).sign(tx, i);
+  }
 
   console.log('\nBroadcasting buyYes to MAINNET…');
-  const { txid } = await contract.call('buyYes', [charge, BigInt(rec.satoshis)], { newState: newMutable, satoshis: rec.satoshis });
-  const utxo = contract.getUtxo();
+  const txid = await provider.broadcast(tx);
+  const newScript = tx.outputs[0]!.lockingScript!.toHex();
   writeFileSync(POOL_FILE, JSON.stringify({
-    txid, outputIndex: utxo?.outputIndex ?? 0, satoshis: rec.satoshis,
-    lockingScript: utxo?.script ?? contract.getLockingScript(), state: strState(newMutable), prevTxid: rec.txid,
+    txid, outputIndex: 0, satoshis: rec.satoshis, lockingScript: newScript, state: strState(newMutable), prevTxid: rec.txid,
   }, null, 2));
   console.log(`BOUGHT 1 YES. txid: ${txid}`);
 }

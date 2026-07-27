@@ -1,16 +1,15 @@
 # STATE — living
 
-_Last updated: 2026-07-27 — Pool contract LIVE on mainnet (deploy tx ddbb0b36…, fee 176 sat). First buy blocked by runar-sdk BUG-002 (OP_PUSH_TX spend). Next: hand-build the spend via @bsv/sdk._
+_Last updated: 2026-07-27 — ALL 6 UNKNOWNS RESOLVED. LMSR pool deployed AND traded live on mainnet (deploy ddbb0b36…, buy 7106f762…). Feasibility verdict: native on-chain LMSR is viable on BSV. Next: write the verdict / harden for production._
 
 ## Current phase
-**P1 — Feasibility core: COMPLETE.** The native on-chain LMSR AMM buy is proven feasible on Rúnar and
-adversarially verified: `LMSRMarket.buyYes/buyNo` compiles to 466 bytes of Script and produces output state
-**exactly matching** the `@pm/lmsr` reference (verified over a 60-step feedback loop; all 6 tamper-mutations
-caught). 40 tests green, typecheck clean. **All software-side feasibility unknowns are resolved.** The only
-open unknowns are on-chain reality — single-UTXO throughput (#2) and per-trade fees (#6) — answerable only by
-a mainnet deploy. **P2 in progress:** sell (CONTRACT-003) + oracle resolve (SETTLE-001) done. Remaining: YES/NO tokens +
-ownership/redemption (TOKEN-001), bind collateral to real UTXO sats (`extractAmount`) + constrain
-`outputSatoshis`, then the gated mainnet DEPLOY-001 (measures #2 throughput / #6 fees; needs funding).
+**FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
+**buildable, deployable, and tradeable on BSV mainnet**: contract compiles to Script (Rúnar); buy/sell/oracle
+logic verified in-VM (51 tests) + adversarially reviewed; and both a **deploy and a live LMSR buy are
+confirmed on mainnet** (deploy `ddbb0b36…`, buy `7106f762…`), fees negligible (176-sat deploy, 510-sat buy).
+**Remaining work is productization, not feasibility:** collateral↔UTXO-sats binding (`extractAmount`),
+funding-UTXO chaining for rapid sequential trades (BUG-003), YES/NO tokens + withdraw/redeem (TOKEN-001).
+Suggested next: write the feasibility-verdict deliverable, then TOKEN-001.
 
 ## The mission in one line
 Prove whether a native on-chain UTXO LMSR prediction market is feasible on BSV via Rúnar, or find the
@@ -67,17 +66,21 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     buy ≈ **5,100 B** (~255 sat @0.05/B; ~5,100 sat @1/B) — dominated by the OP_PUSH_TX preimage + stateful
     continuation. Buy sizes are stable across trades. Files: `apps/spike/src/{market,measure,dry-run}.ts`,
     `apps/spike/test/deploy.test.ts`. Verified (51 tests). `pnpm --filter @pm/spike dry-run` prints the table.
-  - ◐ **001b (mainnet) — DEPLOY LIVE; SPEND BLOCKED by runar-sdk BUG-002.** Funded 0.02 BSV to
-    `1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`. **Pool contract DEPLOYED + confirmed on mainnet:**
-    txid `ddbb0b368ac54716001ae9cc32fdabfb23548fed31ccb0b3d1232754c16dca88:0` (1000 dust sats; full LMSR
-    5-branch script on-chain). **Real deploy fee: 176 sats** (~0.1 sat/B). Change 1,998,824 sats back at the
-    funding address (sweepable). Had to work around **BUG-001** (runar-sdk `LocalSigner` bad sig) by building
-    the funding tx with `@bsv/sdk`. **The first buy (spend) is BLOCKED by BUG-002** (runar-sdk OP_PUSH_TX
-    preimage/scriptCode for multi-method stateful spend → NULLFAIL). Buy logic itself is proven in the VM (15
-    tests). See `docs/Runar-bugs.md`. Tooling: `apps/spike/src/{keygen,bsv-signer,mainnet}.ts`
-    (`mainnet <balance|deploy|buy> [--broadcast]`).
-    **Next to unblock #2:** hand-build the OP_PUSH_TX spend via `@bsv/sdk` (workaround for BUG-002), then run
-    live buys to measure throughput. Also still owed: collateral↔UTXO-sats binding (`extractAmount`).
+  - ● **001b (mainnet) — DONE. Pool DEPLOYED and TRADED live on BSV mainnet.** Funded 0.02 BSV to
+    `1DpDhuNAP3Cdga1GWM37WugVZ3h1edGQ72`.
+    - Deploy: `ddbb0b368ac54716001ae9cc32fdabfb23548fed31ccb0b3d1232754c16dca88:0` — full LMSR 5-branch
+      script on-chain; **fee 176 sat** (1750 B, ~0.1 sat/B).
+    - **First live LMSR buy (spend):** `7106f762debd93995661d08333ea45813f9b699c523c014d8b2d496b39ac2ed6` —
+      spent the pool UTXO via OP_PUSH_TX, minted the new pool UTXO with advanced state (qYes=1 unit); **fee
+      510 sat** (5096 B). **Answers #2 (single-UTXO spend works) and #6 (real fee) on mainnet.**
+    - Root cause of the earlier failures: `WhatsOnChainProvider.getUtxos()` returns empty `.script` → wrong
+      funding sighash (BUG-001). The OP_PUSH_TX contract input was correct all along (BUG-002 RETRACTED —
+      proven via `@bsv/sdk` local `Spend`). Sequential 0-conf trades need funding-UTXO chaining (BUG-003).
+      See `docs/Runar-bugs.md`.
+    - Tooling: `apps/spike/src/{keygen,bsv-signer,env,mainnet,measure,diag-oppushtx}.ts`. Pool state chains in
+      `apps/spike/data/pool.json` (current head `7106f762…:0`). Change ~1,998,314 sats sweepable at the funding address.
+    - Still owed for production (not feasibility): collateral↔UTXO-sats binding (`extractAmount`), funding-UTXO
+      chaining for rapid trades, withdraw/redeem path (TOKEN-001).
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
 ## Known issues
