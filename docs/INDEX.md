@@ -46,7 +46,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Correct @bsv/sdk-based Signer (BUG-001 workaround) | `apps/spike/src/bsv-signer.ts` |
 | BIP-143/OP_PUSH_TX diagnostic + local Spend validation | `apps/spike/src/diag-oppushtx.ts` |
 | .env loader | `apps/spike/src/env.ts` |
-| Rúnar toolchain bugs + workarounds | `docs/Runar-bugs.md` |
+| Rúnar toolchain bugs + workarounds (internal log) | `docs/Runar-bugs.md` |
+| Rúnar bug report for the maintainers (standalone, shareable) | `docs/RUNAR-BUG-REPORT.md` |
 
 ## Config / ops
 | Topic | Path |
