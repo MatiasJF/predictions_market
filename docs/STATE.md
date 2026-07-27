@@ -54,7 +54,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `@pm/lmsr` reference (both sides), empty-position guard rejects, and buy→sell round-trip leaves the pool
   collateral ≥ start (spread favours the pool). 44 tests total. **Caveat:** ownership check (burning the
   seller's token) is TOKEN-001; same offline-VM/real-sats deferral as buy.
-- ○ TOKEN-001 (planned) — YES/NO tokens via `runar-lang/tokens`; mint on buy, redeem on settle.
+- ◐ TOKEN-001 — YES/NO share tokens (`runar-lang/tokens` FungibleToken). Split:
+  - ● **001a DONE:** `ShareToken` (direct `StatefulSmartContract`; mutable supply/holder + readonly
+    marketId/side; transfer/split). 5 VM tests (transfer, split, holder-auth reject, over-split reject).
+    Couldn't extend the base `FungibleToken` — BUG-004. File: `packages/contracts/src/ShareToken.runar.ts`.
+  - ○ **001b:** mint-on-buy — pool `buyYes` emits a ShareToken output (multi-output; compile + partial VM).
+  - ○ **001c:** winner redemption — burn winning token + resolved pool → payoutUnit×supply (multi-input;
+    compile + mainnet, interpreter can't do multi-input). Also the sell-side token-burn ownership check.
 - ● SETTLE-001 — Oracle resolution via Rabin signature. `LMSRMarket.resolve(sig, padding, outcome, ...)`
   verifies `verifyRabinSig(cat(marketTag, outcome), sig, padding, oracleN)` and flips the pool to
   `resolved`/`winner`; buy/sell now `assert(resolved==0)`. 6 tests (valid YES/NO, forged rejected,

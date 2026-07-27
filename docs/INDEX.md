@@ -27,6 +27,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain gate — stateful Counter contract | `packages/contracts/src/Counter.runar.ts` |
 | Rúnar gate test (compile + execute offline) | `packages/contracts/test/counter.gate.test.ts` |
 | Rúnar LMSR market contract (buy + sell + oracle resolve) | `packages/contracts/src/LMSRMarket.runar.ts` |
+| YES/NO share token (fungible, transfer/split) | `packages/contracts/src/ShareToken.runar.ts` |
+| ShareToken tests | `packages/contracts/test/share-token.test.ts` |
 | LMSRMarket ↔ @pm/lmsr equivalence test | `packages/contracts/test/lmsr-market.test.ts` |
 | Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
 | Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |

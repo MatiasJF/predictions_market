@@ -40,3 +40,17 @@ workaround, status. Report upstream (repo `icellan/runar`) where useful.
 - **Implication (feasibility unknown #2):** single-hot-UTXO serialization works, but a real client must chain
   funding outputs locally (or use a dedicated fee UTXO pool) rather than polling `getUtxos()` between trades.
 - **Status:** expected 0-conf behaviour; documented as a design note, not fixed in the spike.
+
+## BUG-004 · compiler only detects DIRECT `SmartContract`/`StatefulSmartContract` subclasses
+- **Package:** `runar-compiler@0.4.6` — contract detection (Pass 1/2).
+- **Symptom:** compiling a class that extends the provided `FungibleToken` base (`runar-lang/tokens`) fails
+  with `No class extending SmartContract or StatefulSmartContract found`. `FungibleToken` itself extends
+  `SmartContract`, so the subclass is two levels deep — the compiler apparently matches only the direct
+  superclass name.
+- **Impact:** the shipped `FungibleToken` / `NonFungibleToken` base contracts in `runar-lang/tokens` cannot
+  be subclassed and compiled. They are usable as type/reference only.
+- **Workaround (used here):** implement the token directly as a `StatefulSmartContract` (mutable `supply` +
+  `holder`, readonly `marketId`/`side`; `transfer`/`split` via `addOutput`), following Rúnar's own
+  multi-output token test pattern. See `packages/contracts/src/ShareToken.runar.ts`.
+- **Status:** worked around. Recommend upstream: resolve the inheritance chain, or ship compilable token
+  templates.
