@@ -58,9 +58,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   - ● **001a DONE:** `ShareToken` (direct `StatefulSmartContract`; mutable supply/holder + readonly
     marketId/side; transfer/split). 5 VM tests (transfer, split, holder-auth reject, over-split reject).
     Couldn't extend the base `FungibleToken` — BUG-004. File: `packages/contracts/src/ShareToken.runar.ts`.
-  - ○ **001b:** mint-on-buy — pool `buyYes` emits a ShareToken output (multi-output; compile + partial VM).
+  - ● **001b DONE (VM):** `buyYes`/`buyNo` mint a ShareToken to the buyer via `addRawOutput` — the pool holds
+    the token code template (`tokenCodeYes`/`tokenCodeNo`, code part + OP_RETURN, market/side baked in) and
+    appends `num2bin(1,8) ‖ buyerPubKey` on-chain. VM-verified: output 1 is a correct ShareToken
+    (`tokenCodeYes ‖ supply=1 ‖ holder`). 3 mint tests; existing 15 buy/sell tests updated + green (59 total).
+    Tooling (`market.ts`) computes the token codes + 16-arg constructor. **Not yet on mainnet** (needs manual
+    multi-output tx build — the SDK's `call()` doesn't emit a foreign-contract output).
   - ○ **001c:** winner redemption — burn winning token + resolved pool → payoutUnit×supply (multi-input;
-    compile + mainnet, interpreter can't do multi-input). Also the sell-side token-burn ownership check.
+    interpreter can't do multi-input, so compile + hand-built mainnet tx). Also the sell-side token-burn check.
+  - ○ **001d (mainnet):** hand-build the full loop tx-by-tx — deploy token-market → buy (mint) → resolve →
+    redeem — on mainnet. Needs manual multi-output (mint) + multi-input (redeem) tx construction.
 - ● SETTLE-001 — Oracle resolution via Rabin signature. `LMSRMarket.resolve(sig, padding, outcome, ...)`
   verifies `verifyRabinSig(cat(marketTag, outcome), sig, padding, oracleN)` and flips the pool to
   `resolved`/`winner`; buy/sell now `assert(resolved==0)`. 6 tests (valid YES/NO, forged rejected,

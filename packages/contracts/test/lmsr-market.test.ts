@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compile } from 'runar-compiler';
-import { TestContract, RABIN_TEST_KEY, rabinSign, hexToBytes } from 'runar-testing';
+import { RunarContract } from 'runar-sdk';
+import { TestContract, RABIN_TEST_KEY, rabinSign, hexToBytes, ALICE } from 'runar-testing';
 import {
   WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
   buyChargeApproxSats, sellPayoutApproxSats, maxLossSats,
@@ -20,14 +21,26 @@ const INVMULT = unitInverseMultiplier(p);
 const COLLATERAL0 = maxLossSats(p);
 const ORACLE_N = RABIN_TEST_KEY.n;
 const MARKET_TAG = 'a1b2c3d4'; // hex; binds the oracle sig to this market
+const MARKET_ID = 42n;
+const BUYER = ALICE.pubKey;
 const bn = (x: unknown): bigint => BigInt(x as string | bigint);
+
+// ShareToken code template (code part + OP_RETURN) for (MARKET_ID, side); strip the 41-byte state suffix.
+const tokenSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'ShareToken.runar.ts'), 'utf8');
+function tokenCode(side: bigint): string {
+  const art = compile(tokenSrc, { fileName: 'ShareToken.runar.ts' }).artifact!;
+  const full = new RunarContract(art, [1n, BUYER, MARKET_ID, side]).getLockingScript();
+  return full.slice(0, full.length - 82);
+}
+const TOKEN_CODE_YES = tokenCode(1n);
+const TOKEN_CODE_NO = tokenCode(0n);
 
 /** Build the Rúnar constructor/init state from an @pm/lmsr market state. */
 function contractState(s: MarketState, collateral: bigint) {
   return {
     eYes: s.eYes, eNo: s.eNo, qYes: s.qYes, qNo: s.qNo, collateral, resolved: 0n, winner: 0n,
     mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
-    oracleN: ORACLE_N, marketTag: MARKET_TAG,
+    oracleN: ORACLE_N, marketTag: MARKET_TAG, tokenCodeYes: TOKEN_CODE_YES, tokenCodeNo: TOKEN_CODE_NO,
   };
 }
 
@@ -63,7 +76,7 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
     const charge = buyChargeApproxSats(s1, 'yes', p.unit, p);
 
     const c = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE);
-    const res = c.call('buyYes', { paymentSats: charge, outputSatoshis: 1n });
+    const res = c.call('buyYes', { paymentSats: charge, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
     expect(res.success, res.error).toBe(true);
     const o = res.outputs[0]!;
     expect(bn(o.eYes)).toBe(s1.eYes);
@@ -79,7 +92,7 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
     const charge = buyChargeApproxSats(s1, 'no', p.unit, p);
 
     const c = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE);
-    const res = c.call('buyNo', { paymentSats: charge, outputSatoshis: 1n });
+    const res = c.call('buyNo', { paymentSats: charge, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
     expect(res.success, res.error).toBe(true);
     const o = res.outputs[0]!;
     expect(bn(o.eNo)).toBe(s1.eNo);
@@ -103,11 +116,11 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
       const method = side === 'yes' ? 'buyYes' : 'buyNo';
 
       const ok = TestContract.fromSource(source, contractState(s, COLLATERAL0), FILE)
-        .call(method, { paymentSats: charge, outputSatoshis: 1n });
+        .call(method, { paymentSats: charge, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
       expect(ok.success, `exact charge ${charge} rejected for ${side}: ${ok.error}`).toBe(true);
 
       const under = TestContract.fromSource(source, contractState(s, COLLATERAL0), FILE)
-        .call(method, { paymentSats: charge - 1n, outputSatoshis: 1n });
+        .call(method, { paymentSats: charge - 1n, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
       expect(under.success, `underpayment (charge−1) accepted for ${side}`).toBe(false);
     }
   });
@@ -123,7 +136,7 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
       const charge = buyChargeApproxSats(next, side, p.unit, p);
       const method = side === 'yes' ? 'buyYes' : 'buyNo';
 
-      const res = TestContract.fromSource(source, st, FILE).call(method, { paymentSats: charge, outputSatoshis: 1n });
+      const res = TestContract.fromSource(source, st, FILE).call(method, { paymentSats: charge, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
       expect(res.success, `step ${i} ${side}: ${res.error}`).toBe(true);
       const o = res.outputs[0]!;
       collateral += charge;
@@ -138,7 +151,7 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
         eYes: bn(o.eYes), eNo: bn(o.eNo), qYes: bn(o.qYes), qNo: bn(o.qNo), collateral: bn(o.collateral),
         resolved: bn(o.resolved), winner: bn(o.winner),
         mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
-        oracleN: ORACLE_N, marketTag: MARKET_TAG,
+        oracleN: ORACLE_N, marketTag: MARKET_TAG, tokenCodeYes: TOKEN_CODE_YES, tokenCodeNo: TOKEN_CODE_NO,
       };
     }
   });
@@ -190,12 +203,12 @@ describe('CONTRACT-003 — LMSRMarket sell() in Rúnar matches the @pm/lmsr refe
 
     // and the contract's collateral after buy-then-sell ends ≥ where it started (pool never loses)
     const afterBuy = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE)
-      .call('buyYes', { paymentSats: charge, outputSatoshis: 1n }).outputs[0]!;
+      .call('buyYes', { paymentSats: charge, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n }).outputs[0]!;
     const afterSell = TestContract.fromSource(source, {
       eYes: bn(afterBuy.eYes), eNo: bn(afterBuy.eNo), qYes: bn(afterBuy.qYes), qNo: bn(afterBuy.qNo),
       collateral: bn(afterBuy.collateral), resolved: 0n, winner: 0n,
       mult: MULT, invMult: INVMULT, payoutUnit: p.payoutUnit, scale: WAD, unit: p.unit,
-      oracleN: ORACLE_N, marketTag: MARKET_TAG,
+      oracleN: ORACLE_N, marketTag: MARKET_TAG, tokenCodeYes: TOKEN_CODE_YES, tokenCodeNo: TOKEN_CODE_NO,
     }, FILE).call('sellYes', { outputSatoshis: 1n }).outputs[0]!;
     expect(bn(afterSell.collateral) >= COLLATERAL0).toBe(true);
   });
@@ -243,7 +256,7 @@ describe('SETTLE-001 — oracle resolution via Rabin signature', () => {
 
   it('trading is disabled after resolution (buy and sell rejected)', () => {
     const resolved = { ...contractState(initState(p), COLLATERAL0), resolved: 1n, winner: 1n };
-    const buy = TestContract.fromSource(source, resolved, FILE).call('buyYes', { paymentSats: 10_000_000n, outputSatoshis: 1n });
+    const buy = TestContract.fromSource(source, resolved, FILE).call('buyYes', { paymentSats: 10_000_000n, outputSatoshis: 1n, buyerPubKey: BUYER, tokenSats: 1n });
     expect(buy.success).toBe(false);
     const stocked = { ...contractState(applyUnitBuy(initState(p), 'yes', MULT, p), COLLATERAL0), resolved: 1n, winner: 1n };
     const sell = TestContract.fromSource(source, stocked, FILE).call('sellYes', { outputSatoshis: 1n });

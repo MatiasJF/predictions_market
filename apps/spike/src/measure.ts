@@ -49,7 +49,10 @@ export async function runDryRun(nBuys = 3, feeRate = 0.05): Promise<DryRunResult
       const newState = {
         ...state0, eYes: next.eYes, eNo: next.eNo, qYes: next.qYes, qNo: next.qNo, collateral: BigInt(poolSats),
       };
-      await contract.call('buyYes', [charge, BigInt(poolSats)], { newState, satoshis: poolSats });
+      // NB: the SDK's single-continuation call() doesn't build the minted-token output; this dry-run
+      // measures the pool-spend size only. The real token-minting buy is hand-built for mainnet.
+      const buyer = '02' + 'ab'.repeat(32);
+      await contract.call('buyYes', [charge, BigInt(poolSats), buyer, 1n], { newState, satoshis: poolSats });
       buyBytes.push(sizeOf(last()));
       ref = next;
     }

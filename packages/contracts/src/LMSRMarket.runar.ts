@@ -1,6 +1,6 @@
 import { StatefulSmartContract, assert, mulDiv, safediv, cat, num2bin } from 'runar-lang';
 import { verifyRabinSig } from 'runar-lang/oracle';
-import type { ByteString, RabinSig, RabinPubKey } from 'runar-lang';
+import type { ByteString, PubKey, RabinSig, RabinPubKey } from 'runar-lang';
 
 /**
  * LMSRMarket — native on-chain LMSR pool. Buy (CONTRACT-002), sell (CONTRACT-003), oracle resolve (SETTLE-001).
@@ -38,6 +38,10 @@ export class LMSRMarket extends StatefulSmartContract {
   readonly unit: bigint;
   readonly oracleN: RabinPubKey;
   readonly marketTag: ByteString;
+  // ShareToken locking-script templates (code part + OP_RETURN) for a YES / NO token of THIS market,
+  // with marketId + side baked in. buyYes/buyNo append `num2bin(1,8) ‖ buyerPubKey` to mint the buyer a token.
+  readonly tokenCodeYes: ByteString;
+  readonly tokenCodeNo: ByteString;
 
   constructor(
     eYes: bigint,
@@ -54,8 +58,10 @@ export class LMSRMarket extends StatefulSmartContract {
     unit: bigint,
     oracleN: RabinPubKey,
     marketTag: ByteString,
+    tokenCodeYes: ByteString,
+    tokenCodeNo: ByteString,
   ) {
-    super(eYes, eNo, qYes, qNo, collateral, resolved, winner, mult, invMult, payoutUnit, scale, unit, oracleN, marketTag);
+    super(eYes, eNo, qYes, qNo, collateral, resolved, winner, mult, invMult, payoutUnit, scale, unit, oracleN, marketTag, tokenCodeYes, tokenCodeNo);
     this.eYes = eYes;
     this.eNo = eNo;
     this.qYes = qYes;
@@ -70,24 +76,30 @@ export class LMSRMarket extends StatefulSmartContract {
     this.unit = unit;
     this.oracleN = oracleN;
     this.marketTag = marketTag;
+    this.tokenCodeYes = tokenCodeYes;
+    this.tokenCodeNo = tokenCodeNo;
   }
 
-  public buyYes(paymentSats: bigint, outputSatoshis: bigint) {
+  public buyYes(paymentSats: bigint, outputSatoshis: bigint, buyerPubKey: PubKey, tokenSats: bigint) {
     assert(this.resolved == 0n);
     const newEYes = mulDiv(this.eYes, this.mult, this.scale);
     const sum = newEYes + this.eNo;
     const charge = safediv(newEYes * this.payoutUnit + sum - 1n, sum);
     assert(paymentSats >= charge);
     this.addOutput(outputSatoshis, newEYes, this.eNo, this.qYes + this.unit, this.qNo, this.collateral + paymentSats, this.resolved, this.winner);
+    // mint 1 YES share to the buyer: tokenCodeYes ‖ num2bin(supply=1, 8) ‖ buyerPubKey
+    this.addRawOutput(tokenSats, cat(this.tokenCodeYes, cat(num2bin(1n, 8n), buyerPubKey)));
   }
 
-  public buyNo(paymentSats: bigint, outputSatoshis: bigint) {
+  public buyNo(paymentSats: bigint, outputSatoshis: bigint, buyerPubKey: PubKey, tokenSats: bigint) {
     assert(this.resolved == 0n);
     const newENo = mulDiv(this.eNo, this.mult, this.scale);
     const sum = this.eYes + newENo;
     const charge = safediv(newENo * this.payoutUnit + sum - 1n, sum);
     assert(paymentSats >= charge);
     this.addOutput(outputSatoshis, this.eYes, newENo, this.qYes, this.qNo + this.unit, this.collateral + paymentSats, this.resolved, this.winner);
+    // mint 1 NO share to the buyer
+    this.addRawOutput(tokenSats, cat(this.tokenCodeNo, cat(num2bin(1n, 8n), buyerPubKey)));
   }
 
   public sellYes(outputSatoshis: bigint) {
