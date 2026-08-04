@@ -196,6 +196,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   the earlier confirmation delays were partly chain-wide slow blocks, not purely fees. Proper-fee txs should
   confirm when a block is mined. Net: fee control is fixed; the durable blocker is the **contract economics**
   (≈93 KB/trade), whose fix is **slimming the pool Script** — the #1 platform engineering task.
+- ● SCRYPT-005 — **FULL CIRCLE RUN — DONE (end-to-end on mainnet via the daemon).** Funded 1M to `1GfBrm…`.
+  `PM_ENGINE=scrypt PM_NETWORK=mainnet`, 0.5 sat/B (FeeProvider), one session: **deploy `af9f1d16…` + buy+mint
+  `dca06069…` CONFIRMED (block 960862)**; then (after the required confirm-wait for the 101 KB ancestor limit)
+  **resolve `86e586c4…` + redeem `c8e2f515…` broadcast** (redeem = 2-in/3-out: pool + **1000-sat winner payout**
+  + change) — awaiting BSV's next block (drought; same proper fee that mined deploy+buy). **Total spend 70,241
+  sat (~$0.04)** for the complete deploy→trade→oracle→payout lifecycle. Recorded in VERDICT. **Proves the
+  single-market lifecycle works consistently on mainnet.** Still design-level open (NOT feasibility): concurrency
+  (single-UTXO serialisation), security (documented-trust redeem), contract-slimming, restart-safe state.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`

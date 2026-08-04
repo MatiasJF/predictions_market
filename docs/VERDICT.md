@@ -59,6 +59,30 @@ VM≠mainnet gap that sank Rúnar.
 **Recommendation update: build on sCrypt, not Rúnar (v0.4.6).** The native on-chain LMSR design is confirmed on
 two independent toolchains; sCrypt is the one whose off-chain tooling can actually transact it today.
 
+### The full circle, end-to-end on mainnet via the daemon (2026-08-04)
+
+Driven autonomously through the HTTP API + sign-off queue (`PM_ENGINE=scrypt`), one market, human-authorized
+per spend, adequate fee (via a `FeeProvider` override — the real fee knob is `provider.getFeePerKb()`):
+
+| step | tx | on-chain |
+|---|---|---|
+| deploy | [`af9f1d16…129b78`](https://whatsonchain.com/tx/af9f1d16e7f8eb13ebad0a7180d195c6d17129e7cae7055f9105dd71fa129b78) | confirmed, block 960862 |
+| buy + mint | [`dca06069…b8dca8`](https://whatsonchain.com/tx/dca060698606ca2e32d58497130b3012e5fa87cd77e0127daca4c1f6bcb8dca8) | confirmed block 960862; 2-in/3-out (pool + token + change) |
+| resolve | [`86e586c4…e47ca3`](https://whatsonchain.com/tx/86e586c491f5f89cbfe402b0961be4c1011c65d71f7df9cf0dba3064dae47ca3) | Rabin-oracle YES (in mempool, proper fee → next block) |
+| redeem | [`c8e2f515…330977`](https://whatsonchain.com/tx/c8e2f515726bd2f61f1a7710e659f2175304cb33e2fad44fd3d45308fb330977) | 2-in/3-out (pool + **1000-sat winner payout** + change) |
+
+**The complete lifecycle — deploy → trade → oracle-resolve → winner-payout — ran live on BSV mainnet for
+70,241 sats total (~US$0.04)**, autonomously via the API with only per-spend human authorization. Confirmation
+timing is BSV's (irregular blocks / droughts); the proper-fee txs confirm as blocks are mined (deploy+buy did,
+immediately). Engineering learnings baked in: **fee control = `provider.getFeePerKb()`**; each stateful spend is
+**~93 KB** (OP_PUSH_TX re-carries the pool script) so trades cost ~15–20k sat and 4 pool txs exceed the 101 KB
+mempool-ancestor budget (sequence deploy→buy, confirm, then resolve→redeem).
+
+**Still-open platform work (design, not feasibility):** (1) **concurrency** — one pool UTXO serialises trades, so
+many simultaneous users collide (needs a sequencer / sharded pools / off-chain-match+on-chain-settle); (2)
+**security** — redeem trusts supplied shares/holder (needs SPV/pushdata token verification); (3) **slim the
+~26 KB pool Script** to cut per-trade cost; (4) **restart-safe state** (reconstruct pool instances from chain).
+
 ## The six unknowns
 
 1. **LMSR math on-chain — RESOLVED.** Rúnar Script has no `exp`/`ln` and forbids unbounded loops. Two
