@@ -169,7 +169,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `@pm/engine` (runtime import of the built engine), robust broadcast (ARC/Mempool) + funding chaining,
   `MockScryptEngine`. Token-mint buy + redeem become live (the Rúnar 501s).
 - ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.
-- ○ SCRYPT-004 — GATED mainnet lifecycle (deploy→buy→sell→resolve→redeem); Rúnar-vs-sCrypt comparison → VERDICT.
+- ◐ SCRYPT-004 — GATED mainnet lifecycle. **Runner READY + offline-proven:** `runLifecycle` (deploy→buy+mint→
+  resolve→redeem) passes end-to-end on DummyProvider (real Script); `packages/contracts-scrypt/mainnet-lifecycle.ts`
+  wires it to mainnet (DefaultProvider + funding WIF; winner = own address so the 1000-sat payout returns; net
+  cost ≈ fees). Dry run confirmed: provider connects, balance 1,996,947 sats. **The actual broadcast is gated**
+  (ADR-010) — run it yourself: `cd packages/contracts-scrypt && npx ts-node mainnet-lifecycle.ts --broadcast`
+  (or `! …` in-session). Then record the 4 txids + Rúnar-vs-sCrypt comparison → `docs/VERDICT.md`.
 
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
