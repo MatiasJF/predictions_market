@@ -1,7 +1,14 @@
 import { expect } from 'chai'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { MethodCallOptions, toByteString } from 'scrypt-ts'
+import {
+    bsv,
+    ContractTransaction,
+    MethodCallOptions,
+    PubKeyHash,
+    toByteString,
+    Utils,
+} from 'scrypt-ts'
 import { LMSRMarket } from '../src/contracts/lmsrMarket'
 import { localSigner } from './utils/signer'
 
@@ -99,5 +106,139 @@ describe('LMSRMarket (sCrypt) — local verify matches @pm/lmsr', () => {
         await instance.methods.sellYes({
             next: { instance: next, balance: POOL_SATS },
         } as MethodCallOptions<LMSRMarket>)
+    })
+
+    it('buyYesWithToken builds a MULTI-OUTPUT tx (mint) and verifies locally — the BUG-005 unblock', async () => {
+        const instance = freshPool()
+        const signer = localSigner()
+        await instance.connect(signer)
+        await instance.deploy(POOL_SATS)
+
+        const charge = b(V.buyYes.charge)
+        const buyer: PubKeyHash = PubKeyHash(toByteString('ab'.repeat(20)))
+        const TOKEN_SATS = 1n
+
+        // Custom tx-builder: pool continuation + a P2PKH claim-ticket to the buyer (+ auto fee/change). This
+        // 3-output spend is exactly what runar-sdk could not build (BUG-005) — sCrypt builds and verifies it.
+        instance.bindTxBuilder(
+            'buyYesWithToken',
+            async (
+                current: LMSRMarket,
+                options: MethodCallOptions<LMSRMarket>,
+                paymentSats: bigint,
+                buyerArg: PubKeyHash,
+                tokenSats: bigint
+            ): Promise<ContractTransaction> => {
+                const next = current.next()
+                next.eYes = b(V.buyYes.eYes)
+                next.qYes = b(V.buyYes.qYes)
+                next.collateral = current.collateral + paymentSats
+                const tokenScript = bsv.Script.fromHex(
+                    Utils.buildPublicKeyHashScript(buyerArg)
+                )
+                const unsignedTx = new bsv.Transaction()
+                    .addInput(current.buildContractInput())
+                    .addOutput(
+                        new bsv.Transaction.Output({
+                            script: next.lockingScript,
+                            satoshis: current.balance,
+                        })
+                    )
+                    .addOutput(
+                        new bsv.Transaction.Output({
+                            script: tokenScript,
+                            satoshis: Number(tokenSats),
+                        })
+                    )
+                if (options.changeAddress) {
+                    unsignedTx.change(options.changeAddress)
+                }
+                return {
+                    tx: unsignedTx,
+                    atInputIndex: 0,
+                    nexts: [
+                        { instance: next, atOutputIndex: 0, balance: current.balance },
+                    ],
+                    next: { instance: next, atOutputIndex: 0, balance: current.balance },
+                }
+            }
+        )
+
+        const { tx } = await instance.methods.buyYesWithToken(
+            charge,
+            buyer,
+            TOKEN_SATS,
+            {
+                changeAddress: await signer.getDefaultAddress(),
+            } as MethodCallOptions<LMSRMarket>
+        )
+        // pool state + token + change ⇒ a genuine multi-output spend, verified against the node Script.
+        expect(tx.outputs.length).to.be.greaterThanOrEqual(3)
+    })
+
+    it('redeemYes pays the winner in a MULTI-OUTPUT tx and verifies locally — the BUG-005 unblock #2', async () => {
+        // A resolved pool with winner = YES, holding a 1-YES position.
+        const resolved = new LMSRMarket(
+            b(V.buyYes.eYes), b(V.init.eNo), b(V.buyYes.qYes), 0n, b(V.collateral), 1n, 1n,
+            b(V.mult), b(V.invMult), b(V.payoutUnit), b(V.WAD), b(V.unit), DUMMY_ORACLE, MARKET_TAG
+        )
+        const signer = localSigner()
+        await resolved.connect(signer)
+        await resolved.deploy(POOL_SATS)
+
+        const winner: PubKeyHash = PubKeyHash(toByteString('cd'.repeat(20)))
+        const supply = 1n
+        const payout = Number(supply * b(V.payoutUnit)) // 100_000 sats
+
+        resolved.bindTxBuilder(
+            'redeemYes',
+            async (
+                current: LMSRMarket,
+                options: MethodCallOptions<LMSRMarket>,
+                supplyArg: bigint,
+                winnerArg: PubKeyHash
+            ): Promise<ContractTransaction> => {
+                const next = current.next()
+                next.collateral = current.collateral - supplyArg * current.payoutUnit
+                const payoutScript = bsv.Script.fromHex(
+                    Utils.buildPublicKeyHashScript(winnerArg)
+                )
+                const unsignedTx = new bsv.Transaction()
+                    .addInput(current.buildContractInput())
+                    .addOutput(
+                        new bsv.Transaction.Output({
+                            script: next.lockingScript,
+                            satoshis: current.balance,
+                        })
+                    )
+                    .addOutput(
+                        new bsv.Transaction.Output({
+                            script: payoutScript,
+                            satoshis: Number(supplyArg * current.payoutUnit),
+                        })
+                    )
+                if (options.changeAddress) {
+                    unsignedTx.change(options.changeAddress)
+                }
+                return {
+                    tx: unsignedTx,
+                    atInputIndex: 0,
+                    nexts: [
+                        { instance: next, atOutputIndex: 0, balance: current.balance },
+                    ],
+                    next: { instance: next, atOutputIndex: 0, balance: current.balance },
+                }
+            }
+        )
+
+        const { tx } = await resolved.methods.redeemYes(supply, winner, {
+            changeAddress: await signer.getDefaultAddress(),
+        } as MethodCallOptions<LMSRMarket>)
+
+        expect(tx.outputs.length).to.be.greaterThanOrEqual(3)
+        expect(
+            tx.outputs.some((o) => o.satoshis === payout),
+            'winner payout output present'
+        ).to.equal(true)
     })
 })

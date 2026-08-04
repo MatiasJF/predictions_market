@@ -152,15 +152,19 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   props) AND **buy/sell verify locally + match the `@pm/lmsr` reference** (4 mocha tests; underpayment
   rejected). sCrypt local verify runs the **real node Script** → green ⇒ mainnet-valid (closes BUG-006). The buy
   that NULLFAILed on Rúnar mainnet passes here. `vitest.config.ts` excludes the package (it runs its own mocha).
-  **Multi-output BUG-005 unblock:** `ShareToken` (transfer/burn) compiles; `LMSRMarket.buyYesWithToken` (mint a
-  claim ticket — pool state + P2PKH token + change) and `redeemYes` (winner payout — reduced pool + P2PKH
-  payout + change) **compile** — the 3-output spends runar-sdk physically couldn't build. Building+verifying the
-  multi-output tx uses sCrypt's custom tx-builder, which is the `ScryptEngine`'s job → done in SCRYPT-002.
-  **Remaining:** the end-to-end multi-output tx test (with the engine), a Rabin-oracle `resolve` test, NO-side
-  mint/redeem, multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run compile && … test`;
-  regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
-- ○ SCRYPT-002 — `ScryptEngine implements ChainEngine` (deploy/buy+mint/sell/resolve/redeem; robust broadcast +
-  funding chaining). Token-mint buy + multi-input redeem become live (the Rúnar 501s).
+  **Multi-output BUG-005 unblock — PROVEN:** `ShareToken` (transfer/burn) compiles; `LMSRMarket.buyYesWithToken`
+  **builds + verifies a 3-output mint tx** (pool state + P2PKH token to buyer + change) and `redeemYes` **builds
+  + verifies a 3-output winner payout** (reduced pool + 100k-sat P2PKH payout + change) via sCrypt's custom
+  tx-builder (`bindTxBuilder`) — exactly the multi-output spends runar-sdk could not build. **6 mocha tests
+  green.** Both Rúnar mainnet blockers are now demonstrably fixed under sCrypt: BUG-006 (buy/sell verify vs real
+  Script) + BUG-005 (mint/redeem multi-output txs). **Remaining (minor):** a Rabin-oracle `resolve` test,
+  NO-side mint/redeem, multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run compile && …
+  test`; regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
+- ◐ SCRYPT-002 — `ScryptEngine implements ChainEngine`. **Tx-building core PROVEN** (the custom `bindTxBuilder`
+  multi-output construction verified locally for mint + redeem — see SCRYPT-001). **Remaining:** wrap deploy/
+  buy/sell/resolve/redeem behind `ChainEngine`, bridge the npm-CJS `contracts-scrypt` to the pnpm-ESM
+  `@pm/engine` (runtime import of the built engine), robust broadcast (ARC/Mempool) + funding chaining,
+  `MockScryptEngine`. Token-mint buy + redeem become live (the Rúnar 501s).
 - ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.
 - ○ SCRYPT-004 — GATED mainnet lifecycle (deploy→buy→sell→resolve→redeem); Rúnar-vs-sCrypt comparison → VERDICT.
 
