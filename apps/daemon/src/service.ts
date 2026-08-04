@@ -10,7 +10,7 @@ import {
   buyChargeApproxSats, sellPayoutApproxSats, priceYesSats, priceNoSats,
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
-import { EngineLimitation, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type Side, type TxPlan } from '@pm/engine';
+import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type Side, type TxPlan } from '@pm/engine';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -31,6 +31,18 @@ const asSide = (s: string): Side => {
   if (v !== 'yes' && v !== 'no') throw badReq(`side must be 'yes' or 'no', got '${s}'`);
   return v;
 };
+const intShares = (n: number): bigint => {
+  if (!Number.isInteger(n) || n < 1 || n > MAX_UNITS) throw badReq(`shares must be an integer in 1..${MAX_UNITS}`);
+  return BigInt(n);
+};
+/** Run an engine build, keeping EngineLimitation (→501)/ServiceError intact and mapping other errors → 400. */
+async function built(fn: () => Promise<TxPlan>): Promise<TxPlan> {
+  try { return await fn(); }
+  catch (e) {
+    if (e instanceof EngineLimitation || e instanceof ServiceError) throw e;
+    throw new ServiceError(400, e instanceof Error ? e.message : String(e), 'build_failed');
+  }
+}
 
 export class MarketService {
   constructor(private readonly db: Db, private readonly engine: ChainEngine) {}
@@ -65,6 +77,7 @@ export class MarketService {
     const p = paramsOf(cfg);
     const pool = this.currentPool(id);
     const state: MarketState = pool ? poolStateToMarketState(pool) : initState(p);
+    const pos = this.positions(id);
     return {
       id: m.id,
       question: m.question,
@@ -75,6 +88,7 @@ export class MarketService {
       state: m.state,
       resolution: m.resolution,
       prices: { yes_sats: Number(priceYesSats(state, p)), no_sats: Number(priceNoSats(state, p)) },
+      positions: { yes_net_shares: pos.yes.net_shares, no_net_shares: pos.no.net_shares },
       pool: pool
         ? {
             version: pool.version, txid: pool.txid, vout: pool.vout, sats: pool.sats,
@@ -119,6 +133,28 @@ export class MarketService {
     };
   }
 
+  // ── positions (aggregate the trades ledger into a book) ─────────────────────────────────────────────
+  positions(id: number) {
+    this.marketRow(id); // 404 if missing
+    const rows = this.db.prepare('SELECT side, action, shares, cost_sats FROM trades WHERE market_id=?').all(id) as
+      { side: Side; action: 'buy' | 'sell'; shares: string; cost_sats: number }[];
+    const acc: Record<Side, { net: bigint; bought: bigint; sold: bigint; cost: number }> = {
+      yes: { net: 0n, bought: 0n, sold: 0n, cost: 0 },
+      no: { net: 0n, bought: 0n, sold: 0n, cost: 0 },
+    };
+    for (const r of rows) {
+      const sh = BigInt(r.shares);
+      const a = acc[r.side];
+      if (r.action === 'buy') { a.net += sh; a.bought += sh; a.cost += r.cost_sats; }
+      else { a.net -= sh; a.sold += sh; a.cost -= r.cost_sats; }
+    }
+    const view = (x: { net: bigint; bought: bigint; sold: bigint; cost: number }) => ({
+      net_shares: Number(x.net / WAD), bought_shares: Number(x.bought / WAD), sold_shares: Number(x.sold / WAD),
+      net_cost_sats: x.cost, // sats paid out to the pool (buys) minus proceeds received (sells)
+    });
+    return { market_id: id, trades: rows.length, yes: view(acc.yes), no: view(acc.no) };
+  }
+
   // ── enqueue (build a TxPlan, park it pending) ───────────────────────────────────────────────────────
   async enqueueDeploy(id: number) {
     const m = this.marketRow(id);
@@ -128,13 +164,15 @@ export class MarketService {
   }
   async enqueueBuy(id: number, sideStr: string, shares: number) {
     const side = asSide(sideStr);
+    const n = intShares(shares);
     const { m, pool } = this.tradablePool(id);
-    return this.enqueue(id, await this.engine.buildBuy(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+    return this.enqueue(id, await built(() => this.engine.buildBuy(cfgOf(m), poolRef(pool), side, n)));
   }
   async enqueueSell(id: number, sideStr: string, shares: number) {
     const side = asSide(sideStr);
+    const n = intShares(shares);
     const { m, pool } = this.tradablePool(id);
-    return this.enqueue(id, await this.engine.buildSell(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+    return this.enqueue(id, await built(() => this.engine.buildSell(cfgOf(m), poolRef(pool), side, n)));
   }
   async enqueueResolve(id: number, outcomeStr: string) {
     const outcome = asSide(outcomeStr);

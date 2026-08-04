@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. 70 tests green. Mainnet token-tx demo still blocked by runar-sdk BUG-005 (→ Phase 2 sCrypt)._
+_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. Mainnet token-tx demo still blocked by runar-sdk BUG-005 (→ Phase 2 sCrypt)._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -127,6 +127,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   reject → empty, authorize-rejected → 409. **No mainnet spend** — the queue boundary held (authorize is the gate).
 - ● API-006 — KB sync: ADR-015 (API-as-seam + queue) + ADR-016 (pool-state in DB + plain-buy), STATE/INDEX/
   ARCHITECTURE/SCHEMA updated.
+- ● API-008 — `/positions`: net YES/NO shares + net cost aggregated from the `trades` ledger; summary folded
+  into `GET /markets/:id`. The off-chain position book (documented-trust model). Tested.
+- ● API-009 — Multi-share buy/sell (ADR-017): engine loops N unit-steps to the final state (one aggregate
+  trade + one pool version jump); `authorizeAndBroadcast` chains N 0-conf txs via `ChainingProvider` (BUG-003
+  workaround), capped at 100/call. DB/quote/position paths tested; live chain awaits a gated run. Single-unit
+  path unchanged (proven). 72 tests green.
+- ● API-010 — `apps/daemon/README.md`: full API reference (every endpoint + curl), run/authorize guide, the
+  security model, and the Rúnar engine limits (501s) as the Phase-2 boundary.
 - ○ API-007 (next, GATED) — one live authorized mainnet run through the daemon (deploy → plain buy → resolve),
   confirming txids on WhatsOnChain. Needs explicit per-broadcast user authorization.
 

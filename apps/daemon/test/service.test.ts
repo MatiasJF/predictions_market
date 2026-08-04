@@ -105,6 +105,37 @@ describe('MarketService — market lifecycle + sign-off queue', () => {
     await expect(svc.enqueueRedeem(m.id, 'yes', 1)).rejects.toBeInstanceOf(EngineLimitation);
   });
 
+  it('multi-share buy advances the pool by N in one authorized broadcast and books positions', async () => {
+    const m = await svc.createMarket({ question: 'multi', bUnits: 1000 });
+    await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
+
+    const buy = await svc.enqueueBuy(m.id, 'yes', 5);
+    expect(buy.summary).toMatch(/buy 5 YES/);
+    const ok = await svc.authorize(buy.broadcast_id);
+    expect(ok.pool_version).toBe(1); // one aggregate version jump; intermediate UTXOs are transient
+
+    const mv = svc.getMarket(m.id);
+    expect(BigInt(mv.pool!.qYes)).toBe(5n * 1_000_000_000_000_000_000n); // 5 shares
+    expect(mv.positions.yes_net_shares).toBe(5);
+    const pos = svc.positions(m.id);
+    expect(pos.yes.bought_shares).toBe(5);
+    expect(pos.yes.net_cost_sats).toBeGreaterThan(0);
+
+    // sell 2 back → net 3
+    await svc.authorize((await svc.enqueueSell(m.id, 'yes', 2)).broadcast_id);
+    expect(svc.positions(m.id).yes.net_shares).toBe(3);
+    expect(svc.getMarket(m.id).pool?.version).toBe(2);
+  });
+
+  it('rejects out-of-range share counts and overselling', async () => {
+    const m = await svc.createMarket({ question: 'guards', bUnits: 1000 });
+    await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
+    await expect(svc.enqueueBuy(m.id, 'yes', 0)).rejects.toThrow(/1\.\./);
+    await expect(svc.enqueueBuy(m.id, 'yes', 101)).rejects.toThrow(/1\.\./);
+    await svc.authorize((await svc.enqueueBuy(m.id, 'yes', 1)).broadcast_id);
+    await expect(svc.enqueueSell(m.id, 'yes', 5)).rejects.toThrow(/outstanding/);
+  });
+
   it('reports wallet balance from the engine (read-only)', async () => {
     const bal = await svc.walletBalance();
     expect(bal.balance_sats).toBe(2_000_000); // MockEngine default fixture

@@ -39,6 +39,7 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'quote') {
       return svc.quote(id, query.get('side') ?? '', intParam(query.get('shares') ?? '1', 'shares'));
     }
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'positions') return svc.positions(id);
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       switch (segs[2]) {

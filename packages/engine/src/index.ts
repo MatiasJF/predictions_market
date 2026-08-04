@@ -2,5 +2,5 @@
 // daemon/service never touch runar-*. RunarEngine (now) → ScryptEngine (Phase 2), same interface.
 export * from './types.js';
 export * from './market.js';
-export { RunarEngine } from './runar.js';
+export { RunarEngine, MAX_UNITS } from './runar.js';
 export { MockEngine } from './mock.js';

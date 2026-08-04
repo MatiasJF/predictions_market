@@ -30,12 +30,15 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
 | **Swap seam: ChainEngine interface + TxPlan/PoolRef types** | `packages/engine/src/types.ts` |
 | RunarEngine (Rúnar tx-building behind the seam) | `packages/engine/src/runar.ts` |
+| Multi-share 0-conf chain overlay (BUG-003 workaround) | `packages/engine/src/chaining-provider.ts` |
 | MockEngine (no-network engine for tests) | `packages/engine/src/mock.ts` |
 | Market compile + setup (shared by CLI + daemon) | `packages/engine/src/market.ts` |
 | **HTTP daemon: service (orchestration)** | `apps/daemon/src/service.ts` |
 | HTTP daemon: router + JSON I/O (127.0.0.1) | `apps/daemon/src/http.ts` |
 | HTTP daemon: entrypoint (`pnpm --filter @pm/daemon dev`) | `apps/daemon/src/server.ts` |
 | HTTP daemon: service lifecycle tests (temp DB + MockEngine) | `apps/daemon/test/service.test.ts` |
+| **HTTP daemon: API reference + run/authorize guide** | `apps/daemon/README.md` |
+| Positions view (net YES/NO from trades ledger) | `positions()` in `apps/daemon/src/service.ts` |
 | YES/NO share token (fungible, transfer/split) | `packages/contracts/src/ShareToken.runar.ts` |
 | ShareToken tests | `packages/contracts/test/share-token.test.ts` |
 | LMSRMarket ↔ @pm/lmsr equivalence test | `packages/contracts/test/lmsr-market.test.ts` |

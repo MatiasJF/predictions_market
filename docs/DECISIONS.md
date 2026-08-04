@@ -257,3 +257,24 @@ Template:
     "documented-trust" model); on-chain minting returns in Phase 2 (sCrypt). VM tests assert a single output.
 - Consequences: pool lineage is queryable and multi-market; the autonomous loop create→deploy→buy→sell→resolve is
   live-capable under Rúnar; token mint/redeem remain the documented Phase-2 gap.
+
+## ADR-017 · Multi-share buy/sell via a 0-conf tx-chain overlay; positions from the trades ledger · Accepted · 2026-08-04
+- Context: A buy/sell of N shares is N unit-txs against the single pool UTXO (multiplicative state has no bounded
+  N-step op under Rúnar). Chaining them means each tx spends the previous tx's pool + change outputs while
+  unconfirmed — but WhatsOnChain still reports the just-spent confirmed funding UTXO as unspent, so the SDK
+  re-selects it and double-spends (BUG-003).
+- Decisions:
+  - **`ChainingProvider` overlay** (`@pm/engine`): wraps the base provider; after each step's tx is built,
+    `register(tx)` hides its spent inputs and exposes its change output as a 0-conf funding UTXO, and serves the
+    tx hex for the next step. `authorizeAndBroadcast` builds the N-tx chain (step 0 on confirmed UTXOs, later
+    steps on the overlay), broadcasts each through the real network, and returns the FINAL pool head. Capped at
+    `MAX_UNITS = 100` per call; single-step calls use the base provider unchanged (the proven path).
+  - **DB model:** a multi-share call records **one aggregate `trades` row** (N shares, summed cost) and advances
+    the pool **one** version to the final state — the intermediate pool UTXOs are created and spent inside the
+    chain, so they never persist. Quote/position/DB paths are unit-tested; the live multi-tx chain awaits a gated
+    mainnet run (all mainnet behaviour in this project is gated-verified).
+  - **`positions`**: `GET /markets/:id/positions` aggregates the `trades` ledger into net YES/NO shares +
+    net cost (buys − sells); a summary is folded into `GET /markets/:id`. This is the off-chain position book
+    under the documented-trust model (on-chain token UTXOs are Phase 2).
+- Consequences: the API accepts N-share trades end-to-end with an honest BUG-003 caveat; the trades ledger
+  becomes a readable book; nothing here changes the ChainEngine seam, so sCrypt still drops in cleanly.
