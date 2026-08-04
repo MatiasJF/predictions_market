@@ -11,6 +11,7 @@ import {
 } from 'scrypt-ts'
 import { LMSRMarket } from '../src/contracts/lmsrMarket'
 import { localSigner } from './utils/signer'
+import { oracleN, signOutcome } from './utils/oracle'
 
 /** Assert an async call rejects (no chai-as-promised dependency). */
 async function expectReject(fn: () => Promise<unknown>): Promise<void> {
@@ -240,5 +241,40 @@ describe('LMSRMarket (sCrypt) — local verify matches @pm/lmsr', () => {
             tx.outputs.some((o) => o.satoshis === payout),
             'winner payout output present'
         ).to.equal(true)
+    })
+
+    it('resolve verifies a REAL Rabin oracle signature on-chain and flips the pool to YES', async () => {
+        const pool = new LMSRMarket(
+            b(V.init.eYes), b(V.init.eNo), 0n, 0n, b(V.collateral), 0n, 0n,
+            b(V.mult), b(V.invMult), b(V.payoutUnit), b(V.WAD), b(V.unit), oracleN, MARKET_TAG
+        )
+        await pool.connect(localSigner())
+        await pool.deploy(POOL_SATS)
+
+        const sig = signOutcome('a1b2c3d4', 1n)
+        const next = pool.next()
+        next.resolved = 1n
+        next.winner = 1n
+        // Not rejected == the on-chain RabinVerifier.verifySig(marketTag‖outcome, sig, oracleN) passed.
+        await pool.methods.resolve(sig, 1n, {
+            next: { instance: next, balance: POOL_SATS },
+        } as MethodCallOptions<LMSRMarket>)
+
+        // A signature for the WRONG outcome must be rejected (message binding).
+        const pool2 = new LMSRMarket(
+            b(V.init.eYes), b(V.init.eNo), 0n, 0n, b(V.collateral), 0n, 0n,
+            b(V.mult), b(V.invMult), b(V.payoutUnit), b(V.WAD), b(V.unit), oracleN, MARKET_TAG
+        )
+        await pool2.connect(localSigner())
+        await pool2.deploy(POOL_SATS)
+        const wrongSig = signOutcome('a1b2c3d4', 0n) // signed NO, but we claim YES
+        const next2 = pool2.next()
+        next2.resolved = 1n
+        next2.winner = 1n
+        await expectReject(() =>
+            pool2.methods.resolve(wrongSig, 1n, {
+                next: { instance: next2, balance: POOL_SATS },
+            } as MethodCallOptions<LMSRMarket>)
+        )
     })
 })

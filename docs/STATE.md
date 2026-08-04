@@ -157,9 +157,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   + verifies a 3-output winner payout** (reduced pool + 100k-sat P2PKH payout + change) via sCrypt's custom
   tx-builder (`bindTxBuilder`) — exactly the multi-output spends runar-sdk could not build. **6 mocha tests
   green.** Both Rúnar mainnet blockers are now demonstrably fixed under sCrypt: BUG-006 (buy/sell verify vs real
-  Script) + BUG-005 (mint/redeem multi-output txs). **Remaining (minor):** a Rabin-oracle `resolve` test,
-  NO-side mint/redeem, multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run compile && …
-  test`; regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
+  Script) + BUG-005 (mint/redeem multi-output txs). **`resolve` verifies a REAL Rabin oracle signature on-chain**
+  (mock oracle via `rabinsig`, `scrypt-ts-lib` `RabinVerifier`) and rejects a wrong-outcome sig — **7 mocha
+  tests green.** **The ENTIRE market lifecycle now verifies under sCrypt** (buy/sell/mint/redeem/resolve), each
+  against the real node Script — the full loop Rúnar could only VM-prove. **Remaining (minor):** NO-side
+  mint/redeem, multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run compile && … test`;
+  regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
 - ◐ SCRYPT-002 — `ScryptEngine implements ChainEngine`. **Tx-building core PROVEN** (the custom `bindTxBuilder`
   multi-output construction verified locally for mint + redeem — see SCRYPT-001). **Remaining:** wrap deploy/
   buy/sell/resolve/redeem behind `ChainEngine`, bridge the npm-CJS `contracts-scrypt` to the pnpm-ESM
