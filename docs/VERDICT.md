@@ -1,6 +1,6 @@
 # BSV Prediction Market — Feasibility Verdict
 
-_Spike deliverable · 2026-07-27 · status: **complete**_
+_Spike deliverable · 2026-07-27 (Phase 1) · 2026-08-04 (Phase 2: APIfied + migrated to sCrypt) · status: **complete**_
 
 ## Verdict
 
@@ -27,6 +27,37 @@ The deploy output carries the full LMSR contract as its locking script (a 5-bran
 OP_PUSH_TX state continuation). The buy spent that pool UTXO via OP_PUSH_TX and minted a new pool UTXO whose
 on-chain state shows `qYes` advanced by one unit and `eYes` updated — i.e. the market maker repriced itself
 on-chain. Total cost of the entire exercise: **~686 sat in fees + 1,000 sat dust ≈ US$0.0001.**
+
+## Phase 2 — APIfied, then migrated Rúnar → sCrypt: the FULL lifecycle live on mainnet
+
+**What Phase 1 could not do on mainnet, Phase 2 did — end to end.** The spike was first wrapped in an
+autonomous HTTP daemon (a `ChainEngine` swap seam + a human sign-off queue for wallet spends). A **gated live
+run** then exposed Rúnar's ceiling precisely: the daemon **deployed a pool to mainnet**
+([`9d7c370f…`](https://whatsonchain.com/tx/9d7c370f6a891f63da7e7d2797fa4ad85bde72e8fe6d2a4f15e9d3b4a28b0a3c),
+block 960831) but the **buy could not broadcast** — it hit **BUG-003** (WhatsOnChain lists the spent UTXO as
+unspent), then a **BUG-006 NULLFAIL on mainnet despite passing all 72 VM tests** (VM ≠ mainnet for a new Rúnar
+OP_PUSH_TX method). Token mint and redeem were already blocked by **BUG-005** (the SDK can't build multi-output
+txs). These are toolchain failures, not design failures.
+
+So the contracts were **ported to sCrypt (`scrypt-ts` 1.4.5)** behind the unchanged API, and the **entire
+market lifecycle broadcast live on BSV mainnet in one run:**
+
+| Step | Transaction | On-chain shape |
+|---|---|---|
+| Deploy pool | [`83684ab5…de8cf63`](https://whatsonchain.com/tx/83684ab56098898c2f051a9356d05836fe2c45c51c375e9750389ba28de8cf63) | LMSR contract UTXO |
+| **Buy + mint** | [`a74ae982…f15f10a40`](https://whatsonchain.com/tx/a74ae982100bc5cf0fb467dd8b1a220caba01cd735dc21cdf926689f15f10a40) | **3 outputs**: pool + YES token + change (charge 525 sat) |
+| Resolve (oracle) | [`a3d01cd5…c796b0a89`](https://whatsonchain.com/tx/a3d01cd5a7c7386fd3acab0478ba63044a4dde9afe48442f6031c67c796b0a89) | Rabin-signed YES → pool flips to resolved |
+| **Redeem (payout)** | [`a3126fdc…25db580c`](https://whatsonchain.com/tx/a3126fdc641e40d990de4e7e8771f5bd100b25b69271026c96da70c825db580c) | **3 outputs**: pool + **1,000-sat winner payout** + change |
+
+This is the exact loop Rúnar could only VM-prove. Under sCrypt it is **live and verified on mainnet**, including
+the two multi-output spends the Rúnar SDK physically could not build (BUG-005) and a buy that broadcasts (BUG-006
+gone). The four 0-conf txs chained in one run with **no BUG-003 issue** (sCrypt tracks the funding chain
+in-process). Net cost: **≈ fees only** (payout returned to the sender). sCrypt's decisive advantage is that its
+local verify executes the **same Script the node runs**, so a green test is a mainnet guarantee — closing the
+VM≠mainnet gap that sank Rúnar.
+
+**Recommendation update: build on sCrypt, not Rúnar (v0.4.6).** The native on-chain LMSR design is confirmed on
+two independent toolchains; sCrypt is the one whose off-chain tooling can actually transact it today.
 
 ## The six unknowns
 

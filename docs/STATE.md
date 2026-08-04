@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — buy/sell/resolve not yet mainnet-verified, motivating Phase 2 (sCrypt). Funds ~1,996,947 sat._
+_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — which motivated Phase 2 (sCrypt). **PHASE 2 COMPLETE: the FULL lifecycle (deploy→buy+mint→resolve→redeem) is now LIVE on BSV mainnet under sCrypt** (txids in SCRYPT-004 / VERDICT.md) — every Rúnar blocker fixed. Funds ~1,996,947 sat (lifecycle cost ≈ fees only)._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -169,12 +169,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `@pm/engine` (runtime import of the built engine), robust broadcast (ARC/Mempool) + funding chaining,
   `MockScryptEngine`. Token-mint buy + redeem become live (the Rúnar 501s).
 - ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.
-- ◐ SCRYPT-004 — GATED mainnet lifecycle. **Runner READY + offline-proven:** `runLifecycle` (deploy→buy+mint→
-  resolve→redeem) passes end-to-end on DummyProvider (real Script); `packages/contracts-scrypt/mainnet-lifecycle.ts`
-  wires it to mainnet (DefaultProvider + funding WIF; winner = own address so the 1000-sat payout returns; net
-  cost ≈ fees). Dry run confirmed: provider connects, balance 1,996,947 sats. **The actual broadcast is gated**
-  (ADR-010) — run it yourself: `cd packages/contracts-scrypt && npx ts-node mainnet-lifecycle.ts --broadcast`
-  (or `! …` in-session). Then record the 4 txids + Rúnar-vs-sCrypt comparison → `docs/VERDICT.md`.
+- ● SCRYPT-004 — **GATED MAINNET LIFECYCLE — DONE. The FULL loop is LIVE on BSV mainnet under sCrypt** (user-
+  authorized broadcast, 2026-08-04): deploy `83684ab5…de8cf63` → **buy+mint** `a74ae982…f15f10a40` (3 outputs:
+  pool+token+change, charge 525) → **resolve** `a3d01cd5…c796b0a89` (Rabin YES) → **redeem** `a3126fdc…25db580c`
+  (3 outputs: pool + **1000-sat winner payout** + change). Confirmed on WhatsOnChain (buy/redeem = 2-in/3-out).
+  The exact loop Rúnar couldn't broadcast — incl. the two multi-output spends (BUG-005) + a buy that broadcasts
+  (BUG-006) + 0-conf chaining with no BUG-003 (sCrypt tracks the chain in-process). Net cost ≈ fees (payout
+  returned to self). Recorded in `docs/VERDICT.md` (Phase 2 section). Remaining Phase 2 (optional productization):
+  wrap `runLifecycle` behind `ScryptEngine implements ChainEngine` + `PM_ENGINE` daemon swap (SCRYPT-002/003).
 
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
