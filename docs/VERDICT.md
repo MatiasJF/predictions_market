@@ -68,13 +68,12 @@ per spend, adequate fee (via a `FeeProvider` override — the real fee knob is `
 |---|---|---|
 | deploy | [`af9f1d16…129b78`](https://whatsonchain.com/tx/af9f1d16e7f8eb13ebad0a7180d195c6d17129e7cae7055f9105dd71fa129b78) | confirmed, block 960862 |
 | buy + mint | [`dca06069…b8dca8`](https://whatsonchain.com/tx/dca060698606ca2e32d58497130b3012e5fa87cd77e0127daca4c1f6bcb8dca8) | confirmed block 960862; 2-in/3-out (pool + token + change) |
-| resolve | [`86e586c4…e47ca3`](https://whatsonchain.com/tx/86e586c491f5f89cbfe402b0961be4c1011c65d71f7df9cf0dba3064dae47ca3) | Rabin-oracle YES (in mempool, proper fee → next block) |
-| redeem | [`c8e2f515…330977`](https://whatsonchain.com/tx/c8e2f515726bd2f61f1a7710e659f2175304cb33e2fad44fd3d45308fb330977) | 2-in/3-out (pool + **1000-sat winner payout** + change) |
+| resolve | [`86e586c4…e47ca3`](https://whatsonchain.com/tx/86e586c491f5f89cbfe402b0961be4c1011c65d71f7df9cf0dba3064dae47ca3) | Rabin-oracle YES — **confirmed, block 960863** |
+| redeem | [`c8e2f515…330977`](https://whatsonchain.com/tx/c8e2f515726bd2f61f1a7710e659f2175304cb33e2fad44fd3d45308fb330977) | 2-in/3-out (pool + **1000-sat winner payout** + change) — **confirmed, block 960863** |
 
-**The complete lifecycle — deploy → trade → oracle-resolve → winner-payout — ran live on BSV mainnet for
-70,241 sats total (~US$0.04)**, autonomously via the API with only per-spend human authorization. Confirmation
-timing is BSV's (irregular blocks / droughts); the proper-fee txs confirm as blocks are mined (deploy+buy did,
-immediately). Engineering learnings baked in: **fee control = `provider.getFeePerKb()`**; each stateful spend is
+**The complete lifecycle — deploy → trade → oracle-resolve → winner-payout — ran live on BSV mainnet and is
+FULLY CONFIRMED (blocks 960862–960863) for 70,241 sats total (~US$0.04)**, autonomously via the API with only
+per-spend human authorization. Engineering learnings baked in: **fee control = `provider.getFeePerKb()`**; each stateful spend is
 **~93 KB** (OP_PUSH_TX re-carries the pool script) so trades cost ~15–20k sat and 4 pool txs exceed the 101 KB
 mempool-ancestor budget (sequence deploy→buy, confirm, then resolve→redeem).
 

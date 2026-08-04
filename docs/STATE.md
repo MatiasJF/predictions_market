@@ -200,7 +200,7 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `PM_ENGINE=scrypt PM_NETWORK=mainnet`, 0.5 sat/B (FeeProvider), one session: **deploy `af9f1d16…` + buy+mint
   `dca06069…` CONFIRMED (block 960862)**; then (after the required confirm-wait for the 101 KB ancestor limit)
   **resolve `86e586c4…` + redeem `c8e2f515…` broadcast** (redeem = 2-in/3-out: pool + **1000-sat winner payout**
-  + change) — awaiting BSV's next block (drought; same proper fee that mined deploy+buy). **Total spend 70,241
+  + change) — CONFIRMED block 960863. **Total spend 70,241
   sat (~$0.04)** for the complete deploy→trade→oracle→payout lifecycle. Recorded in VERDICT. **Proves the
   single-market lifecycle works consistently on mainnet.** Still design-level open (NOT feasibility): concurrency
   (single-UTXO serialisation), security (documented-trust redeem), contract-slimming, restart-safe state.
