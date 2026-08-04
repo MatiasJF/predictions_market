@@ -146,14 +146,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
 - ○ API-011 (deferred) — isolate/fix BUG-006 (buy NULLFAIL) OR supersede via the sCrypt engine (Phase 2).
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
-- ◐ SCRYPT-001 — port LMSRMarket/ShareToken/Rabin-oracle to **scrypt-ts 1.4.5** (classic BSV framework, not the
-  newer `@scrypt-inc/cli-btc`/Covenant BTC stack). **TOOLCHAIN DE-RISKED:** scaffolded a reference project, the
-  sCrypt compiler binary downloaded + compiled a contract to an artifact, and a local `NETWORK=local`/
-  `DummyProvider` test passed (deploy + method call offline; negative case rejected). sCrypt's local verify runs
-  the **real node Script** → green ⇒ mainnet-valid, closing the BUG-006 VM≠mainnet gap. **Next:** create
-  `packages/contracts-scrypt`, port the contracts, add local + `@pm/lmsr`-equivalence tests. Canonical API:
-  `class X extends SmartContract` + `@prop()/@prop(true)/@method()`; `await X.loadArtifact()` → `new X(...)` →
-  `instance.connect(TestWallet(pk, DummyProvider))` → `instance.deploy(sats)` → `instance.methods.foo(args)`.
+- ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`
+  (npm-managed, excluded from the pnpm workspace — sCrypt's ts-patch transformer needs a flat node_modules).
+  `LMSRMarket.runar`→sCrypt: **compiles to 25.8 KB Script** (`buyYes/buyNo/sellYes/sellNo/resolve`, 7 state
+  props) AND **buy/sell verify locally + match the `@pm/lmsr` reference** (4 mocha tests; underpayment
+  rejected). sCrypt local verify runs the **real node Script** → green ⇒ mainnet-valid (closes BUG-006). The buy
+  that NULLFAILed on Rúnar mainnet passes here. `vitest.config.ts` excludes the package (it runs its own mocha).
+  **Remaining:** `ShareToken` + token mint in buy (multi-output) + `redeem` (multi-input) — the BUG-005 unblock;
+  a Rabin-oracle `resolve` test; multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run
+  compile && … test`; regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
 - ○ SCRYPT-002 — `ScryptEngine implements ChainEngine` (deploy/buy+mint/sell/resolve/redeem; robust broadcast +
   funding chaining). Token-mint buy + multi-input redeem become live (the Rúnar 501s).
 - ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.

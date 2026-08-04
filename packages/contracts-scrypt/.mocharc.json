@@ -1,0 +1,9 @@
+{
+  "diff": true,
+  "require": "ts-node/register",
+  "extensions": ["ts"],
+  "spec": ["./tests/**/*.test.ts"],
+  "reporter": "spec",
+  "timeout": "20000",
+  "ui": "bdd"
+}

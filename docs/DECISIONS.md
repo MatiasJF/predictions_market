@@ -278,3 +278,28 @@ Template:
     under the documented-trust model (on-chain token UTXOs are Phase 2).
 - Consequences: the API accepts N-share trades end-to-end with an honest BUG-003 caveat; the trades ledger
   becomes a readable book; nothing here changes the ChainEngine seam, so sCrypt still drops in cleanly.
+
+## ADR-018 · Adopt sCrypt (scrypt-ts 1.4.5) for the on-chain contracts; npm-isolated package · Accepted · 2026-08-04
+- Context: the gated live run proved the LMSR design sound but the Rúnar toolchain unfit for on-chain use —
+  BUG-003 (stale-UTXO), BUG-005 (no multi-output/multi-input tx build), and BUG-006 (a buy that passed 72 VM
+  tests NULLFAILed on mainnet: **VM ≠ mainnet**). Decision: migrate the contracts to **sCrypt**, behind the
+  unchanged `ChainEngine` seam.
+- Decisions:
+  - **Framework:** classic BSV **`scrypt-ts` 1.4.5** (`class extends SmartContract`, `@prop()/@prop(true)/
+    @method()`, `buildStateOutput()`, `this.ctx.hashOutputs` assertion) — NOT the newer `@scrypt-inc/cli-btc` /
+    Covenant BTC stack. Rabin oracle via `scrypt-ts-lib` (`RabinVerifier.verifySig`).
+  - **Packaging:** `packages/contracts-scrypt` is **npm-managed and excluded from the pnpm workspace**
+    (`!packages/contracts-scrypt`). sCrypt's ts-patch transformer needs a flat `node_modules`; pnpm's isolated
+    store breaks it (transpiler unresolvable → no Script emitted). The package compiles standalone to
+    `artifacts/*.json`, which `@pm/engine` consumes. Root `vitest.config.ts` excludes it (it runs its own mocha).
+  - **Local testing = the mainnet guarantee:** sCrypt's `NETWORK=local`/`DummyProvider` verify executes the
+    **real node Script** (green ⇒ mainnet-valid), which is exactly what closes the BUG-006 gap. Ephemeral
+    in-memory keys only (Golden Rule 6).
+  - **Design preserved:** same `@pm/lmsr` ground truth + multiplicative state (ADR-007) + post-trade-price
+    MM-safe charge (ADR-011) + Rabin resolution (ADR-013). sCrypt has bigint mul/div but no exp/ln (same as
+    Rúnar), and adds **bounded loops** (multi-share buy in one tx) + **native multi-output/multi-input** (token
+    mint + redeem — the BUG-005 unblock).
+- Evidence (SCRYPT-001): `LMSRMarket` compiles to 25.8 KB Script; **buy/sell verify locally and reproduce the
+  `@pm/lmsr` reference** (underpayment rejected) — the buy that NULLFAILed on Rúnar mainnet passes under sCrypt.
+- Consequences: the engine swap is a new `ScryptEngine implements ChainEngine`; the daemon/service/DB/HTTP/queue
+  are untouched. The Rúnar engine stays for side-by-side comparison; `PM_ENGINE` selects at runtime.

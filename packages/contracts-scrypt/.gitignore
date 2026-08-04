@@ -1,0 +1,8 @@
+node_modules/
+dist/
+scrypt.index.json
+package-lock.json
+tsconfig-scryptTS.json
+artifacts/
+tests/fixtures/vectors.json
+.env

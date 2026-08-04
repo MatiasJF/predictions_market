@@ -1,3 +1,6 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # contracts-scrypt is npm-managed (sCrypt's ts-patch transpiler needs a flat node_modules, not pnpm's
+  # isolated store). It compiles standalone to artifacts/*.json which @pm/engine consumes. See its README.
+  - '!packages/contracts-scrypt'

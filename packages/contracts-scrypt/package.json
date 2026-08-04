@@ -1,0 +1,30 @@
+{
+  "name": "@pm/contracts-scrypt",
+  "version": "0.0.0",
+  "private": true,
+  "description": "sCrypt (scrypt-ts) port of the LMSR prediction-market contracts (Phase 2).",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "clean": "rimraf scrypt.index.json && rimraf dist && rimraf artifacts",
+    "compile": "scrypt-cli compile",
+    "build": "tsc",
+    "test": "cross-env NETWORK=local mocha"
+  },
+  "dependencies": {
+    "scrypt-ts": "1.4.5",
+    "scrypt-ts-lib": "^0.1.28"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.4",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^18.11.10",
+    "chai": "^4.3.6",
+    "cross-env": "^7.0.3",
+    "mocha": "^10.1.0",
+    "rimraf": "^3.0.2",
+    "scrypt-cli": "^0.2.3",
+    "ts-node": "^10.9.1",
+    "typescript": "~5.3.3"
+  }
+}

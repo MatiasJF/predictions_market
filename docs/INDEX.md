@@ -27,6 +27,10 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain gate — stateful Counter contract | `packages/contracts/src/Counter.runar.ts` |
 | Rúnar gate test (compile + execute offline) | `packages/contracts/test/counter.gate.test.ts` |
 | Rúnar LMSR market contract (buy + sell + oracle resolve) | `packages/contracts/src/LMSRMarket.runar.ts` |
+| **sCrypt LMSR market contract (Phase 2 port)** | `packages/contracts-scrypt/src/contracts/lmsrMarket.ts` |
+| sCrypt local verify + `@pm/lmsr` equivalence tests | `packages/contracts-scrypt/tests/lmsrMarket.test.ts` |
+| sCrypt equivalence-vector generator (from `@pm/lmsr`) | `packages/contracts-scrypt/tests/fixtures/gen-vectors.ts` |
+| sCrypt package build/why-npm-isolated | `packages/contracts-scrypt/README.md` |
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
 | **Swap seam: ChainEngine interface + TxPlan/PoolRef types** | `packages/engine/src/types.ts` |
 | RunarEngine (Rúnar tx-building behind the seam) | `packages/engine/src/runar.ts` |
