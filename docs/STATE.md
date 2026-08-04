@@ -144,6 +144,18 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   sell/resolve paths **not yet mainnet-verified** → strong motivation for Phase 2 (sCrypt). Spend: ~1,367 sat
   (deploy fee 1,367; failed broadcasts cost nothing). Funds remaining ~1,996,947 sat.
 - ○ API-011 (deferred) — isolate/fix BUG-006 (buy NULLFAIL) OR supersede via the sCrypt engine (Phase 2).
+- ◐ SCRYPT-005 (autonomous mainnet via daemon) — **integration PROVEN, run blocked by mempool state.** Started
+  the daemon `PM_ENGINE=scrypt PM_NETWORK=mainnet`: it connected, created the market, built the deploy tx, and
+  made a **real broadcast attempt** through the HTTP API — rejected `too-long-mempool-chain`. Cause: the
+  SCRYPT-004 lifecycle txs (4 × ~26 KB) are still **unconfirmed** (~0.05 sat/byte default fee) and chained,
+  filling BSV's 101 KB / 25-tx unconfirmed-ancestor budget; the single funding UTXO is buried under them and no
+  confirmed UTXO is free. Can't extend (chain at limit; no RBF; CPFP won't fit). **Two platform findings:**
+  (1) **fee management** — sCrypt's default fee is too low for prompt confirmation of big contract txs; set an
+  explicit fee. (2) **single-UTXO throughput (unknown #3, concrete)** — one funding chain saturates the mempool
+  budget after ~4 ops; a platform needs a pool of funding UTXOs (parallel chains) + confirmation-aware
+  scheduling + a slimmer pool script. **Note:** SCRYPT-004 txs were node-ACCEPTED (script-valid on mainnet =
+  the feasibility proof) but confirmation is pending (fee). To complete SCRYPT-005: wait for confirmation OR
+  fund a fresh key (confirmed UTXO independent of the stuck chain). Market persisted in `data/scrypt-mainnet.db`.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`
