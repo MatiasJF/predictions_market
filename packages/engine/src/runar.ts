@@ -68,11 +68,26 @@ const poolEffect = (satoshis: number, s: MarketState, collateral: bigint, resolv
 export class RunarEngine implements ChainEngine {
   readonly name: string = 'runar';
   private readonly network: 'mainnet' | 'testnet';
+  private readonly base: WhatsOnChainProvider;
+  private _overlay?: ChainingProvider;
   constructor(network: 'mainnet' | 'testnet' = 'mainnet') {
     this.network = network;
+    this.base = new WhatsOnChainProvider(network);
   }
   private provider() {
-    return new WhatsOnChainProvider(this.network);
+    return this.base;
+  }
+  /**
+   * Persistent 0-conf funding overlay, shared across authorizes for this process. Remembers what each
+   * broadcast spent/created so the NEXT trade's funding selection avoids the stale (already-spent) UTXO that
+   * WhatsOnChain still lists (BUG-003), without waiting for confirmations.
+   */
+  private overlay(priv: PrivateKey): ChainingProvider {
+    if (!this._overlay) {
+      const lockHex = new P2PKH().lock(priv.toAddress()).toHex();
+      this._overlay = new ChainingProvider(this.base, priv.toAddress(), lockHex);
+    }
+    return this._overlay;
   }
 
   async fundingAddress(): Promise<string> {
@@ -185,13 +200,13 @@ export class RunarEngine implements ChainEngine {
   // ── authorize-time execution (the only chain writes) ────────────────────────────────────────────────
 
   private async execDeploy(b: DeployBuild, wif: string): Promise<BroadcastResult> {
-    const provider = this.provider();
     const priv = PrivateKey.fromWif(wif);
     const address = priv.toAddress();
-    const utxos = await provider.getUtxos(address);
+    const overlay = this.overlay(priv);
+    const utxos = await overlay.getUtxos(address);
     if (!utxos.length) throw new Error(`no funding UTXOs at ${address}`);
     const funding = [...utxos].sort((a, z) => z.satoshis - a.satoshis)[0]!; // largest covers the fee
-    const sourceTransaction = Transaction.fromHex(await provider.getRawTransaction(funding.txid));
+    const sourceTransaction = Transaction.fromHex(await overlay.getRawTransaction(funding.txid));
 
     const tx = new Transaction();
     tx.addInput({ sourceTransaction, sourceOutputIndex: funding.outputIndex, unlockingScriptTemplate: new P2PKH().unlock(priv) });
@@ -199,7 +214,8 @@ export class RunarEngine implements ChainEngine {
     tx.addOutput({ lockingScript: new P2PKH().lock(address), change: true });
     await tx.fee();
     await tx.sign();
-    const txid = await provider.broadcast(tx);
+    const txid = await this.base.broadcast(tx);
+    overlay.register(tx); // next trade's funding avoids the just-spent UTXO (BUG-003)
     return { txid, poolLockingScript: b.lockingScript };
   }
 
@@ -210,19 +226,23 @@ export class RunarEngine implements ChainEngine {
    * Single-step calls (sell/resolve/1-share buy) use the base provider exactly like the proven path.
    */
   private async execChain(b: CallBuild, wif: string): Promise<BroadcastResult> {
-    const base = this.provider();
     const priv = PrivateKey.fromWif(wif);
     const fundingLock = new P2PKH().lock(priv.toAddress());
     const artifact = compileMarket();
-    const overlay = new ChainingProvider(base, priv.toAddress(), fundingLock.toHex());
+    const overlay = this.overlay(priv);
+
+    // Seed the overlay from the pool's PARENT tx (deploy or the prior trade): registering it marks the funding
+    // it spent as spent and exposes its change as a 0-conf UTXO — so this trade's funding avoids the stale one.
+    if (!overlay.has(b.pool.txid)) {
+      try { overlay.register(Transaction.fromHex(await overlay.getRawTransaction(b.pool.txid))); } catch { /* parent unavailable → fall through */ }
+    }
 
     let pool = { txid: b.pool.txid, vout: b.pool.vout, satoshis: b.pool.satoshis, script: b.pool.lockingScript };
     let last: Transaction | undefined;
     for (let step = 0; step < b.steps.length; step++) {
       const s = b.steps[step]!;
-      const provider = step === 0 ? base : overlay; // step 0 uses only confirmed UTXOs
       const contract = RunarContract.fromUtxo(artifact, { txid: pool.txid, outputIndex: pool.vout, satoshis: pool.satoshis, script: pool.script });
-      contract.connect(provider as unknown as WhatsOnChainProvider, new BsvSigner(wif));
+      contract.connect(overlay as unknown as WhatsOnChainProvider, new BsvSigner(wif));
       const args = s.args.map((a) => (a.t === 'int' ? BigInt(a.v) : a.v));
       const newState = bnState(s.newState) as unknown as Record<string, unknown>;
       const prepared = await contract.prepareCall(s.method, args, { newState, satoshis: pool.satoshis });
@@ -230,7 +250,7 @@ export class RunarEngine implements ChainEngine {
 
       // Re-sign funding inputs (index ≥ 1) with @bsv/sdk over the FINAL tx (BUG-001 workaround). The contract
       // input's OP_PUSH_TX sig commits to the outputs, which don't change, so it stays valid.
-      const utxos = await provider.getUtxos(priv.toAddress());
+      const utxos = await overlay.getUtxos(priv.toAddress());
       const byOutpoint = new Map(utxos.map((u) => [`${u.txid}:${u.outputIndex}`, u]));
       for (let i = 1; i < tx.inputs.length; i++) {
         const inp = tx.inputs[i]!;
@@ -238,8 +258,8 @@ export class RunarEngine implements ChainEngine {
         if (!u) throw new Error(`funding utxo not found for input ${i} (${inp.sourceTXID}:${inp.sourceOutputIndex})`);
         inp.unlockingScript = await new P2PKH().unlock(priv, 'all', false, u.satoshis, fundingLock).sign(tx, i);
       }
-      await base.broadcast(tx);       // always broadcast through the real network
-      overlay.register(tx);           // expose this tx's pool + change outputs to the next step (0-conf)
+      await this.base.broadcast(tx);  // always broadcast through the real network
+      overlay.register(tx);           // expose this tx's change to the next step / next trade (0-conf)
       last = tx;
       pool = { txid: tx.id('hex'), vout: 0, satoshis: pool.satoshis, script: tx.outputs[0]!.lockingScript!.toHex() };
     }

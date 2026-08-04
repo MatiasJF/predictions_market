@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. Mainnet token-tx demo still blocked by runar-sdk BUG-005 (→ Phase 2 sCrypt)._
+_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — buy/sell/resolve not yet mainnet-verified, motivating Phase 2 (sCrypt). Funds ~1,996,947 sat._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -135,8 +135,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   path unchanged (proven). 72 tests green.
 - ● API-010 — `apps/daemon/README.md`: full API reference (every endpoint + curl), run/authorize guide, the
   security model, and the Rúnar engine limits (501s) as the Phase-2 boundary.
-- ○ API-007 (next, GATED) — one live authorized mainnet run through the daemon (deploy → plain buy → resolve),
-  confirming txids on WhatsOnChain. Needs explicit per-broadcast user authorization.
+- ◐ API-007 (GATED live run, 2026-08-04) — **DEPLOY confirmed live on mainnet via the daemon**
+  (`9d7c370f6a891f63da7e7d2797fa4ad85bde72e8fe6d2a4f15e9d3b4a28b0a3c`, block 960831): create → enqueue →
+  user-authorize → sign → broadcast → `pool_utxos` v0 all worked on-chain. **BUY blocked:** reproduced BUG-003
+  live (stale-UTXO `txn-mempool-conflict`), added the `ChainingProvider` overlay workaround (got past it), then
+  the buy NULLFAILed on mainnet **even with confirmed funding** despite passing 72 VM tests — see **BUG-006**
+  (VM ≠ mainnet for a new Rúnar OP_PUSH_TX method) + WhatsOnChain 429 rate-limiting. Deploy path proven; buy/
+  sell/resolve paths **not yet mainnet-verified** → strong motivation for Phase 2 (sCrypt). Spend: ~1,367 sat
+  (deploy fee 1,367; failed broadcasts cost nothing). Funds remaining ~1,996,947 sat.
+- ○ API-011 (deferred) — isolate/fix BUG-006 (buy NULLFAIL) OR supersede via the sCrypt engine (Phase 2).
 
 ### Phase P4 — Rúnar → sCrypt (planned; own planning pass)
 - ○ SCRYPT-001 — `ScryptEngine implements ChainEngine` + port LMSRMarket/ShareToken/Rabin-oracle to sCrypt;

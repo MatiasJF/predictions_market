@@ -20,16 +20,36 @@ export class ChainingProvider {
   private readonly spent = new Set<string>();       // "txid:vout" consumed by registered txs
   private readonly created: Utxo[] = [];            // change outputs to the funding address (0-conf)
   private readonly rawTx = new Map<string, string>(); // txid → hex, for registered txs
+  private readonly registered = new Set<string>();  // txids already registered (idempotent)
 
   constructor(
     private readonly base: BaseProvider,
     private readonly fundingAddress: string,
     private readonly fundingLockHex: string,
-  ) {}
+  ) {
+    // Delegate any method/prop we don't override (getFeeRate, getChainInfo, …) to the base provider, so the
+    // overlay is a drop-in for the SDK. Overridden methods (getUtxos/getRawTransaction/broadcast/…) win.
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        if (prop in target) {
+          const v = Reflect.get(target, prop, receiver);
+          return typeof v === 'function' ? v.bind(target) : v;
+        }
+        const bv = (base as unknown as Record<string | symbol, unknown>)[prop];
+        return typeof bv === 'function' ? (bv as (...a: unknown[]) => unknown).bind(base) : bv;
+      },
+    });
+  }
 
-  /** Record a just-built tx: hide its inputs, expose its change output, remember its hex for the next step. */
+  has(txid: string): boolean {
+    return this.registered.has(txid);
+  }
+
+  /** Record a just-built tx (idempotent): hide its inputs, expose its change output, remember its hex. */
   register(tx: Transaction): void {
     const txid = tx.id('hex') as string;
+    if (this.registered.has(txid)) return;
+    this.registered.add(txid);
     this.rawTx.set(txid, tx.toHex());
     for (const inp of tx.inputs) this.spent.add(`${inp.sourceTXID}:${inp.sourceOutputIndex}`);
     tx.outputs.forEach((o, vout) => {
@@ -43,7 +63,10 @@ export class ChainingProvider {
     const confirmed = (await this.base.getUtxos(address)).filter((u) => !this.spent.has(`${u.txid}:${u.outputIndex}`));
     if (address !== this.fundingAddress) return confirmed;
     const local = this.created.filter((u) => !this.spent.has(`${u.txid}:${u.outputIndex}`));
-    return [...confirmed, ...local];
+    // Dedupe by outpoint — once a tx confirms, the base provider also returns its change.
+    const byOutpoint = new Map<string, Utxo>();
+    for (const u of [...confirmed, ...local]) byOutpoint.set(`${u.txid}:${u.outputIndex}`, u);
+    return [...byOutpoint.values()];
   }
 
   async getRawTransaction(txid: string): Promise<string> {

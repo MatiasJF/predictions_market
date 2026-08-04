@@ -72,3 +72,28 @@ workaround, status. Report upstream (repo `icellan/runar`) where useful.
 - **Status:** OPEN — blocks the on-mainnet TOKEN-001d demo via the SDK. The full lifecycle is proven in the
   runar-testing VM (11 token tests). Recommend upstream: have `prepareCall`/`call` simulate `addRawOutput`
   and expose a way to supply extra outputs / multi-input contract spends.
+
+## BUG-006 · Daemon buy path fails NULLFAIL on mainnet despite passing the VM (VM ≠ mainnet)
+- **Package:** `runar-sdk@0.4.6` `prepareCall` (OP_PUSH_TX assembly) + our `@pm/engine` daemon path.
+- **Context:** live run via `@pm/daemon` on mainnet (2026-08-04). The **deploy confirmed** on-chain
+  (`9d7c370f6a891f63da7e7d2797fa4ad85bde72e8fe6d2a4f15e9d3b4a28b0a3c`, block 960831) — so the daemon's
+  authorize→sign→broadcast→lineage path works. The **buy** (`buyYesPlain` via `prepareCall` + funding re-sign
+  through the `ChainingProvider` overlay) was rejected by the node with:
+  `mandatory-script-verify-flag-failed (Signature must be zero for failed CHECK(MULTI)SIG operation)` (BIP146
+  NULLFAIL) — a CHECKSIG returned false with a non-empty signature, i.e. a signature over the wrong sighash.
+- **Reproduced with CONFIRMED funding** (not a 0-conf artefact): after the deploy confirmed and only the single
+  change UTXO remained, the buy still NULLFAILed. Yet all 72 VM tests pass, and the analogous **old** buy
+  (`buyYes`, 2-arg, direct `mainnet.ts` path) succeeded live earlier (`7106f762…`).
+- **Root cause: NOT isolated.** WhatsOnChain aggressively **429-rate-limited** repeated broadcasts, which
+  blocked interactive diagnosis. Candidates: (a) `buyYesPlain`'s OP_PUSH_TX continuation-script/hashOutputs
+  differing from what the node computes; (b) the funding re-sign amount/subscript under the overlay; (c) the
+  `ChainingProvider` overlay perturbing `prepareCall`'s tx assembly. The key point stands regardless: **VM
+  acceptance does not guarantee mainnet OP_PUSH_TX validity** for a new/edited Rúnar method.
+- **Also observed live:** BUG-003 reproduced end-to-end — WhatsOnChain reports the just-spent confirmed funding
+  UTXO as still-unspent, so a fresh trade's funding selection double-spends it (`txn-mempool-conflict`). Our
+  `ChainingProvider` overlay (a client-side workaround: hides spent inputs, exposes 0-conf change, seeds from
+  the pool's parent tx) got past this; and WhatsOnChain as the sole broadcast path is fragile under load (429s).
+- **Status:** OPEN. The daemon deploy path is mainnet-proven; the daemon buy/sell/resolve paths are **not yet
+  mainnet-verified**. This fragility (VM≠mainnet + toolchain/broadcast friction) is the core motivation for the
+  Rúnar→sCrypt migration (Phase 2): sCrypt provides battle-tested OP_PUSH_TX/tx assembly and a robust provider
+  stack, which should make these paths verifiable on-chain.
