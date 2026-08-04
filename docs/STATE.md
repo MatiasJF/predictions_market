@@ -145,10 +145,19 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   (deploy fee 1,367; failed broadcasts cost nothing). Funds remaining ~1,996,947 sat.
 - ○ API-011 (deferred) — isolate/fix BUG-006 (buy NULLFAIL) OR supersede via the sCrypt engine (Phase 2).
 
-### Phase P4 — Rúnar → sCrypt (planned; own planning pass)
-- ○ SCRYPT-001 — `ScryptEngine implements ChainEngine` + port LMSRMarket/ShareToken/Rabin-oracle to sCrypt;
-  token-mint buy + multi-input redeem become live (the Rúnar 501s). Validate against the same `@pm/lmsr` ground
-  truth. Detailed plan authored after P3 lands.
+### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
+- ◐ SCRYPT-001 — port LMSRMarket/ShareToken/Rabin-oracle to **scrypt-ts 1.4.5** (classic BSV framework, not the
+  newer `@scrypt-inc/cli-btc`/Covenant BTC stack). **TOOLCHAIN DE-RISKED:** scaffolded a reference project, the
+  sCrypt compiler binary downloaded + compiled a contract to an artifact, and a local `NETWORK=local`/
+  `DummyProvider` test passed (deploy + method call offline; negative case rejected). sCrypt's local verify runs
+  the **real node Script** → green ⇒ mainnet-valid, closing the BUG-006 VM≠mainnet gap. **Next:** create
+  `packages/contracts-scrypt`, port the contracts, add local + `@pm/lmsr`-equivalence tests. Canonical API:
+  `class X extends SmartContract` + `@prop()/@prop(true)/@method()`; `await X.loadArtifact()` → `new X(...)` →
+  `instance.connect(TestWallet(pk, DummyProvider))` → `instance.deploy(sats)` → `instance.methods.foo(args)`.
+- ○ SCRYPT-002 — `ScryptEngine implements ChainEngine` (deploy/buy+mint/sell/resolve/redeem; robust broadcast +
+  funding chaining). Token-mint buy + multi-input redeem become live (the Rúnar 501s).
+- ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.
+- ○ SCRYPT-004 — GATED mainnet lifecycle (deploy→buy→sell→resolve→redeem); Rúnar-vs-sCrypt comparison → VERDICT.
 
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
