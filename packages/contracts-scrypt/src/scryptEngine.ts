@@ -84,9 +84,13 @@ export class ScryptEngine {
     }
     private signer(): Signer {
         if (!this._signer) {
-            this._signer = this.network === 'mainnet'
-                ? new TestWallet(bsv.PrivateKey.fromWIF(this.getWif()), new DefaultProvider({ network: bsv.Networks.mainnet }))
-                : new TestWallet(bsv.PrivateKey.fromRandom(bsv.Networks.testnet), new DummyProvider())
+            if (this.network === 'mainnet') {
+                // Adequate fee so the large (~26 KB) contract txs confirm promptly (0.05 sat/B was too slow).
+                ;(bsv.Transaction as unknown as { FEE_PER_KB: number }).FEE_PER_KB = 250
+                this._signer = new TestWallet(bsv.PrivateKey.fromWIF(this.getWif()), new DefaultProvider({ network: bsv.Networks.mainnet }))
+            } else {
+                this._signer = new TestWallet(bsv.PrivateKey.fromRandom(bsv.Networks.testnet), new DummyProvider())
+            }
         }
         return this._signer
     }
