@@ -180,6 +180,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   the confirmed `f9aaee` (block 960854) — recoverable once it confirms/evicts. **Verdict unchanged:** the
   autonomous-mainnet-via-daemon capability is PROVEN (3 live broadcasts); the redeem tx and clean fee/UTXO
   handling are productionization work, not feasibility gaps.
+  **FEE FIX FOUND + CRITICAL ECONOMICS FINDING (fresh key `1GfBrm…`, funded 80k):** the real fee knob is the
+  provider's `getFeePerKb()` (WoC returns ~50 sat/KB, too low). Added a `FeeProvider` (extends DefaultProvider,
+  overrides `getFeePerKb → 500`). The daemon then broadcast deploy + buy with PROPER fees — **fee fix works.**
+  BUT the run revealed the **decisive economics: sCrypt stateful txs are HUGE** — deploy = **46 KB**, each trade
+  **spend = ~93 KB** (the OP_PUSH_TX unlocking carries the full prior 26 KB script). At 0.5 sat/byte that's ~23k
+  (deploy) + ~46k (per trade); deploy+buy alone ate the 80k, and resolve failed ("no sufficient utxos to pay the
+  fee of 46606"). **A full lifecycle costs ~80–160k sats depending on rate.** ⇒ **The current LMSR-in-one-UTXO
+  sCrypt contract is FEASIBLE but ECONOMICALLY HEAVY (~93 KB / ~$0.02–0.08 per trade).** For a real platform this
+  is THE thing to solve: slim the pool Script dramatically, or reconsider architecture for high-frequency trading
+  (this is a genuine input to the native-on-chain-vs-off-chain decision — the spike proved native works; this
+  shows its per-trade cost). Not a bug — a fundamental cost property of the design.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`

@@ -28,6 +28,18 @@ const WAD = 10n ** 18n
 const COLLATERAL = 1_000_000_000n // pool collateral is STATE (spike); large enough to cover any redeem
 const POOL_SATS = 1 // dust — collateral is state, not locked sats
 const TOKEN_SATS = 1
+const FEE_PER_KB = 500 // 0.5 sat/byte — the rate sCrypt's builders actually use (via provider.getFeePerKb)
+
+/**
+ * Forces an explicit fee rate. sCrypt derives tx fees from the provider's getFeePerKb(); WhatsOnChain returns
+ * ~50 sat/KB (0.05 sat/byte), which is too low for the ~26 KB pool txs to confirm promptly (they sat unconfirmed
+ * for 40+ min). Overriding it to 500 sat/KB is the real fee-control fix — the platform sets fees here.
+ */
+class FeeProvider extends DefaultProvider {
+    override async getFeePerKb(): Promise<number> {
+        return FEE_PER_KB
+    }
+}
 
 // ── structural mirrors of @pm/engine types (kept in sync; the daemon casts ScryptEngine → ChainEngine) ─────
 type Side = 'yes' | 'no'
@@ -85,9 +97,8 @@ export class ScryptEngine {
     private signer(): Signer {
         if (!this._signer) {
             if (this.network === 'mainnet') {
-                // Adequate fee so the large (~26 KB) contract txs confirm promptly (0.05 sat/B was too slow).
-                ;(bsv.Transaction as unknown as { FEE_PER_KB: number }).FEE_PER_KB = 250
-                this._signer = new TestWallet(bsv.PrivateKey.fromWIF(this.getWif()), new DefaultProvider({ network: bsv.Networks.mainnet }))
+                // FeeProvider forces an adequate fee rate (the WoC default is too low for 26 KB txs to confirm).
+                this._signer = new TestWallet(bsv.PrivateKey.fromWIF(this.getWif()), new FeeProvider({ network: bsv.Networks.mainnet }))
             } else {
                 this._signer = new TestWallet(bsv.PrivateKey.fromRandom(bsv.Networks.testnet), new DummyProvider())
             }
