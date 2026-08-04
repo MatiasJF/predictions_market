@@ -18,11 +18,33 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.1.1)
 
+  apps/daemon:
+    dependencies:
+      '@pm/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@pm/lmsr':
+        specifier: workspace:*
+        version: link:../../packages/lmsr
+      '@pm/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+
   apps/spike:
     dependencies:
       '@bsv/sdk':
         specifier: ^2.1.9
         version: 2.1.9
+      '@pm/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@pm/lmsr':
         specifier: workspace:*
         version: link:../../packages/lmsr
@@ -67,6 +89,31 @@ importers:
       runar-testing:
         specifier: ^0.4.6
         version: 0.4.6
+
+  packages/engine:
+    dependencies:
+      '@bsv/sdk':
+        specifier: ^2.1.9
+        version: 2.1.9
+      '@pm/lmsr':
+        specifier: workspace:*
+        version: link:../lmsr
+      runar-compiler:
+        specifier: ^0.4.6
+        version: 0.4.6
+      runar-lang:
+        specifier: ^0.4.6
+        version: 0.4.6
+      runar-sdk:
+        specifier: ^0.4.6
+        version: 0.4.6
+      runar-testing:
+        specifier: ^0.4.6
+        version: 0.4.6
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
 
   packages/lmsr: {}
 

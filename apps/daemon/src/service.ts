@@ -1,0 +1,275 @@
+// @pm/daemon service — HTTP-agnostic orchestration over a Db + a ChainEngine (Golden Rule 5). Read ops
+// (markets, quote, wallet balance) answer immediately; state-changing ops build a TxPlan and PARK it in the
+// broadcasts sign-off queue. authorize() is the ONLY method that broadcasts — it asks the engine to sign+send
+// (the sole WIF use), then applies the plan's DB effects and advances the pool_utxos lineage. Nothing reaches
+// mainnet without an explicit authorize() call (ADR-010).
+import type { Db } from '@pm/persistence';
+import type { BroadcastRow, MarketRow, PoolUtxoRow } from '@pm/persistence';
+import {
+  WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
+  buyChargeApproxSats, sellPayoutApproxSats, priceYesSats, priceNoSats,
+  type MarketParams, type MarketState,
+} from '@pm/lmsr';
+import { EngineLimitation, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type Side, type TxPlan } from '@pm/engine';
+
+const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
+const MAX_QUOTE_SHARES = 10_000;
+
+/** A typed error the HTTP layer maps to a status code. */
+export class ServiceError extends Error {
+  constructor(public readonly status: number, message: string, public readonly code?: string) {
+    super(message);
+    this.name = 'ServiceError';
+  }
+}
+const notFound = (m: string) => new ServiceError(404, m, 'not_found');
+const badReq = (m: string) => new ServiceError(400, m, 'bad_request');
+const conflict = (m: string) => new ServiceError(409, m, 'conflict');
+
+const asSide = (s: string): Side => {
+  const v = s.toLowerCase();
+  if (v !== 'yes' && v !== 'no') throw badReq(`side must be 'yes' or 'no', got '${s}'`);
+  return v;
+};
+
+export class MarketService {
+  constructor(private readonly db: Db, private readonly engine: ChainEngine) {}
+
+  // ── markets ───────────────────────────────────────────────────────────────────────────────────────
+  async createMarket(input: { question: string; description?: string; bUnits: number | bigint; payoutUnit?: number | bigint; network?: string }) {
+    const question = (input.question ?? '').trim();
+    if (!question) throw badReq('question is required');
+    const bUnits = BigInt(input.bUnits ?? 0);
+    if (bUnits <= 0n) throw badReq('bUnits must be a positive integer (LMSR liquidity in share-units)');
+    const payoutUnit = BigInt(input.payoutUnit ?? 100_000);
+    const network = input.network ?? 'mainnet';
+
+    const platformKeyId = this.keyRefId('platform:' + network, 'platform', await this.engine.fundingPublicKey(), network, 'funding wallet public key');
+    const oracleKeyId = this.keyRefId('oracle:mock:' + network, 'oracle', this.engine.oracleId(), network, 'mock Rabin oracle identifier');
+
+    const info = this.db.prepare(
+      `INSERT INTO markets(question, description, b, scale, payout_unit, oracle_key_id, platform_key_id, network, state)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'imported')`,
+    ).run(question, input.description ?? null, (bUnits * WAD).toString(), WAD.toString(), Number(payoutUnit), oracleKeyId, platformKeyId, network);
+    return this.getMarket(Number(info.lastInsertRowid));
+  }
+
+  listMarkets() {
+    const rows = this.db.prepare('SELECT id FROM markets ORDER BY id').all() as { id: number }[];
+    return rows.map((r) => this.getMarket(r.id));
+  }
+
+  getMarket(id: number) {
+    const m = this.marketRow(id);
+    const cfg = cfgOf(m);
+    const p = paramsOf(cfg);
+    const pool = this.currentPool(id);
+    const state: MarketState = pool ? poolStateToMarketState(pool) : initState(p);
+    return {
+      id: m.id,
+      question: m.question,
+      description: m.description,
+      bUnits: Number(cfg.bUnits),
+      payoutUnit: Number(cfg.payoutUnit),
+      network: m.network,
+      state: m.state,
+      resolution: m.resolution,
+      prices: { yes_sats: Number(priceYesSats(state, p)), no_sats: Number(priceNoSats(state, p)) },
+      pool: pool
+        ? {
+            version: pool.version, txid: pool.txid, vout: pool.vout, sats: pool.sats,
+            qYes: pool.q_yes, qNo: pool.q_no, eYes: pool.e_yes, eNo: pool.e_no,
+            collateral: pool.collateral, resolved: pool.resolved, winner: pool.winner,
+          }
+        : null,
+    };
+  }
+
+  // ── quote (pure LMSR — no chain, no queue) ──────────────────────────────────────────────────────────
+  quote(id: number, sideStr: string, shares: number) {
+    const side = asSide(sideStr);
+    if (!Number.isInteger(shares) || shares <= 0) throw badReq('shares must be a positive integer');
+    if (shares > MAX_QUOTE_SHARES) throw badReq(`shares capped at ${MAX_QUOTE_SHARES} for a quote`);
+    const m = this.marketRow(id);
+    const cfg = cfgOf(m);
+    const p = paramsOf(cfg);
+    const pool = this.currentPool(id);
+    const cur: MarketState = pool ? poolStateToMarketState(pool) : initState(p);
+
+    // Buy: sum the per-unit MM-safe charges over `shares` multiplicative unit-buys (what N sequential buys cost).
+    let sBuy = cur; let buyCharge = 0n;
+    const mult = unitMultiplier(p);
+    for (let i = 0; i < shares; i++) { const nx = applyUnitBuy(sBuy, side, mult, p); buyCharge += buyChargeApproxSats(nx, side, p.unit, p); sBuy = nx; }
+
+    // Sell: only if the pool has ≥ shares outstanding on that side; sum per-unit proceeds.
+    const held = side === 'yes' ? cur.qYes : cur.qNo;
+    let sellProceeds: bigint | null = null;
+    if (held >= BigInt(shares) * p.unit) {
+      let sSell = cur; let acc = 0n; const inv = unitInverseMultiplier(p);
+      for (let i = 0; i < shares; i++) { const nx = applyUnitSell(sSell, side, inv, p); acc += sellPayoutApproxSats(nx, side, p.unit, p); sSell = nx; }
+      sellProceeds = acc;
+    }
+    return {
+      market_id: id, side, shares,
+      price_yes_sats: Number(priceYesSats(cur, p)),
+      price_no_sats: Number(priceNoSats(cur, p)),
+      est_buy_charge_sats: Number(buyCharge),
+      est_sell_proceeds_sats: sellProceeds === null ? null : Number(sellProceeds),
+      avg_buy_price_sats: Number(buyCharge) / shares,
+    };
+  }
+
+  // ── enqueue (build a TxPlan, park it pending) ───────────────────────────────────────────────────────
+  async enqueueDeploy(id: number) {
+    const m = this.marketRow(id);
+    if (this.currentPool(id)) throw conflict('market already deployed');
+    const plan = await this.engine.buildDeploy(cfgOf(m), DEPLOY_SATS);
+    return this.enqueue(id, plan);
+  }
+  async enqueueBuy(id: number, sideStr: string, shares: number) {
+    const side = asSide(sideStr);
+    const { m, pool } = this.tradablePool(id);
+    return this.enqueue(id, await this.engine.buildBuy(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+  }
+  async enqueueSell(id: number, sideStr: string, shares: number) {
+    const side = asSide(sideStr);
+    const { m, pool } = this.tradablePool(id);
+    return this.enqueue(id, await this.engine.buildSell(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+  }
+  async enqueueResolve(id: number, outcomeStr: string) {
+    const outcome = asSide(outcomeStr);
+    const { m, pool } = this.tradablePool(id);
+    return this.enqueue(id, await this.engine.buildResolve(cfgOf(m), poolRef(pool), outcome));
+  }
+  async enqueueRedeem(id: number, sideStr: string, shares: number) {
+    const side = asSide(sideStr);
+    const m = this.marketRow(id);
+    const pool = this.currentPool(id);
+    if (!pool) throw conflict('market not deployed');
+    // Lets the engine surface its EngineLimitation (→ 501) for the redeem path (BUG-005).
+    return this.enqueue(id, await this.engine.buildRedeem(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+  }
+
+  // ── sign-off queue ──────────────────────────────────────────────────────────────────────────────────
+  listBroadcasts(status?: string) {
+    const rows = (status
+      ? this.db.prepare('SELECT * FROM broadcasts WHERE status = ? ORDER BY id DESC').all(status)
+      : this.db.prepare('SELECT * FROM broadcasts ORDER BY id DESC').all()) as BroadcastRow[];
+    return rows.map(broadcastView);
+  }
+  getBroadcast(bid: number) {
+    return broadcastView(this.broadcastRow(bid));
+  }
+
+  /** THE HUMAN GATE. Rebuild+sign+broadcast via the engine (only WIF use), then apply effects atomically. */
+  async authorize(bid: number) {
+    const row = this.broadcastRow(bid);
+    if (row.status !== 'pending') throw conflict(`broadcast ${bid} is '${row.status}', not pending`);
+    const plan = JSON.parse(row.plan) as TxPlan;
+
+    let result: { txid: string; poolLockingScript: string };
+    try {
+      result = await this.engine.authorizeAndBroadcast(plan);
+    } catch (e) {
+      this.db.prepare("UPDATE broadcasts SET status='failed', error=?, decided_at=datetime('now') WHERE id=?")
+        .run(String(e instanceof Error ? e.message : e), bid);
+      throw new ServiceError(502, `broadcast failed: ${e instanceof Error ? e.message : e}`, 'broadcast_failed');
+    }
+
+    const applied = this.db.transaction(() => this.applyEffects(row, plan, result));
+    return applied();
+  }
+
+  reject(bid: number) {
+    const row = this.broadcastRow(bid);
+    if (row.status !== 'pending') throw conflict(`broadcast ${bid} is '${row.status}', not pending`);
+    this.db.prepare("UPDATE broadcasts SET status='rejected', decided_at=datetime('now') WHERE id=?").run(bid);
+    return { id: bid, status: 'rejected' as const };
+  }
+
+  // ── wallet (read-only) ──────────────────────────────────────────────────────────────────────────────
+  async walletBalance() {
+    const address = await this.engine.fundingAddress();
+    const utxos = await this.engine.getUtxos(address);
+    return { address, balance_sats: utxos.reduce((s, u) => s + u.satoshis, 0), utxos: utxos.length };
+  }
+
+  // ── internals ───────────────────────────────────────────────────────────────────────────────────────
+  private applyEffects(row: BroadcastRow, plan: TxPlan, result: { txid: string; poolLockingScript: string }) {
+    const marketId = row.market_id!;
+    const eff = plan.effects;
+    let fromVersion = -1;
+    if (eff.spendsPrevPool) {
+      const prev = this.currentPool(marketId);
+      if (!prev) throw new ServiceError(500, 'pool vanished before effects applied');
+      fromVersion = prev.version;
+      this.db.prepare('UPDATE pool_utxos SET spent=1 WHERE id=?').run(prev.id);
+    }
+    const toVersion = fromVersion + 1;
+    this.db.prepare(
+      `INSERT INTO pool_utxos(market_id, version, txid, vout, sats, q_yes, q_no, e_yes, e_no, collateral, resolved, winner, locking_script, spent)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    ).run(marketId, toVersion, result.txid, eff.pool.vout, eff.pool.satoshis, eff.pool.qYes, eff.pool.qNo, eff.pool.eYes, eff.pool.eNo, eff.pool.collateral, eff.pool.resolved, eff.pool.winner, result.poolLockingScript);
+
+    if (eff.trade) {
+      this.db.prepare(
+        `INSERT INTO trades(market_id, from_version, to_version, side, action, shares, cost_sats, txid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(marketId, fromVersion, toVersion, eff.trade.side, eff.trade.action, eff.trade.shares, eff.trade.costSats, result.txid);
+    }
+    if (eff.marketState) {
+      if (eff.resolution) {
+        this.db.prepare("UPDATE markets SET state=?, resolution=?, resolved_at=datetime('now') WHERE id=?").run(eff.marketState, eff.resolution, marketId);
+      } else {
+        this.db.prepare('UPDATE markets SET state=? WHERE id=?').run(eff.marketState, marketId);
+      }
+    }
+    this.db.prepare("UPDATE broadcasts SET status='broadcast', txid=?, decided_at=datetime('now') WHERE id=?").run(result.txid, row.id);
+    return { id: row.id, status: 'broadcast' as const, txid: result.txid, market_id: marketId, pool_version: toVersion };
+  }
+
+  private enqueue(marketId: number, plan: TxPlan) {
+    const pending = this.db.prepare("SELECT COUNT(*) c FROM broadcasts WHERE market_id=? AND status='pending'").get(marketId) as { c: number };
+    if (pending.c > 0) throw conflict('a pending broadcast already exists for this market — authorize or reject it first');
+    const info = this.db.prepare(
+      'INSERT INTO broadcasts(market_id, kind, summary, spend_sats, plan) VALUES (?, ?, ?, ?, ?)',
+    ).run(marketId, plan.kind, plan.summary, plan.spendSats, JSON.stringify(plan));
+    return { broadcast_id: Number(info.lastInsertRowid), status: 'pending' as const, kind: plan.kind, summary: plan.summary, spend_sats: plan.spendSats };
+  }
+
+  private tradablePool(id: number): { m: MarketRow; pool: PoolUtxoRow } {
+    const m = this.marketRow(id);
+    const pool = this.currentPool(id);
+    if (!pool) throw conflict('market not deployed — deploy it first');
+    if (pool.resolved === 1) throw conflict('market is resolved — trading is closed');
+    return { m, pool };
+  }
+
+  private currentPool(marketId: number): PoolUtxoRow | undefined {
+    return this.db.prepare('SELECT * FROM pool_utxos WHERE market_id=? AND spent=0 ORDER BY version DESC LIMIT 1').get(marketId) as PoolUtxoRow | undefined;
+  }
+  private marketRow(id: number): MarketRow {
+    const m = this.db.prepare('SELECT * FROM markets WHERE id=?').get(id) as MarketRow | undefined;
+    if (!m) throw notFound(`market ${id} not found`);
+    return m;
+  }
+  private broadcastRow(bid: number): BroadcastRow {
+    const r = this.db.prepare('SELECT * FROM broadcasts WHERE id=?').get(bid) as BroadcastRow | undefined;
+    if (!r) throw notFound(`broadcast ${bid} not found`);
+    return r;
+  }
+  private keyRefId(label: string, role: string, pubkey: string, network: string, note: string): number {
+    this.db.prepare('INSERT OR IGNORE INTO key_refs(label, role, pubkey, network, note) VALUES (?, ?, ?, ?, ?)').run(label, role, pubkey, network, note);
+    return (this.db.prepare('SELECT id FROM key_refs WHERE label=?').get(label) as { id: number }).id;
+  }
+}
+
+// ── pure helpers ──────────────────────────────────────────────────────────────────────────────────────
+const cfgOf = (m: MarketRow): MarketConfig => ({ bUnits: BigInt(m.b) / BigInt(m.scale), payoutUnit: BigInt(m.payout_unit) });
+const paramsOf = (cfg: MarketConfig): MarketParams => ({ b: cfg.bUnits * WAD, payoutUnit: cfg.payoutUnit, unit: WAD });
+const poolStateToMarketState = (r: PoolUtxoRow): MarketState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no) });
+const poolFullState = (r: PoolUtxoRow): PoolState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no), collateral: BigInt(r.collateral), resolved: BigInt(r.resolved), winner: BigInt(r.winner) });
+const poolRef = (r: PoolUtxoRow): PoolRef => ({ txid: r.txid, vout: r.vout, satoshis: r.sats, lockingScript: r.locking_script ?? '', state: poolFullState(r) });
+const broadcastView = (r: BroadcastRow) => ({ id: r.id, market_id: r.market_id, kind: r.kind, summary: r.summary, spend_sats: r.spend_sats, status: r.status, txid: r.txid, error: r.error, created_at: r.created_at, decided_at: r.decided_at });
+
+export { EngineLimitation };

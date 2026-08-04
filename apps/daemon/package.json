@@ -1,0 +1,19 @@
+{
+  "name": "@pm/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@pm/engine": "workspace:*",
+    "@pm/lmsr": "workspace:*",
+    "@pm/persistence": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.2"
+  }
+}

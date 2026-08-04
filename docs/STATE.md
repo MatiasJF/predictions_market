@@ -1,6 +1,6 @@
 # STATE — living
 
-_Last updated: 2026-07-27 — STOPPING POINT. Feasibility proven + traded live on mainnet; full token lifecycle (mint/resolve/redeem) built + VM-proven. Mainnet token-tx demo blocked by runar-sdk BUG-005 (fix upstream). 21 commits._
+_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. 70 tests green. Mainnet token-tx demo still blocked by runar-sdk BUG-005 (→ Phase 2 sCrypt)._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -107,10 +107,41 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
       chaining for rapid trades, withdraw/redeem path (TOKEN-001).
 - ○ OPS-004 (planned) — Mainnet proof run (gated) + feasibility verdict report on all six unknowns.
 
+### Phase P3 — Productization: the autonomous API (ADR-015/016)
+- ● API-001 — Sign-off queue + pool-state schema. Migrations `002_broadcasts.sql` (queue) + `003_pool_state.sql`
+  (`pool_utxos` gains collateral/resolved/winner/locking_script). `BroadcastRow`/`PoolUtxoRow` types synced.
+  `pnpm db:migrate` CLI (`packages/persistence/src/migrate-cli.ts`) fixed (was a missing path). Verified: both
+  migrations apply into a throwaway DB.
+- ● API-002 — `@pm/engine`: the `ChainEngine` swap seam. `RunarEngine` absorbs the proven `mainnet.ts`
+  tx-building (deploy via @bsv/sdk; buy/sell/resolve via prepareCall + funding re-sign). Added broadcastable
+  `buyYesPlain`/`buyNoPlain` to the contract (single output, no mint — the live-proven shape). token-mint buy +
+  redeem throw `EngineLimitation` (BUG-005 → 501). `MockEngine` (no network) for tests. +2 contract VM tests.
+- ● API-003 — `@pm/daemon` `MarketService`: HTTP-agnostic orchestration over Db + ChainEngine. create/list/get
+  market, pure LMSR quote, enqueue deploy/buy/sell/resolve/redeem, sign-off queue (authorize=only WIF use;
+  reject), wallet balance. Applies effects atomically + advances `pool_utxos` lineage. One-pending-per-market.
+- ● API-004 — HTTP daemon: Node built-in `http` router bound to **127.0.0.1**, JSON I/O; `server.ts` opens DB +
+  migrates + wires RunarEngine. `pnpm --filter @pm/daemon dev`.
+- ● API-005 — 6 service tests (temp DB + MockEngine): create→quote→deploy→buy→sell→resolve, queue
+  enqueue/authorize/reject, lineage advance, redeem 501. **70 tests total green.** Live curl smoke: health,
+  create, quote (10 YES = 501,375 sat), enqueue deploy → pending, wallet balance (live WoC: 1,998,314 sats),
+  reject → empty, authorize-rejected → 409. **No mainnet spend** — the queue boundary held (authorize is the gate).
+- ● API-006 — KB sync: ADR-015 (API-as-seam + queue) + ADR-016 (pool-state in DB + plain-buy), STATE/INDEX/
+  ARCHITECTURE/SCHEMA updated.
+- ○ API-007 (next, GATED) — one live authorized mainnet run through the daemon (deploy → plain buy → resolve),
+  confirming txids on WhatsOnChain. Needs explicit per-broadcast user authorization.
+
+### Phase P4 — Rúnar → sCrypt (planned; own planning pass)
+- ○ SCRYPT-001 — `ScryptEngine implements ChainEngine` + port LMSRMarket/ShareToken/Rabin-oracle to sCrypt;
+  token-mint buy + multi-input redeem become live (the Rúnar 501s). Validate against the same `@pm/lmsr` ground
+  truth. Detailed plan authored after P3 lands.
+
 ## Known issues
-- Deps installed with `pnpm install --ignore-scripts`, so **`better-sqlite3`'s native binary is NOT built yet**.
-  `@pm/persistence` typechecks (types present) but won't run at runtime until we install without
-  `--ignore-scripts` (or run its build) — do this when the first ticket needs the DB at runtime (apps/spike).
+- **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
+  bindings file", run `npm --prefix node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3 run
+  build-release` (node-gyp). Note: a machine-level pnpm store move required `pnpm config set store-dir
+  ~/Library/pnpm/store/v3 --global` to relink; `pnpm rebuild` silently no-ops, hence the direct node-gyp build.
+- The daemon DB defaults to `data/spike.db` (`PM_DB_PATH` overrides). The old `apps/spike/data/pool.json` is
+  legacy CLI scratch — the daemon uses `pool_utxos` full-state instead (ADR-016).
 - Node is v20.19.5 → no `node:sqlite`; we use `better-sqlite3`. `sqlite3` CLI 3.43.2 is available for schema checks.
 - `runar-testing` needs `fast-check` at import time but doesn't declare it; added as a `@pm/contracts` devDep.
 - Rúnar is v0.4.6 (pre-1.0) — treat compiler behavior as verify-empirically, not assume.

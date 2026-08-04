@@ -208,3 +208,52 @@ Template:
     Each broadcast pauses for explicit user confirmation. Use a small `b` so `b·ln2` collateral is tiny.
 - Consequences: #6 gets a strong offline answer from tx sizes; #2 (throughput / single-UTXO serialization,
   0-conf behaviour) and real fees confirmed on mainnet. Completes the six-unknown verdict.
+
+## ADR-015 · Productization API: HTTP daemon + `ChainEngine` swap seam + sign-off queue · Accepted · 2026-08-04
+- Context: Feasibility is proven; the next goal is **autonomous operation** — Claude drives the full market
+  lifecycle (create → quote → buy/sell → resolve) unattended, with the human involved ONLY to authorize wallet
+  spends. Separately, Rúnar's SDK bugs (BUG-001/005) block real on-chain use beyond the simplest paths, so we
+  will migrate to **sCrypt** later. Both needs are served by making the API the stable contract and the
+  contract toolchain a swappable adapter.
+- Decisions:
+  - **HTTP REST daemon** (`apps/daemon`, `@pm/daemon`) on Node's built-in `http`, bound to **127.0.0.1 only**,
+    driven by `curl`/Bash. Endpoints: `POST /markets`, `GET /markets[/:id]`, `GET /markets/:id/quote`,
+    `POST /markets/:id/{deploy,buy,sell,resolve,redeem}`, `GET /wallet/balance`, `GET /broadcasts[/:id]`,
+    `POST /broadcasts/:id/{authorize,reject}`.
+  - **Three layers, one seam:** HTTP (`http.ts`) → `MarketService` (HTTP-agnostic orchestration, Golden Rule 5)
+    → `ChainEngine` (`@pm/engine`). `ChainEngine` abstracts compile + tx-building + broadcast; `RunarEngine`
+    implements it now (absorbing the proven `mainnet.ts` tx-building), a `ScryptEngine` will implement the SAME
+    interface in Phase 2 with **zero** service/HTTP/DB/LMSR changes. `MockEngine` (extends `RunarEngine`,
+    overrides chain I/O) backs the service tests with no network.
+  - **Sign-off queue (the human gate):** state-changing ops build a `TxPlan` (unsigned descriptor + DB effects,
+    NO key material) and INSERT a `pending` row in the new `broadcasts` table. `POST /broadcasts/:id/authorize`
+    is the **only** path that loads the funding WIF — it asks the engine to rebuild+sign+broadcast, then applies
+    the plan's effects atomically. Nothing reaches mainnet without an explicit authorize call (extends ADR-010).
+    Invariant: **at most one pending broadcast per market** (keeps queued plans fresh against the pool head).
+  - **Engine honesty:** `RunarEngine` supports the broadcastable-today paths (deploy, plain buy, sell, resolve);
+    token-mint buy and multi-input redeem throw `EngineLimitation` → HTTP **501** with a pointer to BUG-005 and
+    the Phase-2 (sCrypt) unblock. Read ops and quotes work for everything.
+  - Security: the daemon may derive the PUBLIC funding address/pubkey from the WIF in-memory (address/pubkey are
+    public) for balance reads and `markets` provenance; the WIF is used to SIGN only in `authorizeAndBroadcast`,
+    never returned by an endpoint, logged, or persisted (Golden Rule 6).
+- Consequences: Claude can run the market end-to-end unattended; every spend is a one-line human authorize; the
+  Rúnar→sCrypt migration becomes a single new engine behind an unchanged API. Detailed sCrypt planning is a
+  follow-on pass once this lands.
+
+## ADR-016 · Pool state lives in SQLite (`pool_utxos` full state); broadcastable plain-buy method · Accepted · 2026-08-04
+- Context: The daemon needs a durable, multi-market home for pool state (the CLI used a single
+  `apps/spike/data/pool.json`). And the current `LMSRMarket.buyYes/buyNo` always mint a token via
+  `addRawOutput`, which `runar-sdk` cannot build (BUG-005) — so the *only* broadcastable buy is a state-only one.
+- Decisions:
+  - **`pool_utxos` becomes the full pool-state home** (migration `003_pool_state.sql`): added `collateral`,
+    `resolved`, `winner`, `locking_script`. One unspent row per market is the live pool head; the daemon advances
+    a new version per authorized spend and marks the previous spent — replacing `pool.json` (which stays only as
+    the legacy CLI's scratch file).
+  - **`broadcasts` sign-off queue** (migration `002_broadcasts.sql`): id, market_id, kind, summary, spend_sats,
+    `plan` (JSON `TxPlan`, public data only), status (pending→broadcast|rejected|failed), txid, error, timestamps.
+  - **Plain buy methods** `buyYesPlain`/`buyNoPlain` added to `LMSRMarket`: identical LMSR update + MM-safe charge
+    as `buyYes`/`buyNo` but a single continuation output (no mint) — the runar-sdk-broadcastable path (the exact
+    shape proven live, tx `7106f762…`). Under Rúnar the buyer's claim is tracked off-chain in `trades` (the
+    "documented-trust" model); on-chain minting returns in Phase 2 (sCrypt). VM tests assert a single output.
+- Consequences: pool lineage is queryable and multi-market; the autonomous loop create→deploy→buy→sell→resolve is
+  live-capable under Rúnar; token mint/redeem remain the documented Phase-2 gap.

@@ -1,0 +1,19 @@
+{
+  "name": "@pm/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@bsv/sdk": "^2.1.9",
+    "@pm/lmsr": "workspace:*",
+    "runar-compiler": "^0.4.6",
+    "runar-lang": "^0.4.6",
+    "runar-sdk": "^0.4.6",
+    "runar-testing": "^0.4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
+  }
+}

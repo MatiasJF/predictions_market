@@ -9,13 +9,36 @@ packages/
                                  price(), cost(), buy/sell deltas, b·ln2 max-loss, multiplicative state.
   contracts/    @pm/contracts   Rúnar StatefulSmartContract sources → compiled Bitcoin Script.
                                  counter (toolchain gate), then LMSRMarket. Thin: enforces what @pm/lmsr defines.
+  engine/       @pm/engine      THE SWAP SEAM. ChainEngine = compile + tx-building + broadcast, abstracted.
+                                 RunarEngine now (absorbs the proven mainnet.ts tx-building); ScryptEngine in
+                                 Phase 2 — same interface. MockEngine (no network) backs the daemon tests.
   persistence/  @pm/persistence SQLite: open/migrate + typed row access. The run's audit trail (not the ledger).
 apps/
-  spike/        CLI harness. Wires @pm/lmsr + @pm/contracts + @pm/persistence + @bsv/sdk to run experiments
+  daemon/       @pm/daemon      Long-running HTTP API (127.0.0.1). service.ts = HTTP-agnostic orchestration over
+                                 Db + ChainEngine; http.ts = thin router; server.ts = entrypoint. Drives markets
+                                 autonomously; state-changing ops park in the sign-off queue.
+  spike/        CLI harness. Wires @pm/lmsr + @pm/engine + @pm/persistence + @bsv/sdk to run experiments
                 (deploy a market, execute trades, resolve, redeem) and record results.
 ```
-Dependency direction: `apps/spike` → (`@pm/lmsr`, `@pm/contracts`, `@pm/persistence`). `@pm/lmsr` depends on
-nothing. Contracts depend only on Rúnar. No cycles.
+Dependency direction: `apps/{daemon,spike}` → (`@pm/engine`, `@pm/lmsr`, `@pm/persistence`); `@pm/engine` →
+(`@pm/lmsr`, Rúnar, `@bsv/sdk`). `@pm/lmsr` depends on nothing. No cycles. **Only `@pm/engine` imports Rúnar —**
+the daemon/service/DB never do, which is what makes the sCrypt swap a one-package change.
+
+## The API-as-seam (autonomous operation + engine swap)
+```
+HTTP (apps/daemon/http.ts, 127.0.0.1)   GET = answer now; state-changing = enqueue a broadcast
+        │
+MarketService (apps/daemon/service.ts)   markets, LMSR quotes, pool lineage, sign-off queue, DB effects
+        ├──► @pm/persistence  (markets, pool_utxos full-state, trades, tokens, broadcasts)
+        ├──► @pm/lmsr         (pure quote math — the ground truth)
+        ▼
+ChainEngine (@pm/engine)   ◄── RunarEngine (now)  →  ScryptEngine (Phase 2), same interface
+```
+**Sign-off queue (human gate):** a state-changing op builds a `TxPlan` (unsigned descriptor + DB effects, no
+keys) → `broadcasts` row `pending`. `POST /broadcasts/:id/authorize` is the ONLY place the funding WIF is used:
+the engine rebuilds+signs+broadcasts, then the service applies effects atomically and advances `pool_utxos`.
+Nothing reaches mainnet without an authorize call (ADR-010/015). Under Rúnar, deploy/plain-buy/sell/resolve are
+live-capable; token-mint buy and redeem return **501** (BUG-005) — the documented Phase-2 (sCrypt) boundary.
 
 ## The on-chain / off-chain boundary
 The chain is the real ledger; everything local is either ground-truth math or an audit trail.

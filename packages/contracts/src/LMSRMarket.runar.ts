@@ -102,6 +102,32 @@ export class LMSRMarket extends StatefulSmartContract {
     this.addRawOutput(tokenSats, cat(this.tokenCodeNo, cat(num2bin(1n, 8n), buyerPubKey)));
   }
 
+  /**
+   * State-only buy (no token mint) — YES. Identical LMSR update + MM-safe charge as `buyYes`, but emits a
+   * single continuation output (no `addRawOutput`). This is the runar-sdk-BROADCASTABLE buy path: the
+   * token-minting `buyYes` above needs a second `addRawOutput` output the SDK can't build (BUG-005), so on
+   * mainnet the buyer's YES claim is tracked off-chain (the DB `tokens`/`trades` lineage, "documented-trust"
+   * model) until Phase 2 (sCrypt) enables on-chain minting. This is the exact shape proven live (tx 7106f762…).
+   */
+  public buyYesPlain(paymentSats: bigint, outputSatoshis: bigint) {
+    assert(this.resolved == 0n);
+    const newEYes = mulDiv(this.eYes, this.mult, this.scale);
+    const sum = newEYes + this.eNo;
+    const charge = safediv(newEYes * this.payoutUnit + sum - 1n, sum);
+    assert(paymentSats >= charge);
+    this.addOutput(outputSatoshis, newEYes, this.eNo, this.qYes + this.unit, this.qNo, this.collateral + paymentSats, this.resolved, this.winner);
+  }
+
+  /** State-only buy (no token mint) — NO. Mirror of `buyYesPlain`; broadcastable under runar-sdk (see BUG-005). */
+  public buyNoPlain(paymentSats: bigint, outputSatoshis: bigint) {
+    assert(this.resolved == 0n);
+    const newENo = mulDiv(this.eNo, this.mult, this.scale);
+    const sum = this.eYes + newENo;
+    const charge = safediv(newENo * this.payoutUnit + sum - 1n, sum);
+    assert(paymentSats >= charge);
+    this.addOutput(outputSatoshis, this.eYes, newENo, this.qYes, this.qNo + this.unit, this.collateral + paymentSats, this.resolved, this.winner);
+  }
+
   public sellYes(outputSatoshis: bigint) {
     assert(this.resolved == 0n);
     assert(this.qYes >= this.unit);

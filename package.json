@@ -9,9 +9,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p apps/spike/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json && tsc --noEmit -p packages/engine/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p apps/spike/tsconfig.json && tsc --noEmit -p apps/daemon/tsconfig.json",
     "test": "vitest run",
-    "db:migrate": "node --import tsx apps/spike/src/migrate.ts"
+    "db:migrate": "node --import tsx packages/persistence/src/migrate-cli.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

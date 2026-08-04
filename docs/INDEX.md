@@ -27,14 +27,24 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain gate — stateful Counter contract | `packages/contracts/src/Counter.runar.ts` |
 | Rúnar gate test (compile + execute offline) | `packages/contracts/test/counter.gate.test.ts` |
 | Rúnar LMSR market contract (buy + sell + oracle resolve) | `packages/contracts/src/LMSRMarket.runar.ts` |
+| Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
+| **Swap seam: ChainEngine interface + TxPlan/PoolRef types** | `packages/engine/src/types.ts` |
+| RunarEngine (Rúnar tx-building behind the seam) | `packages/engine/src/runar.ts` |
+| MockEngine (no-network engine for tests) | `packages/engine/src/mock.ts` |
+| Market compile + setup (shared by CLI + daemon) | `packages/engine/src/market.ts` |
+| **HTTP daemon: service (orchestration)** | `apps/daemon/src/service.ts` |
+| HTTP daemon: router + JSON I/O (127.0.0.1) | `apps/daemon/src/http.ts` |
+| HTTP daemon: entrypoint (`pnpm --filter @pm/daemon dev`) | `apps/daemon/src/server.ts` |
+| HTTP daemon: service lifecycle tests (temp DB + MockEngine) | `apps/daemon/test/service.test.ts` |
 | YES/NO share token (fungible, transfer/split) | `packages/contracts/src/ShareToken.runar.ts` |
 | ShareToken tests | `packages/contracts/test/share-token.test.ts` |
 | LMSRMarket ↔ @pm/lmsr equivalence test | `packages/contracts/test/lmsr-market.test.ts` |
 | Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
 | Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |
 | Oracle Rabin-sig verification | `runar-lang/oracle#verifyRabinSig` |
-| SQLite migrations | `packages/persistence/migrations/` |
-| SQLite open/migrate helpers | `packages/persistence/src/db.ts` |
+| SQLite migrations (001 init · 002 broadcasts · 003 pool-state) | `packages/persistence/migrations/` |
+| SQLite open/migrate helpers + default DB path | `packages/persistence/src/db.ts` |
+| Migrate CLI (`pnpm db:migrate`) | `packages/persistence/src/migrate-cli.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |
 | Persistence package entry | `packages/persistence/src/index.ts` |
 | Market config: compile artifact + constructor args/state | `apps/spike/src/market.ts` |

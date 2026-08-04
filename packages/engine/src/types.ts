@@ -1,0 +1,132 @@
+// The swap seam. Everything toolchain-specific (compile, tx-building, broadcast) lives behind ChainEngine,
+// so the daemon/service/DB/LMSR-math never import runar-* directly. RunarEngine implements it now; a
+// ScryptEngine will implement the same interface in Phase 2 with zero API/service changes.
+import type { Side } from '@pm/lmsr';
+
+export type { Side };
+
+/** A funding/pool UTXO. `script` is the hex locking script ('' when a provider omits it — see BUG-001). */
+export interface Utxo {
+  txid: string;
+  outputIndex: number;
+  satoshis: number;
+  script: string;
+}
+
+/** Immutable per-market config (from the DB `markets` row). */
+export interface MarketConfig {
+  bUnits: bigint;      // liquidity parameter, in share-units
+  payoutUnit: bigint;  // sats a winning share redeems for
+}
+
+/** The 7 mutable state fields of a live LMSRMarket pool (all BigInt). */
+export interface PoolState {
+  eYes: bigint;
+  eNo: bigint;
+  qYes: bigint;
+  qNo: bigint;
+  collateral: bigint;
+  resolved: bigint;   // 0 | 1
+  winner: bigint;     // 0 = NO, 1 = YES
+}
+
+/** A live pool UTXO the engine can spend: outpoint + locking script + current mutable state. */
+export interface PoolRef {
+  txid: string;
+  vout: number;
+  satoshis: number;
+  lockingScript: string;
+  state: PoolState;
+}
+
+export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem';
+
+/** Result of a successful broadcast. `poolLockingScript` is the produced pool output's script (needed to spend it next). */
+export interface BroadcastResult {
+  txid: string;
+  poolLockingScript: string;
+}
+
+/**
+ * DB effects to apply AFTER a successful broadcast (the service fills in the real txid). Public data only —
+ * no key material. BigInt fields are decimal strings so the whole plan JSON-serializes into `broadcasts.plan`.
+ */
+export interface TxEffects {
+  /** New pool UTXO produced by this tx (all kinds emit one) — the full mutable state the service persists. */
+  pool: {
+    vout: number;
+    satoshis: number;
+    eYes: string;
+    eNo: string;
+    qYes: string;
+    qNo: string;
+    collateral: string;
+    resolved: 0 | 1;
+    winner: 0 | 1;
+    lockingScript: string;
+  };
+  /** Whether a previous pool version is consumed (true for everything except deploy). */
+  spendsPrevPool: boolean;
+  /** A trade row to record (buy/sell). */
+  trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number };
+  /** Market lifecycle transition to write onto the `markets` row. */
+  marketState?: 'deployed' | 'trading' | 'resolved';
+  /** Resolution outcome (resolve only). */
+  resolution?: Side;
+}
+
+/**
+ * A prepared, NOT-yet-broadcast transaction. `build` is an engine-private descriptor sufficient to rebuild +
+ * sign the exact tx at authorize time (no key material). The service stores the whole plan in `broadcasts.plan`
+ * and never inspects `build`.
+ */
+export interface TxPlan {
+  kind: BroadcastKind;
+  summary: string;    // human-readable, shown in the sign-off queue
+  spendSats: number;  // fee (+ any real sats moved) the spend will cost — a preview estimate
+  build: unknown;     // engine-specific, JSON-serializable
+  effects: TxEffects;
+}
+
+/**
+ * Thrown by a build* method when the current engine cannot transact that operation (e.g. runar-sdk BUG-005
+ * blocks token-minting buys and multi-input redeems). The service maps this to HTTP 501. `pointer` names the
+ * blocker + the path that unblocks it (Phase 2 / sCrypt).
+ */
+export class EngineLimitation extends Error {
+  constructor(
+    public readonly kind: BroadcastKind,
+    public readonly pointer: string,
+  ) {
+    super(`engine '${kind}' unsupported: ${pointer}`);
+    this.name = 'EngineLimitation';
+  }
+}
+
+/** The contract engine behind the API. Two implementations over time: RunarEngine (now), ScryptEngine (Phase 2). */
+export interface ChainEngine {
+  readonly name: string;
+
+  /** Public funding address (derived from the WIF in-memory; the address is public, the key never leaves). */
+  fundingAddress(): Promise<string>;
+  /** Public funding key (compressed hex) — for the `markets.platform_key_id` provenance ref. */
+  fundingPublicKey(): Promise<string>;
+  /** Opaque public oracle identifier (Rúnar: the Rabin modulus hex) — for the `markets.oracle_key_id` ref. */
+  oracleId(): string;
+  /** Read UTXOs for an address (read-only chain query). */
+  getUtxos(address: string): Promise<Utxo[]>;
+
+  // ── build* : compute the LMSR update + a TxPlan. NO chain writes, NO key use. Throw EngineLimitation if unsupported.
+  buildDeploy(cfg: MarketConfig, deploySats: number): Promise<TxPlan>;
+  buildBuy(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
+  buildSell(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
+  buildResolve(cfg: MarketConfig, pool: PoolRef, outcome: Side): Promise<TxPlan>;
+  buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
+
+  /**
+   * THE ONLY method that loads the funding key, signs, and broadcasts. Rebuilds the exact tx from `plan.build`,
+   * signs the funding input(s), broadcasts to mainnet, returns txid + produced pool script. Called only by the
+   * authorize path.
+   */
+  authorizeAndBroadcast(plan: TxPlan): Promise<BroadcastResult>;
+}

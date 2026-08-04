@@ -3,9 +3,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_DIR = join(HERE, '..', 'migrations');
+const REPO_ROOT = join(HERE, '..', '..', '..');
 
 export type Db = Database.Database;
+
+/** Default spike DB path: PM_DB_PATH env, else <repo>/data/spike.db. Public data only (Golden Rule 6). */
+export const defaultDbPath = (): string => process.env.PM_DB_PATH ?? join(REPO_ROOT, 'data', 'spike.db');
 
 /** Open (creating if needed) the spike SQLite DB with sane pragmas. */
 export function openDb(path: string): Db {

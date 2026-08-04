@@ -6,6 +6,8 @@ export type Network = 'testnet' | 'mainnet';
 export type KeyRole = 'platform' | 'oracle' | 'user';
 export type Side = 'yes' | 'no';
 export type TradeAction = 'buy' | 'sell';
+export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem';
+export type BroadcastStatus = 'pending' | 'broadcast' | 'rejected' | 'failed';
 export type MarketState =
   | 'imported' | 'reviewed' | 'deployed' | 'trading' | 'closed'
   | 'awaiting_result' | 'resolved' | 'settled' | 'voided' | 'refunded';
@@ -51,6 +53,11 @@ export interface PoolUtxoRow {
   e_no: string;
   spent: 0 | 1;
   created_at: string;
+  // Added in 003_pool_state — the rest of the LMSRMarket mutable state + the continuation script:
+  collateral: string;          // BigInt as decimal string
+  resolved: 0 | 1;
+  winner: 0 | 1;               // 0 = NO, 1 = YES
+  locking_script: string | null;
 }
 
 export interface TradeRow {
@@ -78,6 +85,20 @@ export interface TokenRow {
   owner_key_id: number | null;
   burned: 0 | 1;
   created_at: string;
+}
+
+export interface BroadcastRow {
+  id: number;
+  market_id: number | null;
+  kind: BroadcastKind;
+  summary: string;
+  spend_sats: number;
+  plan: string;       // JSON TxPlan (see @pm/engine) — contains NO key material
+  status: BroadcastStatus;
+  txid: string | null;
+  error: string | null;
+  created_at: string;
+  decided_at: string | null;
 }
 
 /** BigInt <-> DB TEXT boundary helpers. */

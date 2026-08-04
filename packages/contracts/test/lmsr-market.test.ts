@@ -157,6 +157,39 @@ describe('CONTRACT-002 — LMSRMarket buy() in Rúnar matches the @pm/lmsr refer
   });
 });
 
+describe('API-002 — LMSRMarket buyYesPlain/buyNoPlain (broadcastable state-only buy, no token mint)', () => {
+  it('buyYesPlain: same reference state as buyYes, but emits a SINGLE output (no token)', () => {
+    const s0 = initState(p);
+    const s1 = applyUnitBuy(s0, 'yes', MULT, p);
+    const charge = buyChargeApproxSats(s1, 'yes', p.unit, p);
+
+    const res = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE)
+      .call('buyYesPlain', { paymentSats: charge, outputSatoshis: 1n });
+    expect(res.success, res.error).toBe(true);
+    expect(res.outputs.length, 'plain buy must emit exactly one (pool) output — no addRawOutput token').toBe(1);
+    const o = res.outputs[0]!;
+    expect(bn(o.eYes)).toBe(s1.eYes);
+    expect(bn(o.qYes)).toBe(p.unit);
+    expect(bn(o.collateral)).toBe(COLLATERAL0 + charge);
+  });
+
+  it('buyNoPlain: symmetric, single output, exact charge enforced (charge−1 → fail)', () => {
+    const s0 = initState(p);
+    const s1 = applyUnitBuy(s0, 'no', MULT, p);
+    const charge = buyChargeApproxSats(s1, 'no', p.unit, p);
+
+    const ok = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE)
+      .call('buyNoPlain', { paymentSats: charge, outputSatoshis: 1n });
+    expect(ok.success, ok.error).toBe(true);
+    expect(ok.outputs.length).toBe(1);
+    expect(bn(ok.outputs[0]!.eNo)).toBe(s1.eNo);
+
+    const under = TestContract.fromSource(source, contractState(s0, COLLATERAL0), FILE)
+      .call('buyNoPlain', { paymentSats: charge - 1n, outputSatoshis: 1n });
+    expect(under.success, 'underpayment (charge−1) must be rejected').toBe(false);
+  });
+});
+
 describe('CONTRACT-003 — LMSRMarket sell() in Rúnar matches the @pm/lmsr reference', () => {
   it('sellYes: output state equals the reference inverse update, collateral −= proceeds', () => {
     // Build a stocked YES position first, then sell one unit back.

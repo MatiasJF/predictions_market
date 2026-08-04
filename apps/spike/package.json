@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@bsv/sdk": "^2.1.9",
+    "@pm/engine": "workspace:*",
     "@pm/lmsr": "workspace:*",
     "runar-compiler": "^0.4.6",
     "runar-lang": "^0.4.6",
