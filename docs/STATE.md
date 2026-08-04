@@ -163,6 +163,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   resolve `c7e4c5fccb4805fc19629b0331bc69cf5425f899934e42103c307bc2e64875e3`. **The autonomous-mainnet-via-daemon
   vision is realized.** Redeem (4th pool tx) awaits the deploy's 1st confirmation (pool chain 4×26 KB > 101 KB
   ancestor limit). Fees stayed low (~238 sat for 3 txs); ~49,762 sat remains for redeem.
+  **FEE-CONTROL FINDING:** setting `bsv.Transaction.FEE_PER_KB = 250` did NOT take effect — the sCrypt-built
+  txs went out at ~0.003 sat/byte, so miners skip them (the user's funding tx, at a normal wallet fee, confirmed
+  fine in block 960854). The pool txs won't confirm, so redeem (needs deploy confirmed) is blocked. **For a
+  platform, fee control must be fixed** — `FEE_PER_KB` isn't the knob sCrypt's tx-builder honors; needs an
+  explicit per-tx fee in the custom builders / provider config (+ CPFP to rescue stuck txs). This + the mempool-
+  ancestor limit + single-UTXO pool chain are the concrete throughput/fee items for productionizing the platform.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`
