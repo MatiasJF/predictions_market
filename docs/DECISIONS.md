@@ -303,3 +303,22 @@ Template:
   `@pm/lmsr` reference** (underpayment rejected) — the buy that NULLFAILed on Rúnar mainnet passes under sCrypt.
 - Consequences: the engine swap is a new `ScryptEngine implements ChainEngine`; the daemon/service/DB/HTTP/queue
   are untouched. The Rúnar engine stays for side-by-side comparison; `PM_ENGINE` selects at runtime.
+
+## ADR-019 · Concurrency: off-chain execution + on-chain batched LMSR settlement · Accepted · 2026-08-04
+- Context: the single-market lifecycle is proven + confirmed on mainnet, but the market is ONE pool UTXO —
+  concurrent trades contend for the same UTXO (only one spend is valid per version), so trading is inherently
+  serial. Mainnet numbers: a stateful spend is ~93 KB; BSV's ~101 KB unconfirmed-ancestor budget ⇒ ~1
+  unconfirmed trade at a time ⇒ naive on-chain trading is ~1 trade/block. Cannot serve concurrent users.
+- Options: (a) pure on-chain serial (too slow) · (b) sharded/parallel pools (**rejected** — LMSR needs a single
+  global `q`; sharding breaks pricing) · (c) off-chain match + on-chain settle · (d) batched on-chain · (e) state
+  channels (**rejected** — N-party market ≠ 2-party channel).
+- Decision: **(c)+(d) — an app-specific-rollup shape.** Execute trades OFF-chain over `@pm/lmsr` (authoritative,
+  in-memory, instant fills, signed receipts) so concurrency is serialized off-chain with no UTXO contention;
+  SETTLE on-chain in **batches** — one pool-version tx advances the net LMSR state + mints/burns the batch's
+  ShareTokens (the multi-output tx already proven on mainnet), one writer (the sequencer) to the pool UTXO.
+  Trust is tunable and hardened over time: custodial+receipts (MVP) → operator bond + fraud proofs → on-chain
+  validity check (trustless), the last reusing the spike's proven on-chain LMSR-state verification.
+- Consequences: interactive trading latency + high throughput (off-chain), amortized sub-cent settlement cost;
+  the pool contract/`ScryptEngine`/daemon/`@pm/lmsr`/`@pm/persistence` are all reused (extend one-trade-per-tx →
+  one-batch-per-tx). Resolves the project's founding native-vs-off-chain tension as a **synthesis**: off-chain
+  execution + native on-chain settlement. Full rationale + phased build (CONC-001..005) in `docs/CONCURRENCY.md`.

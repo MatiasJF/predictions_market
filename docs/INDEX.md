@@ -7,6 +7,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 |---|---|
 | Boot file / read-order / golden rules | `CLAUDE.md` |
 | **Feasibility verdict (the deliverable)** | `docs/VERDICT.md` |
+| **Concurrency & platform architecture (ADR-019)** | `docs/CONCURRENCY.md` |
 | Living state + task board | `docs/STATE.md` |
 | This map | `docs/INDEX.md` |
 | Decision log (ADRs) | `docs/DECISIONS.md` |
