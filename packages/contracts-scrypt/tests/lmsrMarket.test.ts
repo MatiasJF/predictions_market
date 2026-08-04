@@ -11,7 +11,7 @@ import {
 } from 'scrypt-ts'
 import { LMSRMarket } from '../src/contracts/lmsrMarket'
 import { localSigner } from './utils/signer'
-import { oracleN, signOutcome } from './utils/oracle'
+import { oracleN, signOutcome } from '../src/oracle'
 
 /** Assert an async call rejects (no chai-as-promised dependency). */
 async function expectReject(fn: () => Promise<unknown>): Promise<void> {

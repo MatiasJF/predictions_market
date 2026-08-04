@@ -14,5 +14,6 @@
     "declaration": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests/fixtures/gen-vectors.ts"]
 }

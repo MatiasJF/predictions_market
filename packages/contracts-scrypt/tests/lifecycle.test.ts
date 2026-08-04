@@ -3,7 +3,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { runLifecycle } from '../src/lifecycle'
 import { localSigner } from './utils/signer'
-import { oracleN, signOutcome } from './utils/oracle'
+import { oracleN, signOutcome } from '../src/oracle'
 
 const V = JSON.parse(
     readFileSync(join(__dirname, 'fixtures', 'vectors.json'), 'utf8')

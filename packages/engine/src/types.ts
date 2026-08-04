@@ -15,8 +15,11 @@ export interface Utxo {
 
 /** Immutable per-market config (from the DB `markets` row). */
 export interface MarketConfig {
+  marketId: number;    // the DB market id (used by engines that key on-chain state per market)
   bUnits: bigint;      // liquidity parameter, in share-units
   payoutUnit: bigint;  // sats a winning share redeems for
+  mult: bigint;        // exp(unit/b)·WAD — precomputed by the service (@pm/lmsr); RunarEngine recomputes its own
+  invMult: bigint;     // exp(−unit/b)·WAD
 }
 
 /** The 7 mutable state fields of a live LMSRMarket pool (all BigInt). */

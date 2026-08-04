@@ -6,7 +6,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { bsv, DefaultProvider, TestWallet } from 'scrypt-ts'
 import { runLifecycle } from './src/lifecycle'
-import { oracleN, signOutcome } from './tests/utils/oracle'
+import { oracleN, signOutcome } from './src/oracle'
 
 function fundingWif(): string {
     const env = readFileSync(join(__dirname, '..', '..', '.env'), 'utf8')

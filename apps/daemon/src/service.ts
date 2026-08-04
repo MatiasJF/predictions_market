@@ -303,7 +303,12 @@ export class MarketService {
 }
 
 // ── pure helpers ──────────────────────────────────────────────────────────────────────────────────────
-const cfgOf = (m: MarketRow): MarketConfig => ({ bUnits: BigInt(m.b) / BigInt(m.scale), payoutUnit: BigInt(m.payout_unit) });
+const cfgOf = (m: MarketRow): MarketConfig => {
+  const bUnits = BigInt(m.b) / BigInt(m.scale);
+  const payoutUnit = BigInt(m.payout_unit);
+  const p: MarketParams = { b: bUnits * WAD, payoutUnit, unit: WAD };
+  return { marketId: m.id, bUnits, payoutUnit, mult: unitMultiplier(p), invMult: unitInverseMultiplier(p) };
+};
 const paramsOf = (cfg: MarketConfig): MarketParams => ({ b: cfg.bUnits * WAD, payoutUnit: cfg.payoutUnit, unit: WAD });
 const poolStateToMarketState = (r: PoolUtxoRow): MarketState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no) });
 const poolFullState = (r: PoolUtxoRow): PoolState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no), collateral: BigInt(r.collateral), resolved: BigInt(r.resolved), winner: BigInt(r.winner) });

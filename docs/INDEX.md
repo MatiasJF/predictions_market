@@ -30,6 +30,11 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **sCrypt LMSR market contract (Phase 2 port)** | `packages/contracts-scrypt/src/contracts/lmsrMarket.ts` |
 | sCrypt local verify + `@pm/lmsr` equivalence tests | `packages/contracts-scrypt/tests/lmsrMarket.test.ts` |
 | sCrypt equivalence-vector generator (from `@pm/lmsr`) | `packages/contracts-scrypt/tests/fixtures/gen-vectors.ts` |
+| sCrypt full-lifecycle module (deploy→buy→resolve→redeem) | `packages/contracts-scrypt/src/lifecycle.ts` |
+| **sCrypt implementation of ChainEngine (daemon PM_ENGINE=scrypt)** | `packages/contracts-scrypt/src/scryptEngine.ts` |
+| sCrypt mock Rabin oracle (sign/verify) | `packages/contracts-scrypt/src/oracle.ts` |
+| Gated mainnet lifecycle runner | `packages/contracts-scrypt/mainnet-lifecycle.ts` |
+| Daemon engine selector (`PM_ENGINE=runar\|scrypt`) | `apps/daemon/src/server.ts` |
 | sCrypt package build/why-npm-isolated | `packages/contracts-scrypt/README.md` |
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
 | **Swap seam: ChainEngine interface + TxPlan/PoolRef types** | `packages/engine/src/types.ts` |

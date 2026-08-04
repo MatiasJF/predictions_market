@@ -2,3 +2,4 @@
 export { LMSRMarket } from './contracts/lmsrMarket'
 export { ShareToken } from './contracts/shareToken'
 export { runLifecycle, type LifecycleParams, type LifecycleResult } from './lifecycle'
+export { ScryptEngine } from './scryptEngine'

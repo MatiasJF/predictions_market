@@ -15,9 +15,15 @@ pnpm db:migrate                       # apply migrations (PM_DB_PATH or default 
 pnpm --filter @pm/daemon dev          # start the daemon (127.0.0.1:8787)
 ```
 
-Env: `PM_DB_PATH` (DB file), `PM_PORT` (default 8787), `PM_NETWORK` (default `mainnet`). The funding key lives
-only in the git-ignored `.env` (`PM_FUNDING_WIF`) and is read **only** by the authorize path — never returned,
-logged, or stored. The server binds `127.0.0.1` only.
+Env: `PM_DB_PATH` (DB file), `PM_PORT` (default 8787), `PM_ENGINE` (`runar` default | `scrypt`), `PM_NETWORK`
+(runar: `mainnet`|`testnet`; scrypt: `mainnet`|`local`). The funding key lives only in the git-ignored `.env`
+(`PM_FUNDING_WIF`) and is read **only** by the authorize path — never returned, logged, or stored. The server
+binds `127.0.0.1` only.
+
+**Engine swap:** the same API/queue drives either contract toolchain behind the `ChainEngine` seam. `PM_ENGINE=scrypt`
+loads the sCrypt engine (`packages/contracts-scrypt`, built to `dist/` — run `npm --prefix packages/contracts-scrypt
+run build` first); `PM_NETWORK=local` runs it offline (DummyProvider). Example — the full lifecycle over curl on
+sCrypt: `create → deploy → buy → resolve → redeem`, each `POST …` then `POST /broadcasts/:id/authorize`.
 
 ## Security model (Golden Rule 6 / ADR-010)
 
