@@ -174,9 +174,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   continuity per market). `MarketConfig` gained `marketId/mult/invMult` (service computes via `@pm/lmsr`).
   Verified: `PM_ENGINE=scrypt PM_NETWORK=local` daemon drove **create → deploy → buy+mint → resolve → redeem**
   end-to-end over curl (4 authorized broadcasts; pool lineage v0→v3; final state resolved/winner=YES; positions
-  booked). Root suite 72 green, sCrypt 8 green. buyNo/sell not yet in the sCrypt daemon path (EngineLimitation →
-  501; symmetric, port next). **Phase 2 COMPLETE** — sCrypt runs live on mainnet (SCRYPT-004) and through the
-  autonomous API (SCRYPT-003).
+  booked). Root suite 72 green, sCrypt 8 green. **Full both-sides port done:** added contract `buyNoWithToken` +
+  `redeemNo`; the sCrypt engine now drives **buyYes/buyNo, sellYes/sellNo, resolve YES/NO, redeem YES/NO** through
+  the API — verified over curl: deploy→buyYes→buyNo→sellYes→sellNo→resolve NO→redeem NO (pool v0→v6, resolved/NO).
+  Only remaining sCrypt-path gap: multi-share per call (bounded-loop port). **Phase 2 COMPLETE** — sCrypt runs
+  live on mainnet (SCRYPT-004) and fully through the autonomous API (SCRYPT-003).
 - ● SCRYPT-004 — **GATED MAINNET LIFECYCLE — DONE. The FULL loop is LIVE on BSV mainnet under sCrypt** (user-
   authorized broadcast, 2026-08-04): deploy `83684ab5…de8cf63` → **buy+mint** `a74ae982…f15f10a40` (3 outputs:
   pool+token+change, charge 525) → **resolve** `a3d01cd5…c796b0a89` (Rabin YES) → **redeem** `a3126fdc…25db580c`

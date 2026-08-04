@@ -61,9 +61,10 @@ const poolEffect = (s: PoolState): TxEffects['pool'] => ({
 })
 
 interface DeployBuild { kind: 'deploy'; marketId: number; cfg: { mult: string; invMult: string; payoutUnit: string } }
-interface BuyBuild { kind: 'buy'; marketId: number; charge: string }
+interface BuyBuild { kind: 'buy'; marketId: number; side: Side; charge: string }
+interface SellBuild { kind: 'sell'; marketId: number; side: Side }
 interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side }
-interface RedeemBuild { kind: 'redeem'; marketId: number; supply: string }
+interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string }
 
 export class ScryptEngine {
     readonly name: string = 'scrypt'
@@ -122,16 +123,39 @@ export class ScryptEngine {
     }
 
     async buildBuy(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
-        if (side !== 'yes' || shares !== 1n) throw new EngineLimitation('buy', 'the sCrypt daemon path currently mints YES, 1 share/call (buyNo/multi-share are symmetric — port next).')
-        const newEYes = (pool.state.eYes * cfg.mult) / WAD
-        const charge = ceilDiv(newEYes * cfg.payoutUnit, newEYes + pool.state.eNo)
-        const s: PoolState = { eYes: newEYes, eNo: pool.state.eNo, qYes: pool.state.qYes + WAD, qNo: pool.state.qNo, collateral: pool.state.collateral + charge, resolved: 0n, winner: 0n }
-        const build: BuyBuild = { kind: 'buy', marketId: cfg.marketId, charge: charge.toString() }
-        return { kind: 'buy', summary: `buy 1 YES + mint token → charge ${charge} sat`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, trade: { side: 'yes', action: 'buy', shares: WAD.toString(), costSats: Number(charge) }, marketState: 'trading' } }
+        if (shares !== 1n) throw new EngineLimitation('buy', 'the sCrypt daemon path buys 1 share/call (multi-share is a bounded-loop port).')
+        let s: PoolState
+        let charge: bigint
+        if (side === 'yes') {
+            const newEYes = (pool.state.eYes * cfg.mult) / WAD
+            charge = ceilDiv(newEYes * cfg.payoutUnit, newEYes + pool.state.eNo)
+            s = { eYes: newEYes, eNo: pool.state.eNo, qYes: pool.state.qYes + WAD, qNo: pool.state.qNo, collateral: pool.state.collateral + charge, resolved: 0n, winner: 0n }
+        } else {
+            const newENo = (pool.state.eNo * cfg.mult) / WAD
+            charge = ceilDiv(newENo * cfg.payoutUnit, pool.state.eYes + newENo)
+            s = { eYes: pool.state.eYes, eNo: newENo, qYes: pool.state.qYes, qNo: pool.state.qNo + WAD, collateral: pool.state.collateral + charge, resolved: 0n, winner: 0n }
+        }
+        const build: BuyBuild = { kind: 'buy', marketId: cfg.marketId, side, charge: charge.toString() }
+        return { kind: 'buy', summary: `buy 1 ${side.toUpperCase()} + mint token → charge ${charge} sat`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, trade: { side, action: 'buy', shares: WAD.toString(), costSats: Number(charge) }, marketState: 'trading' } }
     }
 
-    async buildSell(_cfg: MarketConfig, _pool: PoolRef, _side: Side, _shares: bigint): Promise<TxPlan> {
-        throw new EngineLimitation('sell', 'sell is not wired into the sCrypt daemon path yet (the contract has sellYes/sellNo; port next).')
+    async buildSell(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
+        if (shares !== 1n) throw new EngineLimitation('sell', 'the sCrypt daemon path sells 1 share/call.')
+        const held = side === 'yes' ? pool.state.qYes : pool.state.qNo
+        if (held < WAD) throw new Error(`pool has no outstanding ${side.toUpperCase()} to sell`)
+        let s: PoolState
+        let proceeds: bigint
+        if (side === 'yes') {
+            const newEYes = (pool.state.eYes * cfg.invMult) / WAD
+            proceeds = (newEYes * cfg.payoutUnit) / (newEYes + pool.state.eNo) // floor
+            s = { eYes: newEYes, eNo: pool.state.eNo, qYes: pool.state.qYes - WAD, qNo: pool.state.qNo, collateral: pool.state.collateral - proceeds, resolved: 0n, winner: 0n }
+        } else {
+            const newENo = (pool.state.eNo * cfg.invMult) / WAD
+            proceeds = (newENo * cfg.payoutUnit) / (pool.state.eYes + newENo)
+            s = { eYes: pool.state.eYes, eNo: newENo, qYes: pool.state.qYes, qNo: pool.state.qNo - WAD, collateral: pool.state.collateral - proceeds, resolved: 0n, winner: 0n }
+        }
+        const build: SellBuild = { kind: 'sell', marketId: cfg.marketId, side }
+        return { kind: 'sell', summary: `sell 1 ${side.toUpperCase()} → proceeds ${proceeds} sat`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, trade: { side, action: 'sell', shares: WAD.toString(), costSats: Number(proceeds) }, marketState: 'trading' } }
     }
 
     async buildResolve(cfg: MarketConfig, pool: PoolRef, outcome: Side): Promise<TxPlan> {
@@ -141,11 +165,11 @@ export class ScryptEngine {
     }
 
     async buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
-        if (side !== 'yes') throw new EngineLimitation('redeem', 'the sCrypt daemon path currently redeems YES winners (redeemNo is symmetric — port next).')
+        if (pool.state.resolved !== 1n) throw new Error('market not resolved')
         const payout = shares * cfg.payoutUnit
         const s: PoolState = { ...pool.state, collateral: pool.state.collateral - payout }
-        const build: RedeemBuild = { kind: 'redeem', marketId: cfg.marketId, supply: shares.toString() }
-        return { kind: 'redeem', summary: `redeem ${shares} YES → pay winner ${payout} sat`, spendSats: Number(payout) + 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true } }
+        const build: RedeemBuild = { kind: 'redeem', marketId: cfg.marketId, side, supply: shares.toString() }
+        return { kind: 'redeem', summary: `redeem ${shares} ${side.toUpperCase()} → pay winner ${payout} sat`, spendSats: Number(payout) + 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true } }
     }
 
     // ── authorizeAndBroadcast (the only key use / broadcast) ──────────────────────────────────────────────
@@ -154,6 +178,7 @@ export class ScryptEngine {
         const kind = (plan.build as { kind: string }).kind
         if (kind === 'deploy') return this.execDeploy(plan.build as DeployBuild)
         if (kind === 'buy') return this.execBuy(plan.build as BuyBuild)
+        if (kind === 'sell') return this.execSell(plan.build as SellBuild)
         if (kind === 'resolve') return this.execResolve(plan.build as ResolveBuild)
         if (kind === 'redeem') return this.execRedeem(plan.build as RedeemBuild)
         throw new Error(`sCrypt engine: unknown plan kind '${kind}'`)
@@ -172,11 +197,12 @@ export class ScryptEngine {
         if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId} (deploy first)`)
         const charge = BigInt(b.charge)
         const buyer = await this.selfPkh()
+        const method = b.side === 'yes' ? 'buyYesWithToken' : 'buyNoWithToken'
         let captured!: LMSRMarket
-        current.bindTxBuilder('buyYesWithToken', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, paymentSats: bigint, buyerArg: PubKeyHash, tokenSats: bigint): Promise<ContractTransaction> => {
+        current.bindTxBuilder(method, async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, paymentSats: bigint, buyerArg: PubKeyHash, tokenSats: bigint): Promise<ContractTransaction> => {
             const next = cur.next()
-            next.eYes = (cur.eYes * cur.mult) / cur.scale
-            next.qYes = cur.qYes + cur.unit
+            if (b.side === 'yes') { next.eYes = (cur.eYes * cur.mult) / cur.scale; next.qYes = cur.qYes + cur.unit }
+            else { next.eNo = (cur.eNo * cur.mult) / cur.scale; next.qNo = cur.qNo + cur.unit }
             next.collateral = cur.collateral + paymentSats
             const tokenScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(buyerArg))
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
@@ -186,9 +212,25 @@ export class ScryptEngine {
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
         })
-        const res = await current.methods.buyYesWithToken(charge, buyer, BigInt(TOKEN_SATS), { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
+        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
+        const res = await call(charge, buyer, BigInt(TOKEN_SATS), { changeAddress: await this.signer().getDefaultAddress() })
         this.instances.set(b.marketId, captured)
         return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+    }
+
+    private async execSell(b: SellBuild): Promise<BroadcastResult> {
+        const current = this.instances.get(b.marketId)
+        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const next = current.next()
+        if (b.side === 'yes') { next.eYes = (current.eYes * current.invMult) / current.scale; next.qYes = current.qYes - current.unit }
+        else { next.eNo = (current.eNo * current.invMult) / current.scale; next.qNo = current.qNo - current.unit }
+        const newE = b.side === 'yes' ? next.eYes : next.eNo
+        next.collateral = current.collateral - (newE * current.payoutUnit) / (next.eYes + next.eNo)
+        const method = b.side === 'yes' ? 'sellYes' : 'sellNo'
+        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
+        const res = await call({ next: { instance: next, balance: current.balance } })
+        this.instances.set(b.marketId, next)
+        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
     }
 
     private async execResolve(b: ResolveBuild): Promise<BroadcastResult> {
@@ -209,8 +251,9 @@ export class ScryptEngine {
         if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
         const supply = BigInt(b.supply)
         const winner = await this.selfPkh()
+        const method = b.side === 'yes' ? 'redeemYes' : 'redeemNo'
         let captured!: LMSRMarket
-        current.bindTxBuilder('redeemYes', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, supplyArg: bigint, winnerArg: PubKeyHash): Promise<ContractTransaction> => {
+        current.bindTxBuilder(method, async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, supplyArg: bigint, winnerArg: PubKeyHash): Promise<ContractTransaction> => {
             const next = cur.next()
             next.collateral = cur.collateral - supplyArg * cur.payoutUnit
             const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(winnerArg))
@@ -221,7 +264,8 @@ export class ScryptEngine {
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
         })
-        const res = await current.methods.redeemYes(supply, winner, { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
+        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
+        const res = await call(supply, winner, { changeAddress: await this.signer().getDefaultAddress() })
         this.instances.set(b.marketId, captured)
         return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }

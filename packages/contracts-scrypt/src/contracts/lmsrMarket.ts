@@ -204,4 +204,37 @@ export class LMSRMarket extends SmartContract {
             this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }
+
+    /** BUY NO + mint a claim ticket (multi-output). Mirror of `buyYesWithToken` on the NO side. */
+    @method()
+    public buyNoWithToken(paymentSats: bigint, buyer: PubKeyHash, tokenSats: bigint) {
+        assert(this.resolved == 0n, 'resolved')
+        this.eNo = (this.eNo * this.mult) / this.scale
+        const sum = this.eYes + this.eNo
+        const charge = (this.eNo * this.payoutUnit + sum - 1n) / sum
+        assert(paymentSats >= charge, 'underpaid')
+        this.qNo += this.unit
+        this.collateral += paymentSats
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
+            this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
+
+    /** REDEEM a winning NO position (multi-output). Mirror of `redeemYes`; requires winner == NO. */
+    @method()
+    public redeemNo(supply: bigint, winner: PubKeyHash) {
+        assert(this.resolved == 1n, 'not resolved')
+        assert(this.winner == 0n, 'NO did not win')
+        assert(supply > 0n, 'no shares')
+        const payout = supply * this.payoutUnit
+        assert(this.collateral >= payout, 'insolvent')
+        this.collateral -= payout
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildPublicKeyHashOutput(winner, payout) +
+            this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
 }
