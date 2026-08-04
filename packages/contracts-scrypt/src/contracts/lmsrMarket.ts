@@ -6,6 +6,8 @@ import {
     SmartContract,
     hash256,
     int2ByteString,
+    Utils,
+    PubKeyHash,
 } from 'scrypt-ts'
 import { RabinPubKey, RabinSig, RabinVerifier } from 'scrypt-ts-lib'
 
@@ -156,6 +158,50 @@ export class LMSRMarket extends SmartContract {
         this.winner = outcome
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
+
+    /**
+     * BUY YES + mint a claim ticket to the buyer in the SAME tx (multi-output). Emits: pool continuation +
+     * a P2PKH "token" UTXO to the buyer (`tokenSats`, a dust claim ticket) + change. This 3-output spend is
+     * exactly what runar-sdk could not build (BUG-005); sCrypt builds it natively. The buyer's YES position is
+     * also recorded off-chain in the trades ledger (documented-trust) — the on-chain ticket proves the mint.
+     */
+    @method()
+    public buyYesWithToken(paymentSats: bigint, buyer: PubKeyHash, tokenSats: bigint) {
+        assert(this.resolved == 0n, 'resolved')
+        this.eYes = (this.eYes * this.mult) / this.scale
+        const sum = this.eYes + this.eNo
+        const charge = (this.eYes * this.payoutUnit + sum - 1n) / sum
+        assert(paymentSats >= charge, 'underpaid')
+        this.qYes += this.unit
+        this.collateral += paymentSats
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
+            this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
+
+    /**
+     * REDEEM a winning YES position (multi-output). Requires the market resolved with winner == YES. Pays the
+     * winner `supply × payoutUnit` sats via a P2PKH payout output, reduces the pool collateral, and continues
+     * the pool. Emits: reduced pool + winner payout + change — the multi-output payout runar-sdk could not
+     * build (BUG-005). Documented-trust (spike): the pool trusts the supplied supply/winner; production needs
+     * SPV/pushdata verification of a co-spent token (see VERDICT).
+     */
+    @method()
+    public redeemYes(supply: bigint, winner: PubKeyHash) {
+        assert(this.resolved == 1n, 'not resolved')
+        assert(this.winner == 1n, 'YES did not win')
+        assert(supply > 0n, 'no shares')
+        const payout = supply * this.payoutUnit
+        assert(this.collateral >= payout, 'insolvent')
+        this.collateral -= payout
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildPublicKeyHashOutput(winner, payout) +
+            this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }
 }

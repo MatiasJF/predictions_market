@@ -152,9 +152,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   props) AND **buy/sell verify locally + match the `@pm/lmsr` reference** (4 mocha tests; underpayment
   rejected). sCrypt local verify runs the **real node Script** → green ⇒ mainnet-valid (closes BUG-006). The buy
   that NULLFAILed on Rúnar mainnet passes here. `vitest.config.ts` excludes the package (it runs its own mocha).
-  **Remaining:** `ShareToken` + token mint in buy (multi-output) + `redeem` (multi-input) — the BUG-005 unblock;
-  a Rabin-oracle `resolve` test; multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run
-  compile && … test`; regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
+  **Multi-output BUG-005 unblock:** `ShareToken` (transfer/burn) compiles; `LMSRMarket.buyYesWithToken` (mint a
+  claim ticket — pool state + P2PKH token + change) and `redeemYes` (winner payout — reduced pool + P2PKH
+  payout + change) **compile** — the 3-output spends runar-sdk physically couldn't build. Building+verifying the
+  multi-output tx uses sCrypt's custom tx-builder, which is the `ScryptEngine`'s job → done in SCRYPT-002.
+  **Remaining:** the end-to-end multi-output tx test (with the engine), a Rabin-oracle `resolve` test, NO-side
+  mint/redeem, multi-share bounded loop. Build: `npm --prefix packages/contracts-scrypt run compile && … test`;
+  regen vectors via `npx tsx packages/contracts-scrypt/tests/fixtures/gen-vectors.ts`.
 - ○ SCRYPT-002 — `ScryptEngine implements ChainEngine` (deploy/buy+mint/sell/resolve/redeem; robust broadcast +
   funding chaining). Token-mint buy + multi-input redeem become live (the Rúnar 501s).
 - ○ SCRYPT-003 — `PM_ENGINE=scrypt|runar` swap in the daemon; full service suite + local curl loop incl. redeem.
