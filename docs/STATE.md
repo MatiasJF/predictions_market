@@ -191,6 +191,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   is THE thing to solve: slim the pool Script dramatically, or reconsider architecture for high-frequency trading
   (this is a genuine input to the native-on-chain-vs-off-chain decision — the spike proved native works; this
   shows its per-trade cost). Not a bug — a fundamental cost property of the design.
+  **Confirmation context:** the proper-fee deploy/buy are 0-conf largely because BSV was in a **block drought**
+  (tip 960855 mined ~57 min before the check; even the user's normal-fee funding tx `ff0d5d47` is 0-conf) — so
+  the earlier confirmation delays were partly chain-wide slow blocks, not purely fees. Proper-fee txs should
+  confirm when a block is mined. Net: fee control is fixed; the durable blocker is the **contract economics**
+  (≈93 KB/trade), whose fix is **slimming the pool Script** — the #1 platform engineering task.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`
