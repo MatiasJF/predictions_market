@@ -212,6 +212,7 @@ export class ScryptEngine {
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: tokenScript, satoshis: Number(tokenSats) }))
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500) // 0.5 sat/B — confirm-worthy
             if (options.changeAddress) tx.change(options.changeAddress)
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
@@ -264,6 +265,7 @@ export class ScryptEngine {
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: payoutScript, satoshis: Number(supplyArg * cur.payoutUnit) }))
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500) // 0.5 sat/B — confirm-worthy
             if (options.changeAddress) tx.change(options.changeAddress)
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }

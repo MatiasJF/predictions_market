@@ -169,6 +169,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   platform, fee control must be fixed** — `FEE_PER_KB` isn't the knob sCrypt's tx-builder honors; needs an
   explicit per-tx fee in the custom builders / provider config (+ CPFP to rescue stuck txs). This + the mempool-
   ancestor limit + single-UTXO pool chain are the concrete throughput/fee items for productionizing the platform.
+  **FORCE-THROUGH ATTEMPT (result: not cleanly forceable):** applied `tx.feePerKb(500)` to the buy/redeem custom
+  builders (partial fix — deploy/resolve use sCrypt's own builders, still need provider-level fee control) and
+  tried a manual CPFP of the stuck deploy — **rejected DOUBLE_SPEND_ATTEMPTED** (competing tx `8c19951…`).
+  Root cause: sCrypt's `DefaultProvider` **auto-splits the funding** into a tangled low-fee tx chain
+  (`f9aaee`→`8c19951`→`01ec39`→…), and WhatsOnChain's UTXO view lags/disagrees, so the real spendable state
+  can't be pinned down to CPFP safely. **Platform to-dos crystallized:** (1) full fee control on ALL builders +
+  provider; (2) disable/manage sCrypt's funding auto-split (deterministic UTXO handling); (3) slim the ~26 KB
+  pool contract; (4) a funding-UTXO pool for throughput. The ~50k funds sit in the unconfirmed chain rooted at
+  the confirmed `f9aaee` (block 960854) — recoverable once it confirms/evicts. **Verdict unchanged:** the
+  autonomous-mainnet-via-daemon capability is PROVEN (3 live broadcasts); the redeem tx and clean fee/UTXO
+  handling are productionization work, not feasibility gaps.
 
 ### Phase P4 — Rúnar → sCrypt (planned + approved 2026-08-04; migration behind the ChainEngine seam)
 - ◐ SCRYPT-001 — port to **scrypt-ts 1.4.5** (classic BSV; ADR-018). **CORE DONE:** `packages/contracts-scrypt`
