@@ -271,9 +271,9 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   local Script-verify + MAX_BATCH bound (9 sCrypt green); daemon test — 5 off-chain fills → 1 settle broadcast →
   1 version advance + 5 trade rows (79 workspace green, typecheck clean). **GATED MAINNET SETTLEMENT — LIVE
   (2026-08-05):** deploy `68fee818…56ca48` (1-in/2-out, 30,915 B) → **settle `cc13883b…662d2f`** (2-in/2-out,
-  61,896 B — **5 off-chain fills collapsed into ONE on-chain pool-version advance**), both accepted into the
-  mainnet mempool (settle covenant network-validated); confirmation follows BSV block timing. Runner:
-  `packages/contracts-scrypt/mainnet-settle.ts --broadcast`. Proves amortization: **N trades → 1 settlement fee.**
+  61,896 B — **5 off-chain fills collapsed into ONE on-chain pool-version advance**), both **CONFIRMED on mainnet
+  (block 960978)**. Runner: `packages/contracts-scrypt/mainnet-settle.ts --broadcast`. Proves amortization:
+  **N trades → 1 settlement fee.** CONC-002 DONE.
 - ○ CONC-003 — Trust hardening: signed-receipt verification → operator bond + fraud proofs → on-chain validity
   check (trustless settlement). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
