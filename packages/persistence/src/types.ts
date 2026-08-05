@@ -101,6 +101,28 @@ export interface BroadcastRow {
   decided_at: string | null;
 }
 
+/** One filled off-chain order + its signed receipt (004_execution / CONC-001). Public data only. */
+export interface ExecOrderRow {
+  id: number;
+  market_id: number;
+  seq: number;
+  trader_pubkey: string;
+  side: Side;
+  action: TradeAction;
+  shares: string;        // BigInt as decimal string (total shares filled)
+  price_sats: number;
+  cost_sats: number;
+  q_yes: string;         // resulting state (BigInts as decimal strings)
+  q_no: string;
+  e_yes: string;
+  e_no: string;
+  state_hash: string;    // sha256 commitment (hex)
+  sig: string;           // receipt signature (DER hex)
+  signer_pubkey: string; // sequencer pubkey (DER hex)
+  batch_id: number | null; // set at settlement (CONC-002); NULL = unsettled
+  created_at: string;
+}
+
 /** BigInt <-> DB TEXT boundary helpers. */
 export const toText = (v: bigint): string => v.toString();
 export const fromText = (s: string): bigint => BigInt(s);

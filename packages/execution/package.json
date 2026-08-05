@@ -1,0 +1,16 @@
+{
+  "name": "@pm/execution",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@bsv/sdk": "^2.1.9",
+    "@pm/lmsr": "workspace:*",
+    "@pm/persistence": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
+  }
+}

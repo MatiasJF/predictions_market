@@ -115,6 +115,22 @@ importers:
         specifier: ^26.1.1
         version: 26.1.1
 
+  packages/execution:
+    dependencies:
+      '@bsv/sdk':
+        specifier: ^2.1.9
+        version: 2.1.9
+      '@pm/lmsr':
+        specifier: workspace:*
+        version: link:../lmsr
+      '@pm/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+
   packages/lmsr: {}
 
   packages/persistence:
