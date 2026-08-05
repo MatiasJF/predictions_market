@@ -12,6 +12,7 @@ import {
     ContractTransaction,
     DefaultProvider,
     DummyProvider,
+    int2ByteString,
     MethodCallOptions,
     PubKeyHash,
     Signer,
@@ -319,7 +320,11 @@ export class ScryptEngine {
             if (isYesArg) { next.eYes = (cur.eYes * cur.mult) / cur.scale; next.qYes = cur.qYes + cur.unit }
             else { next.eNo = (cur.eNo * cur.mult) / cur.scale; next.qNo = cur.qNo + cur.unit }
             next.collateral = cur.collateral + paymentSats
-            const tokenScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(buyerArg))
+            // Data-carrying position token (CONC-003c): <push marketTag‖side‖supply(8)‖buyerPKH> OP_DROP P2PKH(buyer).
+            const tokenScript = bsv.Script.fromHex(
+                '21' + marketTagHex(b.marketId) + (isYesArg ? '01' : '00') + int2ByteString(1n, 8n) + buyerArg +
+                '75' + Utils.buildPublicKeyHashScript(buyerArg)
+            )
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: tokenScript, satoshis: Number(tokenSats) }))
@@ -360,28 +365,12 @@ export class ScryptEngine {
         return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
     }
 
-    private async execRedeem(b: RedeemBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
-        const supply = BigInt(b.supply)
-        const winner = await this.selfPkh()
-        const isYes = b.side === 'yes'
-        let captured!: LMSRMarket
-        // Slimmed contract (CONC-004): single side-parameterized `redeem(isYes, supply, winner)`.
-        current.bindTxBuilder('redeem', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, isYesArg: boolean, supplyArg: bigint, winnerArg: PubKeyHash): Promise<ContractTransaction> => {
-            const next = cur.next()
-            next.collateral = cur.collateral - supplyArg * cur.payoutUnit
-            const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(winnerArg))
-            const tx = new bsv.Transaction().addInput(cur.buildContractInput())
-                .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
-                .addOutput(new bsv.Transaction.Output({ script: payoutScript, satoshis: Number(supplyArg * cur.payoutUnit) }))
-            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500) // 0.5 sat/B — confirm-worthy
-            if (options.changeAddress) tx.change(options.changeAddress)
-            captured = next
-            return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
-        })
-        const res = await current.methods.redeem(isYes, supply, winner, { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
-        this.instances.set(b.marketId, captured)
-        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+    private async execRedeem(_b: RedeemBuild): Promise<BroadcastResult> {
+        // CONC-003c: redeem is now BACKTRACE-verified against a co-spent on-chain token (the covenant is proven in
+        // tests/redeemBacktrace.test.ts). Driving it through the engine requires tracking each market's minted
+        // token UTXO + its mint tx, co-spending it as input #1, and signing that P2PKH input across the funding
+        // key — engine-integration work still pending. Until then the engine surfaces this rather than
+        // broadcasting a redeem the hardened contract would reject.
+        throw new EngineLimitation('redeem', 'CONC-003c backtrace co-spend redeem — engine integration pending (contract proven in tests/redeemBacktrace.test.ts)')
     }
 }

@@ -6,6 +6,8 @@ import {
     SmartContract,
     hash256,
     int2ByteString,
+    slice,
+    toByteString,
     Utils,
     PubKeyHash,
 } from 'scrypt-ts'
@@ -116,9 +118,15 @@ export class LMSRMarket extends SmartContract {
         const charge = (e * this.payoutUnit + sum - 1n) / sum
         assert(paymentSats >= charge, 'underpaid')
         this.collateral += paymentSats
+        // Mint a DATA-carrying position token (CONC-003c): <push marketTag‖side‖supply(8)‖holderPKH> OP_DROP
+        // P2PKH(holder). Spendable only by the holder; carries the fields redeem re-derives + verifies on-chain.
+        const sideByte: ByteString = isYes ? toByteString('01') : toByteString('00')
+        const tokenScript: ByteString =
+            toByteString('21') + this.marketTag + sideByte + int2ByteString(1n, 8n) + buyer +
+            toByteString('75') + Utils.buildPublicKeyHashScript(buyer)
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) +
-            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
+            Utils.buildOutput(tokenScript, tokenSats) +
             this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }
@@ -227,22 +235,58 @@ export class LMSRMarket extends SmartContract {
     }
 
     /**
-     * REDEEM a winning `isYes ? YES : NO` position (multi-output). Requires the market resolved with the winning
-     * side matching `isYes`. Pays the winner `supply × payoutUnit` sats via a P2PKH payout output, reduces the
-     * pool collateral, and continues the pool. Documented-trust (spike): the pool trusts the supplied
-     * supply/side; production needs SPV/pushdata verification of a co-spent token (see VERDICT).
+     * REDEEM a winning position, verifying a REAL co-spent token on-chain (CONC-003c — closes VERDICT gap #2).
+     * The winner's data token (minted by `buy`) is co-spent as input #1; this pool is input #0. The contract
+     * BACKTRACES the token: it reconstructs the token's mint tx as `header ‖ poolOut ‖ tokenOutput ‖ tail`
+     * (pinning `tokenOutput` — rebuilt from the claimed supply/holder/side/market — at output index 1, which
+     * requires `poolOut` to be exactly one output), derives the mint txid, and binds it via `hashPrevouts` so
+     * input #1 provably spends that token. supply/holder/side/market therefore come from the CHAIN, not the
+     * caller ⇒ no token-less redeem, no over-claim, no redirection. Pays `supply × payoutUnit` to the holder.
      */
     @method()
-    public redeem(isYes: boolean, supply: bigint, winner: PubKeyHash) {
+    public redeem(
+        isYes: boolean,
+        supply: bigint,
+        holder: PubKeyHash,
+        tokenSats: bigint,
+        prevHeader: ByteString,
+        poolOut: ByteString,
+        prevTail: ByteString,
+        allOutpoints: ByteString
+    ) {
         assert(this.resolved == 1n, 'not resolved')
         assert(this.winner == (isYes ? 1n : 0n), 'wrong side')
         assert(supply > 0n, 'no shares')
-        const payout = supply * this.payoutUnit
+
+        // Reconstruct the exact position-token output this redeem claims to burn (same layout `buy` minted).
+        const sideByte: ByteString = isYes ? toByteString('01') : toByteString('00')
+        const tokenScript: ByteString =
+            toByteString('21') + this.marketTag + sideByte + int2ByteString(supply, 8n) + holder +
+            toByteString('75') + Utils.buildPublicKeyHashScript(holder)
+        const tokenOutput: ByteString = Utils.buildOutput(tokenScript, tokenSats)
+
+        // `poolOut` must be EXACTLY one output ⇒ tokenOutput sits at output index 1 of the token's mint tx.
+        const poolScript: ByteString = Utils.readVarint(slice(poolOut, 8n))
+        assert(poolOut == slice(poolOut, 0n, 8n) + Utils.writeVarint(poolScript), 'poolOut not one output')
+
+        // Mint tx = header ‖ out0(pool) ‖ out1(token) ‖ tail. Its txid binds the token to output index 1.
+        const tokenTxid: ByteString = hash256(prevHeader + poolOut + tokenOutput + prevTail)
+
+        // Bind on-chain via hashPrevouts: input #0 is THIS pool, input #1 is the token (mint txid, vout 1).
+        const poolOp: ByteString =
+            this.ctx.utxo.outpoint.txid + int2ByteString(this.ctx.utxo.outpoint.outputIndex, 4n)
+        const tokenOp: ByteString = tokenTxid + int2ByteString(1n, 4n)
+        assert(slice(allOutpoints, 0n, 36n) == poolOp, 'pool not input 0')
+        assert(slice(allOutpoints, 36n, 72n) == tokenOp, 'token not input 1')
+        assert(hash256(allOutpoints) == this.ctx.hashPrevouts, 'bad prevouts')
+
+        // Pay exactly the token's supply to its holder; the token UTXO (input #1) is consumed (burned).
+        const payout: bigint = supply * this.payoutUnit
         assert(this.collateral >= payout, 'insolvent')
         this.collateral -= payout
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) +
-            Utils.buildPublicKeyHashOutput(winner, payout) +
+            Utils.buildPublicKeyHashOutput(holder, payout) +
             this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }

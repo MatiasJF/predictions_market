@@ -45,6 +45,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Sequencer Rabin attestation (on-chain-verifiable) | `packages/contracts-scrypt/src/attestation.ts` |
 | Bond local tests (slash / reject / withdraw timelock) | `packages/contracts-scrypt/tests/bond.test.ts` |
 | Gated mainnet fraud-proof demo (deploy Bond → slash) | `packages/contracts-scrypt/mainnet-bond.ts` |
+| **Backtrace-verified token redeem tests (CONC-003c)** | `packages/contracts-scrypt/tests/redeemBacktrace.test.ts` |
 | Dedicated sequencer keygen (receipt signing key) | `apps/spike/src/sequencer-keygen.ts` |
 | Execution + settlement tests (incl. 25-way concurrency) | `packages/execution/test/execution.test.ts` |
 | Net-state batch settlement contract method (`settle`) | `settle()` in `packages/contracts-scrypt/src/contracts/lmsrMarket.ts` |

@@ -11,7 +11,8 @@ const V = JSON.parse(
 const b = (s: string): bigint => BigInt(s)
 
 describe('LMSRMarket (sCrypt) — full lifecycle', () => {
-    it('deploy → buy+mint → resolve → redeem all verify locally (DummyProvider)', async () => {
+    // redeem is backtrace-verified separately (tests/redeemBacktrace.test.ts); runLifecycle covers deploy→buy→resolve.
+    it('deploy → buy+mint(data token) → resolve all verify locally (DummyProvider)', async () => {
         const res = await runLifecycle(localSigner(), {
             eYes: b(V.init.eYes),
             eNo: b(V.init.eNo),
@@ -31,7 +32,6 @@ describe('LMSRMarket (sCrypt) — full lifecycle', () => {
         expect(res.deployTxid).to.have.length(64)
         expect(res.buyTxid).to.have.length(64)
         expect(res.resolveTxid).to.have.length(64)
-        expect(res.redeemTxid).to.have.length(64)
         expect(res.payout).to.equal('1000')
     })
 })

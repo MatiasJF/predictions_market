@@ -294,7 +294,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `mainnet-bond.ts --broadcast`.
   Honest scope: slashes equivocation (can't lie about WHICH settlement happened); full net-vs-receipts
   enforcement is the endgame.
-- ○ CONC-003c — Redeem **token verification**: require a co-spent on-chain ShareToken input (VERDICT gap #2). Planned.
+- ◐ CONC-003c — **Backtrace-verified token redeem — CONTRACT DONE + PROVEN (2026-08-05, ADR-024).** `buy` mints a
+  data-carrying token `<push marketTag‖side‖supply(8)‖holderPKH> OP_DROP P2PKH(holder)`; `redeem` co-spends it as
+  input #1 and BACKTRACES it (reconstruct token output → mint txid → bind via hashPrevouts) so supply/holder/side
+  come from the chain — no token-less redeem, no over-claim, no redirection. Pool script 30.5→32.9 KB.
+  **Verified:** `tests/redeemBacktrace.test.ts` — a real mint→co-spend redeem passes the node Script for all
+  inputs; over-claim / redirection / wrong-vout all rejected (16 sCrypt + 83 workspace green, typecheck clean).
+  **Remaining (engine integration):** driving redeem via the daemon/mainnet (track each market's token UTXO+mint
+  tx, co-spend + sign it) — `ScryptEngine.execRedeem` surfaces an EngineLimitation until wired; VERDICT gap #2 is
+  closed at the contract level.
 - ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
 

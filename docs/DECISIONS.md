@@ -419,3 +419,26 @@ Template:
   node Script + pays the challenger; reject same-digest + forged Rabin sig; withdraw CLTV-gated before/after
   maturity), daemon records + surfaces the attestation — 83 workspace + 13 sCrypt green, typecheck clean. Gated
   mainnet demo runner `mainnet-bond.ts` (deploy Bond → slash).
+
+## ADR-024 · Backtrace-verified token redeem (CONC-003c) · Accepted · 2026-08-05
+- Context: `redeem` trusted the caller's `supply`/`winner` (VERDICT gap #2) — over-claim / redirection / token-less
+  redeem were possible. This closes it: redeem must co-spend a genuine on-chain position token, verified on-chain.
+- Constraint: a UTXO contract can't read another input's script from its own ScriptContext, and `scrypt-ts-lib`
+  has no Backtrace helper — so the pool must **backtrace** input #1 manually. Confirmed tractable with `slice`,
+  `Utils.readVarint`/`buildOutput`, `len`, `ctx.utxo.outpoint`, `ctx.hashPrevouts`.
+- Decision: **data-carrying token + reconstruction backtrace.** `buy` mints a token output
+  `<push marketTag‖side‖supply(8)‖holderPKH> OP_DROP P2PKH(holder)` (spendable only by the holder, carries the
+  fields). `redeem(isYes, supply, holder, tokenSats, prevHeader, poolOut, prevTail, allOutpoints)` REBUILDS the
+  token output, requires `poolOut` to be exactly one output (so the token is output index 1), computes the mint
+  txid `= hash256(prevHeader‖poolOut‖tokenOutput‖prevTail)`, and binds it via `hashPrevouts`
+  (`slice[0:36]==poolOp`, `slice[36:72]==tokenTxid‖1`). No general byte-walk. supply/holder/side/market come from
+  the CHAIN ⇒ no token-less redeem, no over-claim, no redirection. Pool script 30.5 → **32.9 KB** (+2.3 KB).
+- Verified: `tests/redeemBacktrace.test.ts` — a genuine mint → co-spend redeem **passes the real node Script
+  interpreter for all inputs**; and each attack is **rejected** (over-claim, redirection, wrong token vout). The
+  co-spent token input is signed with a real key; the offline-only DummyProvider fee simulation (which conflicts
+  with bsv's fee guard for this large-covenant multi-input tx) is stubbed — the Script verify is the guarantee.
+  16 sCrypt + 83 workspace green, typecheck clean.
+- Honest scope: the redeem COVENANT is proven. Driving it through the daemon/mainnet (engine tracking each
+  market's minted token UTXO + mint tx, co-spending it, signing that P2PKH input via the funding key) is
+  engine-integration work still pending — `ScryptEngine.execRedeem` surfaces an `EngineLimitation` until then
+  rather than broadcasting a redeem the hardened contract would reject; `runLifecycle` covers deploy→buy→resolve.

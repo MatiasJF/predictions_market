@@ -109,8 +109,12 @@ mainnet** — deploy [`04e80444…700e0a`](https://whatsonchain.com/tx/04e80444a
 (bond, 1-in/2-out) → **slash** [`53972656…03956ed`](https://whatsonchain.com/tx/539726563f8d4288e70cd7dd30f3846de1686b6b2f0b7478a195e7e0e03956ed)
 (**2-in**: spends the bond + funding / 2-out), **confirmed block 960994**: the slash spends the bond UTXO, so the
 network accepted the on-chain Rabin fraud-proof (both conflicting attestations verified + equivocation proven)
-and paid the bond to the challenger. Equivocation is now *unprofitable*. Remaining: redeem token verification (CONC-003c) and full
-net-vs-receipts enforcement via a validity proof / dispute game (the trustless endgame).
+and paid the bond to the challenger. Equivocation is now *unprofitable*. **CONC-003c (ADR-024)** closed VERDICT
+gap #2 at the contract level: `redeem` co-spends a genuine on-chain token and BACKTRACES it (reconstruct token
+output → mint txid → bind via `hashPrevouts`), so supply/holder/side come from the chain — no token-less redeem,
+over-claim, or redirection (proven in `tests/redeemBacktrace.test.ts`: a real co-spend redeem passes the node
+Script; over-claim / redirection / wrong-vout rejected; driving it through the daemon/mainnet is pending engine
+integration). Remaining: full net-vs-receipts enforcement via a validity proof / dispute game (the endgame).
 
 ## The six unknowns
 

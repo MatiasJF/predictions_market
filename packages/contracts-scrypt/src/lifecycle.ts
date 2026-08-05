@@ -9,6 +9,7 @@ import {
     bsv,
     ByteString,
     ContractTransaction,
+    int2ByteString,
     MethodCallOptions,
     PubKeyHash,
     Signer,
@@ -84,7 +85,11 @@ export async function runLifecycle(
             next.eYes = (current.eYes * p.mult) / p.wad
             next.qYes = current.qYes + current.unit
             next.collateral = current.collateral + paymentSats
-            const tokenScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(buyerArg))
+            // Data-carrying position token (CONC-003c): <push marketTag‖side‖supply(8)‖buyerPKH> OP_DROP P2PKH(buyer).
+            const tokenScript = bsv.Script.fromHex(
+                toByteString('21') + marketTag + toByteString('01') + int2ByteString(1n, 8n) + buyerArg +
+                toByteString('75') + Utils.buildPublicKeyHashScript(buyerArg)
+            )
             const tx = new bsv.Transaction()
                 .addInput(current.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
@@ -113,47 +118,21 @@ export async function runLifecycle(
     } as MethodCallOptions<LMSRMarket>)
     log(`resolve:  ${resolveRes.tx.id}  (YES, oracle-signed)`)
 
-    // ── REDEEM YES (winner payout, multi-output) ────────────────────────────────────────────────────────
+    // ── REDEEM ──────────────────────────────────────────────────────────────────────────────────────────
+    // redeem is now BACKTRACE-verified against a co-spent on-chain token (CONC-003c): the winner's data token
+    // (minted by buy) is co-spent as input #1 and the pool reconstructs + binds it via hashPrevouts. That
+    // co-spend construction (splitting the buy/mint tx + signing the token input across the abstract Signer
+    // boundary + tracking the token UTXO) is engine-integration work; the redeem covenant itself is proven in
+    // `tests/redeemBacktrace.test.ts`. runLifecycle covers deploy → buy(mint) → resolve here.
     const supply = 1n
-    const payout = supply * p.payoutUnit
-    let afterRedeem!: LMSRMarket
-    resolveNext.bindTxBuilder(
-        'redeem',
-        async (
-            current: LMSRMarket,
-            options: MethodCallOptions<LMSRMarket>,
-            _isYes: boolean,
-            supplyArg: bigint,
-            winnerArg: PubKeyHash
-        ): Promise<ContractTransaction> => {
-            const next = current.next()
-            next.collateral = current.collateral - supplyArg * current.payoutUnit
-            const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(winnerArg))
-            const tx = new bsv.Transaction()
-                .addInput(current.buildContractInput())
-                .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
-                .addOutput(new bsv.Transaction.Output({ script: payoutScript, satoshis: Number(supplyArg * current.payoutUnit) }))
-            if (options.changeAddress) tx.change(options.changeAddress)
-            afterRedeem = next
-            return {
-                tx, atInputIndex: 0,
-                nexts: [{ instance: next, atOutputIndex: 0, balance: current.balance }],
-                next: { instance: next, atOutputIndex: 0, balance: current.balance },
-            }
-        }
-    )
-    const redeemRes = await resolveNext.methods.redeem(true, supply, winner, {
-        changeAddress,
-    } as MethodCallOptions<LMSRMarket>)
-    log(`redeem:   ${redeemRes.tx.id}  (winner paid ${payout} sat)`)
-    void afterRedeem
+    void winner // winner PKH is the token holder; used by the backtrace redeem (see redeemBacktrace.test.ts)
 
     return {
         deployTxid: deployTx.id,
         buyTxid: buyRes.tx.id,
         resolveTxid: resolveRes.tx.id,
-        redeemTxid: redeemRes.tx.id,
+        redeemTxid: '',
         charge: charge.toString(),
-        payout: payout.toString(),
+        payout: (supply * p.payoutUnit).toString(),
     }
 }

@@ -4,6 +4,7 @@ import { join } from 'path'
 import {
     bsv,
     ContractTransaction,
+    int2ByteString,
     MethodCallOptions,
     PubKeyHash,
     toByteString,
@@ -65,7 +66,11 @@ function bindBuyBuilder(
             next.eYes = nextEYes
             next.qYes = nextQYes
             next.collateral = current.collateral + paymentSats
-            const tokenScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(buyerArg))
+            // Data-carrying token (CONC-003c): <push marketTag‖side‖supply(8)‖buyerPKH> OP_DROP P2PKH(buyer).
+            const tokenScript = bsv.Script.fromHex(
+                toByteString('21') + MARKET_TAG + toByteString('01') + int2ByteString(1n, 8n) + buyerArg +
+                toByteString('75') + Utils.buildPublicKeyHashScript(buyerArg)
+            )
             const unsignedTx = new bsv.Transaction()
                 .addInput(current.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
@@ -147,55 +152,7 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         } as MethodCallOptions<LMSRMarket>)
     })
 
-    it('redeem pays the winner in a MULTI-OUTPUT tx and verifies locally — the BUG-005 unblock', async () => {
-        // A resolved pool with winner = YES, holding a 1-YES position.
-        const resolved = new LMSRMarket(
-            b(V.buyYes.eYes), b(V.init.eNo), b(V.buyYes.qYes), 0n, b(V.collateral), 1n, 1n,
-            b(V.mult), b(V.invMult), b(V.payoutUnit), b(V.WAD), b(V.unit), DUMMY_ORACLE, MARKET_TAG
-        )
-        const signer = localSigner()
-        await resolved.connect(signer)
-        await resolved.deploy(POOL_SATS)
-
-        const winner: PubKeyHash = PubKeyHash(toByteString('cd'.repeat(20)))
-        const supply = 1n
-        const payout = Number(supply * b(V.payoutUnit)) // 100_000 sats
-
-        resolved.bindTxBuilder(
-            'redeem',
-            async (
-                current: LMSRMarket,
-                options: MethodCallOptions<LMSRMarket>,
-                _isYes: boolean,
-                supplyArg: bigint,
-                winnerArg: PubKeyHash
-            ): Promise<ContractTransaction> => {
-                const next = current.next()
-                next.collateral = current.collateral - supplyArg * current.payoutUnit
-                const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(winnerArg))
-                const unsignedTx = new bsv.Transaction()
-                    .addInput(current.buildContractInput())
-                    .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
-                    .addOutput(new bsv.Transaction.Output({ script: payoutScript, satoshis: Number(supplyArg * current.payoutUnit) }))
-                if (options.changeAddress) unsignedTx.change(options.changeAddress)
-                return {
-                    tx: unsignedTx, atInputIndex: 0,
-                    nexts: [{ instance: next, atOutputIndex: 0, balance: current.balance }],
-                    next: { instance: next, atOutputIndex: 0, balance: current.balance },
-                }
-            }
-        )
-
-        const { tx } = await resolved.methods.redeem(true, supply, winner, {
-            changeAddress: await signer.getDefaultAddress(),
-        } as MethodCallOptions<LMSRMarket>)
-
-        expect(tx.outputs.length).to.be.greaterThanOrEqual(3)
-        expect(
-            tx.outputs.some((o) => o.satoshis === payout),
-            'winner payout output present'
-        ).to.equal(true)
-    })
+    // redeem is now backtrace-verified against a co-spent on-chain token (CONC-003c) — see redeemBacktrace.test.ts.
 
     it('settle advances the pool by a batch in ONE tx, pins the batch commitment (OP_RETURN), verifies vs Script', async () => {
         // Batch: 3 net YES buys + 2 net NO buys (buys-only ⇒ net == the actual fill sequence, so the on-chain
