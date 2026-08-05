@@ -157,8 +157,13 @@ export class LMSRMarket extends SmartContract {
      * `eYes *= mult^(net YES unit delta)` (or `invMult^…` if net-negative) — computed as |net| repeated
      * multiplicative moves (bounded by MAX_BATCH). The off-chain sequencer computes the identical net move, so
      * the settled state matches by construction. `collateralDelta` is the batch's net cash; the MVP verifies the
-     * state transition + solvency, not the exact per-fill cash (that is the CONC-003 fraud/validity layer).
-     * Position tokens stay as the signed off-chain receipts in this MVP (no per-participant mint here).
+     * state transition + solvency, not the exact per-fill cash (that is the CONC-003b fraud/validity layer).
+     *
+     * CONC-003a: `batchDigest` is an off-chain commitment to the exact set of signed receipts this settlement
+     * clears (a hash of the ordered receipts, computed by the sequencer). It is emitted as an OP_RETURN output so
+     * the settlement is immutably + non-equivocably bound on-chain to its batch — anyone can audit that the
+     * settled net matches the committed receipts, and equivocation is provable. The contract does not recompute
+     * the digest (that is the validity-proof endgame); it only pins it into this tx.
      */
     @method()
     public settle(
@@ -167,7 +172,8 @@ export class LMSRMarket extends SmartContract {
         netNoUnits: bigint,
         netNoIsBuy: boolean,
         collateralDelta: bigint,
-        collateralIsUp: boolean
+        collateralIsUp: boolean,
+        batchDigest: ByteString
     ) {
         assert(this.resolved == 0n, 'resolved')
         assert(netYesUnits >= 0n && netYesUnits <= LMSRMarket.MAX_BATCH, 'yes batch out of range')
@@ -198,8 +204,11 @@ export class LMSRMarket extends SmartContract {
             : this.collateral - collateralDelta
         assert(this.collateral >= 0n, 'insolvent')
 
+        // Pin the batch commitment on-chain: pool continuation + OP_RETURN(batchDigest) + change.
         const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildOutput(Utils.buildOpreturnScript(batchDigest), 0n) +
+            this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }
 

@@ -98,9 +98,12 @@ by a whole batch's **net** state (path-independent `eYes = exp(qYes/b)`) in one 
 | **settle** | [`cc13883b…662d2f`](https://whatsonchain.com/tx/cc13883b35695ac9c9b1caf40b1166633f2dcb552e27ce7478fcfb64ff662d2f) | **5 fills → 1 tx**, 2-in/2-out (spends the pool + advances net state), 61,896 B — **confirmed, block 960978** |
 
 Both **CONFIRMED on BSV mainnet (block 960978)**. This demonstrates the amortization: **N trades cost ONE
-settlement fee**, and interactive latency is off-chain. Trust scope (MVP): the settle contract verifies the net state
-transition + solvency, not per-fill cash; position tokens remain signed receipts. Trustless settlement (bond +
-fraud proofs → on-chain validity check) and per-participant on-chain minting are **CONC-003**.
+settlement fee**, and interactive latency is off-chain. Trust scope: the settle contract verifies the net state
+transition + solvency, not per-fill cash; position tokens remain signed receipts. **CONC-003a (ADR-022, DONE)**
+made every settlement auditable + non-equivocable — it pins a `batchDigest` commitment on-chain (OP_RETURN) + a
+sequencer attestation, and `auditSettlement` lets anyone PROVE a settlement matches its signed receipts, so an
+operator cheat is now cryptographically provable (detection). Enforcement (bond + on-chain fraud-proof slash,
+CONC-003b), redeem token verification (CONC-003c), and validity-proof settlement (endgame) remain.
 
 ## The six unknowns
 

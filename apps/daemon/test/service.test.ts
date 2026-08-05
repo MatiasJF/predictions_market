@@ -211,4 +211,29 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     // Nothing left to settle → 400.
     await expect(svc.enqueueSettle(m.id)).rejects.toThrow(/no unsettled/);
   });
+
+  it('audits a settlement against its receipts (ok), and CATCHES a tampered receipt (CONC-003a)', async () => {
+    const { db, svc } = freshExecService();
+    const m = await svc.createMarket({ question: 'audit', bUnits: 1000 });
+    await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
+    for (let i = 0; i < 3; i++) await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
+    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
+    await svc.authorize((await svc.enqueueSettle(m.id)).broadcast_id);
+
+    // An honest settlement audits clean.
+    const good = svc.auditMarket(m.id);
+    expect(good.ok).toBe(true);
+    expect(good.batches).toBe(1);
+    expect(good.reports[0]!.violations).toHaveLength(0);
+    expect(good.reports[0]!.receiptCount).toBe(4);
+
+    // Tamper a settled receipt in the DB → the auditor proves the mismatch (sig + net cash + digest).
+    db.prepare('UPDATE exec_orders SET cost_sats = cost_sats + 1 WHERE market_id=? AND seq=1').run(m.id);
+    const bad = svc.auditMarket(m.id);
+    expect(bad.ok).toBe(false);
+    const checks = bad.reports[0]!.violations.map((v) => v.check);
+    expect(checks).toContain('receipt_sig');
+    expect(checks).toContain('net_cash');
+    expect(checks).toContain('digest');
+  });
 });

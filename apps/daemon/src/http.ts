@@ -42,6 +42,7 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'positions') return svc.positions(id);
     if (method === 'GET' && segs.length === 3 && segs[2] === 'receipts') return svc.listReceipts(id, query.get('trader') ?? undefined);
     if (method === 'GET' && segs.length === 3 && segs[2] === 'exec-positions') return svc.execPositions(id, query.get('trader') ?? undefined);
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'audit') return svc.auditMarket(id); // CONC-003a
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       switch (segs[2]) {

@@ -84,6 +84,9 @@ early and harden:
    receipt the user keeps. Frequent settlement (seconds) bounds exposure. Good enough to launch + measure.
 2. **Bonded + fraud proofs.** The operator posts a bond; anyone can submit an on-chain fraud proof that a
    settlement doesn't match the receipts / LMSR rules, slashing the bond. Now cheating is unprofitable.
+   _Progress: CONC-003a (ADR-022, DONE) delivered the auditability substrate — each settlement pins a `batchDigest`
+   commitment on-chain (OP_RETURN) + a sequencer attestation, and `auditSettlement` lets anyone PROVE a settlement
+   matches its signed receipts (detection). CONC-003b adds the bond UTXO + on-chain slash contract (enforcement)._
 3. **Validity-proof settlement (endgame).** The pool contract verifies, on-chain, that the batch's net state
    change and token issuance are a correct LMSR transition from the prior state (a compact proof / the contract
    re-checks the net `eYes/eNo` update against the batch's signed orders). Now settlement is **trustless** — the

@@ -40,6 +40,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
 | **Off-chain execution engine (CONC-001): instant fills + serialization** | `packages/execution/src/engine.ts` |
 | Signed off-chain receipts (sign/verify, sequencer key) | `packages/execution/src/receipt.ts` |
+| **Settlement auditor + attestation + batch digest (CONC-003a)** | `packages/execution/src/audit.ts` |
+| Dedicated sequencer keygen (receipt signing key) | `apps/spike/src/sequencer-keygen.ts` |
 | Execution + settlement tests (incl. 25-way concurrency) | `packages/execution/test/execution.test.ts` |
 | Net-state batch settlement contract method (`settle`) | `settle()` in `packages/contracts-scrypt/src/contracts/lmsrMarket.ts` |
 | Batch settlement engine path (`buildSettleBatch`/`execSettle`) | `packages/contracts-scrypt/src/scryptEngine.ts` |

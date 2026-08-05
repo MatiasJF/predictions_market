@@ -274,8 +274,18 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   61,896 B — **5 off-chain fills collapsed into ONE on-chain pool-version advance**), both **CONFIRMED on mainnet
   (block 960978)**. Runner: `packages/contracts-scrypt/mainnet-settle.ts --broadcast`. Proves amortization:
   **N trades → 1 settlement fee.** CONC-002 DONE.
-- ○ CONC-003 — Trust hardening: signed-receipt verification → operator bond + fraud proofs → on-chain validity
-  check (trustless settlement). Planned.
+- ● CONC-003a — **Auditable, non-equivocable settlement + auditor — DONE (2026-08-05, ADR-022).** `settle` pins a
+  `batchDigest` on-chain (OP_RETURN; script 30.2→30.5 KB); the sequencer signs a settlement attestation; new
+  `@pm/execution/src/audit.ts` `auditSettlement` lets anyone PROVE a settlement matches its signed receipts
+  (sig, net units/cash, digest, on-chain q-delta, attestation). Daemon `GET /markets/:id/audit`. Migration 007
+  (exec_batches commitment cols + `exec_orders.ts` — fixes a CONC-001 receipt re-verify gap). **Verified:**
+  `@pm/execution` audit tests + daemon audit-flow (honest ok; tampered receipt → receipt_sig+net_cash+digest);
+  sCrypt settle-with-OP_RETURN local Script-verify — 83 workspace + 9 sCrypt green, typecheck clean. Trust: from
+  "trust the operator" → "any cheat is cryptographically provable" (detection; enforcement is 003b).
+- ○ CONC-003b — Enforcement: operator **bond** UTXO + on-chain **fraud-proof slash** contract (two contradictory
+  sequencer sigs → slash); upgrade the flat digest to a **Merkle root** for compact inclusion proofs. Planned.
+- ○ CONC-003c — Redeem **token verification**: require a co-spent on-chain ShareToken input (VERDICT gap #2). Planned.
+- ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
 
 ## Known issues

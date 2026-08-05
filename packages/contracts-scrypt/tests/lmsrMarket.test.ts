@@ -197,32 +197,58 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         ).to.equal(true)
     })
 
-    it('settle advances the pool by a whole batch (net state) in ONE tx and verifies vs real Script', async () => {
+    it('settle advances the pool by a batch in ONE tx, pins the batch commitment (OP_RETURN), verifies vs Script', async () => {
         // Batch: 3 net YES buys + 2 net NO buys (buys-only ⇒ net == the actual fill sequence, so the on-chain
-        // net-state equals @pm/lmsr applied fill-by-fill — an exact three-way check).
+        // net-state equals @pm/lmsr applied fill-by-fill — an exact three-way check). CONC-003a: a batchDigest
+        // committing the receipts is emitted as an OP_RETURN output the contract pins into this tx.
         const instance = freshPool()
-        await instance.connect(localSigner())
+        const signer = localSigner()
+        await instance.connect(signer)
         await instance.deploy(POOL_SATS)
 
         // Independently compute the expected net state the SAME way @pm/lmsr's applyUnitBuy does: e *= mult/WAD.
-        // (vectors.json is generated from @pm/lmsr, so mult/WAD here IS the reference multiplicative update.)
         let eYes = b(V.init.eYes)
         let eNo = b(V.init.eNo)
         for (let i = 0; i < 3; i++) eYes = (eYes * b(V.mult)) / b(V.WAD)
         for (let i = 0; i < 2; i++) eNo = (eNo * b(V.mult)) / b(V.WAD)
         const collateralDelta = 1234n // batch net cash (MVP: contract bounds solvency, not exact cash)
+        const digest = toByteString('ab'.repeat(32)) // 32-byte batch commitment
 
-        const next = instance.next()
-        next.eYes = eYes
-        next.eNo = eNo
-        next.qYes = 3n * b(V.unit)
-        next.qNo = 2n * b(V.unit)
-        next.collateral = b(V.collateral) + collateralDelta
+        instance.bindTxBuilder(
+            'settle',
+            async (
+                current: LMSRMarket,
+                options: MethodCallOptions<LMSRMarket>
+            ): Promise<ContractTransaction> => {
+                const next = current.next()
+                next.eYes = eYes
+                next.eNo = eNo
+                next.qYes = 3n * b(V.unit)
+                next.qNo = 2n * b(V.unit)
+                next.collateral = b(V.collateral) + collateralDelta
+                const opret = bsv.Script.fromHex(Utils.buildOpreturnScript(digest))
+                const unsignedTx = new bsv.Transaction()
+                    .addInput(current.buildContractInput())
+                    .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
+                    .addOutput(new bsv.Transaction.Output({ script: opret, satoshis: 0 }))
+                if (options.changeAddress) unsignedTx.change(options.changeAddress)
+                return {
+                    tx: unsignedTx, atInputIndex: 0,
+                    nexts: [{ instance: next, atOutputIndex: 0, balance: current.balance }],
+                    next: { instance: next, atOutputIndex: 0, balance: current.balance },
+                }
+            }
+        )
 
-        // Not rejected ⇒ the contract computed the identical net state (its buildStateOutput matched `next`).
-        await instance.methods.settle(3n, true, 2n, true, collateralDelta, true, {
-            next: { instance: next, balance: POOL_SATS },
+        // Not rejected ⇒ the contract computed the identical net state AND pinned the same OP_RETURN commitment.
+        const { tx } = await instance.methods.settle(3n, true, 2n, true, collateralDelta, true, digest, {
+            changeAddress: await signer.getDefaultAddress(),
         } as MethodCallOptions<LMSRMarket>)
+        expect(tx.outputs.length).to.be.greaterThanOrEqual(3) // pool + OP_RETURN + change
+        expect(
+            tx.outputs.some((o) => o.satoshis === 0 && o.script.toHex().includes('ab'.repeat(32))),
+            'OP_RETURN commitment (0-sat, carries the digest) present'
+        ).to.equal(true)
     })
 
     it('settle rejects a batch that exceeds MAX_BATCH', async () => {
@@ -232,7 +258,7 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         const next = instance.next()
         next.qYes = 999n * b(V.unit)
         await expectReject(() =>
-            instance.methods.settle(999n, true, 0n, true, 0n, true, {
+            instance.methods.settle(999n, true, 0n, true, 0n, true, toByteString('cd'.repeat(32)), {
                 next: { instance: next, balance: POOL_SATS },
             } as MethodCallOptions<LMSRMarket>)
         )

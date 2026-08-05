@@ -370,3 +370,27 @@ Template:
 - Consequences: interactive off-chain trading with no UTXO contention; on-chain load = batches, not trades;
   per-trade cost → sub-cent amortized. Verified: `@pm/execution` 5 tests (incl. concurrency), daemon settle test,
   sCrypt `settle` local Script-verify + MAX_BATCH bound — 79 workspace + 9 sCrypt green, typecheck clean.
+
+## ADR-022 · Auditable, non-equivocable settlement + fraud-proving auditor (CONC-003a) · Accepted · 2026-08-05
+- Context: the CONC-002 settlement verifies the net state transition + solvency on-chain but TRUSTS the operator
+  for which signed receipts a batch contains and how much cash it moves — it could settle a net that doesn't match
+  the receipts users hold, drop/fabricate fills, or equivocate. This is the first trust-hardening step (ADR-019
+  spectrum: custodial → **auditable/bonded** → validity-proof).
+- Decision: bind every settlement to its exact batch of signed receipts and make it publicly auditable.
+  (1) **On-chain commitment** — `settle` gains a `batchDigest` param and emits an OP_RETURN output pinning it
+  (via `Utils.buildOpreturnScript`/`buildOutput`); no pool-state/constructor change, script 30.2→30.5 KB.
+  (2) **Sequencer attestation** — the sequencer signs `marketId|fromVersion|toVersion|batchDigest|netYes|netNo|
+  netCash|newStateHash`; two attestations for one `toVersion` = provable equivocation. Stored in `exec_batches`
+  (migration 007). (3) **Off-chain auditor** (`@pm/execution/src/audit.ts` `auditSettlement`) — anyone can verify:
+  every receipt's sig, receipts→net (units + cash), digest recompute, on-chain q-delta == receipts net×unit, and
+  the attestation. Returns typed violations. Daemon: `GET /markets/:id/audit`.
+- Also fixed a CONC-001 gap: the receipt's signed `ts` wasn't persisted, so a stored receipt couldn't be
+  re-verified — added `exec_orders.ts` (007) + persist it. The batch digest = `sha256` over the ordered receipt
+  payloads (flat; a Merkle root for compact per-receipt inclusion proofs is the CONC-003b upgrade).
+- Trust move: from "trust the operator" to "the operator's settlement is publicly auditable and any cheat is
+  cryptographically PROVABLE" — the substrate the bond + on-chain fraud-proof slash (CONC-003b) needs. NOT yet
+  trustless: detection/proof exists, on-chain enforcement (bond slash) + validity-proof settlement are next.
+- Consequences: reuses receipts/`ExecutionEngine`/`ScryptEngine`/daemon; only the settle path + a new auditor
+  changed. Verified: `@pm/execution` audit tests (digest determinism/order/tamper, ts-persist re-verify,
+  attestation sign/verify+tamper), daemon audit-flow (honest ok; tampered receipt → receipt_sig+net_cash+digest
+  violations), sCrypt settle-with-OP_RETURN local Script-verify — 83 workspace + 9 sCrypt green, typecheck clean.

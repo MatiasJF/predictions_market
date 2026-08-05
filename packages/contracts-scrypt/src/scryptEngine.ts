@@ -50,7 +50,7 @@ interface TxEffects {
     pool: { vout: number; satoshis: number; eYes: string; eNo: string; qYes: string; qNo: string; collateral: string; resolved: 0 | 1; winner: 0 | 1; lockingScript: string }
     spendsPrevPool: boolean
     trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }
-    settle?: { orderIds: number[]; netYesUnits: string; netNoUnits: string; netCollateralSats: number; trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[] }
+    settle?: { orderIds: number[]; netYesUnits: string; netNoUnits: string; netCollateralSats: number; trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[]; batchDigest?: string; attestationSig?: string; attestationPubkey?: string }
     marketState?: 'deployed' | 'trading' | 'resolved'
     resolution?: Side
 }
@@ -58,6 +58,7 @@ interface SettleBatch {
     netYesUnits: bigint; netNoUnits: bigint; netCollateralSats: number
     orderIds: number[]
     fills: { trader: string; side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[]
+    batchDigest: string
 }
 interface TxPlan { kind: string; summary: string; spendSats: number; build: unknown; effects: TxEffects }
 interface BroadcastResult { txid: string; poolLockingScript: string }
@@ -83,7 +84,7 @@ interface BuyBuild { kind: 'buy'; marketId: number; side: Side; charge: string }
 interface SellBuild { kind: 'sell'; marketId: number; side: Side }
 interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side }
 interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string }
-interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number }
+interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number; batchDigest: string }
 
 export class ScryptEngine {
     readonly name: string = 'scrypt'
@@ -217,7 +218,7 @@ export class ScryptEngine {
         const build: SettleBuild = {
             kind: 'settle', marketId: cfg.marketId,
             netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
-            netCollateralSats: batch.netCollateralSats,
+            netCollateralSats: batch.netCollateralSats, batchDigest: batch.batchDigest,
         }
         return {
             kind: 'settle',
@@ -230,6 +231,7 @@ export class ScryptEngine {
                     netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
                     netCollateralSats: batch.netCollateralSats,
                     trades: batch.fills.map((f) => ({ side: f.side, action: f.action, shares: f.shares, costSats: f.costSats })),
+                    batchDigest: batch.batchDigest,
                 },
                 marketState: 'trading',
             },
@@ -258,23 +260,36 @@ export class ScryptEngine {
         const nBuy = netNo >= 0n
         const yAbs = yBuy ? netYes : -netYes
         const nAbs = nBuy ? netNo : -netNo
-        const next = current.next()
-        let eYes = current.eYes
-        for (let i = 0n; i < yAbs; i++) eYes = (eYes * (yBuy ? current.mult : current.invMult)) / current.scale
-        next.eYes = eYes
-        let eNo = current.eNo
-        for (let i = 0n; i < nAbs; i++) eNo = (eNo * (nBuy ? current.mult : current.invMult)) / current.scale
-        next.eNo = eNo
-        next.qYes = current.qYes + netYes * current.unit
-        next.qNo = current.qNo + netNo * current.unit
         const colUp = b.netCollateralSats >= 0
         const colAbs = BigInt(Math.abs(b.netCollateralSats))
-        next.collateral = colUp ? current.collateral + colAbs : current.collateral - colAbs
-        const res = await current.methods.settle(yAbs, yBuy, nAbs, nBuy, colAbs, colUp, {
-            next: { instance: next, balance: current.balance },
+        const digest = toByteString(b.batchDigest)
+        let captured!: LMSRMarket
+        // Custom builder: pool continuation + OP_RETURN(batchDigest) + change (the CONC-003a commitment output).
+        current.bindTxBuilder('settle', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
+            const next = cur.next()
+            let eYes = cur.eYes
+            for (let i = 0n; i < yAbs; i++) eYes = (eYes * (yBuy ? cur.mult : cur.invMult)) / cur.scale
+            next.eYes = eYes
+            let eNo = cur.eNo
+            for (let i = 0n; i < nAbs; i++) eNo = (eNo * (nBuy ? cur.mult : cur.invMult)) / cur.scale
+            next.eNo = eNo
+            next.qYes = cur.qYes + netYes * cur.unit
+            next.qNo = cur.qNo + netNo * cur.unit
+            next.collateral = colUp ? cur.collateral + colAbs : cur.collateral - colAbs
+            const opret = bsv.Script.fromHex(Utils.buildOpreturnScript(digest))
+            const tx = new bsv.Transaction().addInput(cur.buildContractInput())
+                .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
+                .addOutput(new bsv.Transaction.Output({ script: opret, satoshis: 0 }))
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500)
+            if (options.changeAddress) tx.change(options.changeAddress)
+            captured = next
+            return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
+        })
+        const res = await current.methods.settle(yAbs, yBuy, nAbs, nBuy, colAbs, colUp, digest, {
+            changeAddress: await this.signer().getDefaultAddress(),
         } as MethodCallOptions<LMSRMarket>)
-        this.instances.set(b.marketId, next)
-        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
+        this.instances.set(b.marketId, captured)
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }
 
     private async execDeploy(b: DeployBuild): Promise<BroadcastResult> {

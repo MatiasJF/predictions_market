@@ -36,10 +36,14 @@ only; signing material is injected from env at runtime.
   receipt. `market_id` (not FK — the execution core is decoupled from the markets DDL), `seq` (per-market
   monotonic, unique), `trader_pubkey`, `side`, `action`, `shares`, `price_sats`, `cost_sats`, the resulting
   `q_yes/q_no/e_yes/e_no` + `state_hash` (sha256 commitment), `sig` + `signer_pubkey` (the receipt), `batch_id`
-  (NULL until settled). Public data only.
-- **exec_batches** (`005`, CONC-002) — one row per **on-chain settlement**: the N `exec_orders` it collapsed into
-  a single pool-version advance. `from_version → to_version`, `order_count`, `net_yes_units`, `net_no_units`
-  (signed), `net_collateral_sats`, `txid`, `status`. Settled orders get `exec_orders.batch_id` stamped to it.
+  (NULL until settled), and (since `007`) `ts` — the receipt's signed timestamp, so a stored receipt re-verifies
+  from the DB. Public data only.
+- **exec_batches** (`005`, CONC-002; `007` adds the commitment) — one row per **on-chain settlement**: the N
+  `exec_orders` it collapsed into a single pool-version advance. `from_version → to_version`, `order_count`,
+  `net_yes_units`, `net_no_units` (signed), `net_collateral_sats`, `txid`, `status`; and (007, CONC-003a)
+  `batch_digest` (commitment to the ordered receipts, also pinned on-chain via the settle OP_RETURN),
+  `attestation_sig` + `attestation_pubkey` (the sequencer's settlement claim). Settled orders get
+  `exec_orders.batch_id` stamped to it. Enables `auditSettlement` to prove a settlement matches its receipts.
 
 ## Market lifecycle (markets.state)
 `imported → reviewed → deployed → trading → closed → awaiting_result → resolved → settled`
@@ -62,6 +66,8 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
 - `004_execution.sql` — `exec_orders` (off-chain fill + receipt ledger, CONC-001).
 - `005_settlement.sql` — `exec_batches` (on-chain batch settlement lineage, CONC-002).
 - `006_broadcast_settle_kind.sql` — rebuilds `broadcasts` to allow `kind='settle'`.
+- `007_settlement_commitment.sql` — `exec_batches` += `batch_digest`/`attestation_sig`/`attestation_pubkey`;
+  `exec_orders` += `ts` (CONC-003a auditable settlement).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

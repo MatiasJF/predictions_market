@@ -57,6 +57,7 @@ export class MockEngine extends RunarEngine {
         netNoUnits: batch.netNoUnits.toString(),
         netCollateralSats: batch.netCollateralSats,
         trades: batch.fills.map((f) => ({ side: f.side, action: f.action, shares: f.shares, costSats: f.costSats })),
+        batchDigest: batch.batchDigest,
       },
       marketState: 'trading',
     };
@@ -64,7 +65,7 @@ export class MockEngine extends RunarEngine {
       kind: 'settle',
       summary: `settle ${batch.orderIds.length} off-chain fills (net YES ${batch.netYesUnits}, NO ${batch.netNoUnits})`,
       spendSats: 200,
-      build: { kind: 'settle' },
+      build: { kind: 'settle', batchDigest: batch.batchDigest },
       effects,
     };
   }

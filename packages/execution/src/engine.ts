@@ -25,6 +25,7 @@ import {
   type Receipt,
   type ReceiptSigner,
 } from './receipt.js';
+import { signAttestation, type Attestation } from './audit.js';
 
 export interface OrderInput {
   marketId: number;
@@ -115,6 +116,11 @@ export class ExecutionEngine {
     return this.mkt(marketId).seq;
   }
 
+  /** Sign a settlement attestation with the sequencer key (CONC-003a — binds a batch to a settlement). */
+  attestSettlement(a: Attestation): { sig: string; pubkey: string } {
+    return signAttestation(this.signer, a);
+  }
+
   private mkt(marketId: number): MarketRuntime {
     const m = this.markets.get(marketId);
     if (!m) throw new Error(`execution: market ${marketId} not open`);
@@ -180,12 +186,12 @@ export class ExecutionEngine {
       .prepare(
         `INSERT INTO exec_orders
          (market_id, seq, trader_pubkey, side, action, shares, price_sats, cost_sats,
-          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         r.marketId, r.seq, r.trader, r.side, r.action, r.shares, r.priceSats, r.costSats,
-        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex
+        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts
       );
   }
 

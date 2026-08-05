@@ -121,6 +121,7 @@ export interface ExecOrderRow {
   signer_pubkey: string; // sequencer pubkey (DER hex)
   batch_id: number | null; // set at settlement (CONC-002); NULL = unsettled
   created_at: string;
+  ts: number | null;     // receipt's signed timestamp (007); NULL for pre-007 rows
 }
 
 /** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */
@@ -136,6 +137,10 @@ export interface ExecBatchRow {
   txid: string | null;
   status: 'settled';
   created_at: string;
+  // Added in 007_settlement_commitment (CONC-003a); NULL for pre-007 rows:
+  batch_digest: string | null;       // hex sha256 commitment to the ordered receipts (also pinned on-chain)
+  attestation_sig: string | null;    // sequencer signature over the settlement claim (DER hex)
+  attestation_pubkey: string | null; // sequencer pubkey (DER hex)
 }
 
 /** BigInt <-> DB TEXT boundary helpers. */

@@ -56,6 +56,8 @@ export interface SettleBatch {
   netCollateralSats: number;
   orderIds: number[];
   fills: { trader: string; side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[];
+  /** CONC-003a: hex commitment to the ordered signed receipts; pinned on-chain as an OP_RETURN by settle. */
+  batchDigest: string;
 }
 
 /** Result of a successful broadcast. `poolLockingScript` is the produced pool output's script (needed to spend it next). */
@@ -93,6 +95,10 @@ export interface TxEffects {
     netNoUnits: string;
     netCollateralSats: number;
     trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[];
+    // CONC-003a commitment (batchDigest from the batch; attestation injected by the service after build):
+    batchDigest?: string;
+    attestationSig?: string;
+    attestationPubkey?: string;
   };
   /** Market lifecycle transition to write onto the `markets` row. */
   marketState?: 'deployed' | 'trading' | 'resolved';

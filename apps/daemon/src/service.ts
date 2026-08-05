@@ -11,7 +11,7 @@ import {
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
-import type { ExecutionEngine } from '@pm/execution';
+import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, type ExecutionEngine } from '@pm/execution';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -265,13 +265,55 @@ export class MarketService {
     if (!this.engine.buildSettleBatch) {
       throw new EngineLimitation('settle', 'this engine has no batch-settlement path — run PM_ENGINE=scrypt');
     }
+
+    // CONC-003a: commit to the exact ordered receipts this batch clears (the settle tx pins this digest on-chain).
+    const rows = this.receiptsFor(id, batch.orderIds);
+    const batchDigest = computeBatchDigest(rows.map(receiptFromRow));
+
     const sb: SettleBatch = {
       netYesUnits: batch.netYesUnits, netNoUnits: batch.netNoUnits, netCollateralSats: batch.netCollateralSats,
       orderIds: batch.orderIds,
       fills: batch.fills.map((f) => ({ trader: f.trader, side: f.side, action: f.action, shares: f.shares, costSats: f.costSats })),
+      batchDigest,
     };
     const buildSettle = this.engine.buildSettleBatch.bind(this.engine);
-    return this.enqueue(id, await built(() => buildSettle(cfgOf(m), poolRef(pool), sb)));
+    const plan = await built(() => buildSettle(cfgOf(m), poolRef(pool), sb));
+
+    // Sequencer attestation binding this batch to this settlement (from→to version + resulting state).
+    const fromVersion = pool.version;
+    const toVersion = fromVersion + 1;
+    const newStateHash = stateCommitment(
+      BigInt(plan.effects.pool.qYes), BigInt(plan.effects.pool.qNo),
+      BigInt(plan.effects.pool.eYes), BigInt(plan.effects.pool.eNo)
+    );
+    const att = exec.attestSettlement({
+      marketId: id, fromVersion, toVersion, batchDigest,
+      netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
+      netCollateralSats: batch.netCollateralSats, newStateHash,
+    });
+    if (plan.effects.settle) {
+      plan.effects.settle.batchDigest = batchDigest;
+      plan.effects.settle.attestationSig = att.sig;
+      plan.effects.settle.attestationPubkey = att.pubkey;
+    }
+    return this.enqueue(id, plan);
+  }
+
+  /** Audit every settled batch of a market against its signed receipts + on-chain lineage (CONC-003a). */
+  auditMarket(id: number) {
+    this.execOrThrow();
+    this.marketRow(id);
+    const batches = this.db.prepare('SELECT id FROM exec_batches WHERE market_id=? ORDER BY id DESC').all(id) as { id: number }[];
+    const reports = batches.map((b) => auditSettlement(this.db, id, b.id));
+    return { market_id: id, batches: reports.length, ok: reports.every((r) => r.ok), reports };
+  }
+
+  private receiptsFor(marketId: number, orderIds: number[]) {
+    if (orderIds.length === 0) return [];
+    const placeholders = orderIds.map(() => '?').join(',');
+    return this.db
+      .prepare(`SELECT * FROM exec_orders WHERE market_id=? AND id IN (${placeholders}) ORDER BY seq`)
+      .all(marketId, ...orderIds) as ExecOrderRow[];
   }
 
   // ── sign-off queue ──────────────────────────────────────────────────────────────────────────────────
@@ -344,9 +386,9 @@ export class MarketService {
     if (eff.settle) {
       // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.
       const b = this.db.prepare(
-        `INSERT INTO exec_batches(market_id, from_version, to_version, order_count, net_yes_units, net_no_units, net_collateral_sats, txid, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled')`,
-      ).run(marketId, fromVersion, toVersion, eff.settle.orderIds.length, eff.settle.netYesUnits, eff.settle.netNoUnits, eff.settle.netCollateralSats, result.txid);
+        `INSERT INTO exec_batches(market_id, from_version, to_version, order_count, net_yes_units, net_no_units, net_collateral_sats, txid, status, batch_digest, attestation_sig, attestation_pubkey)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled', ?, ?, ?)`,
+      ).run(marketId, fromVersion, toVersion, eff.settle.orderIds.length, eff.settle.netYesUnits, eff.settle.netNoUnits, eff.settle.netCollateralSats, result.txid, eff.settle.batchDigest ?? null, eff.settle.attestationSig ?? null, eff.settle.attestationPubkey ?? null);
       const batchId = Number(b.lastInsertRowid);
       const stamp = this.db.prepare('UPDATE exec_orders SET batch_id=? WHERE id=? AND batch_id IS NULL');
       for (const oid of eff.settle.orderIds) stamp.run(batchId, oid);

@@ -15,3 +15,14 @@ export {
   type ReceiptSigner,
   type OrderAction,
 } from './receipt.js';
+export {
+  computeBatchDigest,
+  receiptFromRow,
+  signAttestation,
+  verifyAttestation,
+  attestationPayload,
+  auditSettlement,
+  type Attestation,
+  type AuditReport,
+  type AuditViolation,
+} from './audit.js';
