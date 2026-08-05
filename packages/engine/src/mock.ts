@@ -70,6 +70,11 @@ export class MockEngine extends RunarEngine {
     };
   }
 
+  /** Deterministic Rabin-attestation stub (no real Rabin key in tests) — exercises the recording path. */
+  rabinAttest(marketId: number, toVersion: number, digest: string): { key: string; sig: string; pubkey: string } {
+    return { key: `${marketId}:${toVersion}`, sig: `mock-rabin-sig:${digest.slice(0, 8)}`, pubkey: 'mock-seq-rabin' };
+  }
+
   override async authorizeAndBroadcast(plan: TxPlan): Promise<BroadcastResult> {
     this.counter += 1;
     const txid = this.counter.toString(16).padStart(64, '0'); // deterministic, unique per broadcast

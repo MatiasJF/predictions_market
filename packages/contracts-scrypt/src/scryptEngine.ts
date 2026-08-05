@@ -21,6 +21,7 @@ import {
 } from 'scrypt-ts'
 import { LMSRMarket } from './contracts/lmsrMarket'
 import { oracleN, signOutcome } from './oracle'
+import { attest, seqRabinPubKey } from './attestation'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import lmsrArtifact = require('../artifacts/lmsrMarket.json')
 
@@ -133,6 +134,11 @@ export class ScryptEngine {
     }
     oracleId(): string {
         return oracleN.toString(16)
+    }
+    /** CONC-003b: Rabin-sign the settlement attestation (verifiable on-chain by a Bond's slash). */
+    rabinAttest(marketId: number, toVersion: number, digest: string): { key: string; sig: string; pubkey: string } {
+        const a = attest(marketId, toVersion, digest)
+        return { key: a.key, sig: JSON.stringify({ s: a.sig.s.toString(), padding: a.sig.padding }), pubkey: seqRabinPubKey.toString() }
     }
     async getUtxos(_address: string): Promise<{ txid: string; outputIndex: number; satoshis: number; script: string }[]> {
         return [] // wallet-balance view; sCrypt auto-funds internally. (local has no real UTXOs.)

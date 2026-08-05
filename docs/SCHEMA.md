@@ -42,8 +42,10 @@ only; signing material is injected from env at runtime.
   `exec_orders` it collapsed into a single pool-version advance. `from_version → to_version`, `order_count`,
   `net_yes_units`, `net_no_units` (signed), `net_collateral_sats`, `txid`, `status`; and (007, CONC-003a)
   `batch_digest` (commitment to the ordered receipts, also pinned on-chain via the settle OP_RETURN),
-  `attestation_sig` + `attestation_pubkey` (the sequencer's settlement claim). Settled orders get
-  `exec_orders.batch_id` stamped to it. Enables `auditSettlement` to prove a settlement matches its receipts.
+  `attestation_sig` + `attestation_pubkey` (the sequencer's settlement claim); and (008, CONC-003b)
+  `rabin_key`/`rabin_sig`/`seq_rabin_pubkey` — the on-chain-verifiable Rabin attestation, so an equivocation is
+  slashable against the operator `Bond`. Settled orders get `exec_orders.batch_id` stamped to it. Enables
+  `auditSettlement` to prove a settlement matches its receipts.
 
 ## Market lifecycle (markets.state)
 `imported → reviewed → deployed → trading → closed → awaiting_result → resolved → settled`
@@ -68,6 +70,8 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
 - `006_broadcast_settle_kind.sql` — rebuilds `broadcasts` to allow `kind='settle'`.
 - `007_settlement_commitment.sql` — `exec_batches` += `batch_digest`/`attestation_sig`/`attestation_pubkey`;
   `exec_orders` += `ts` (CONC-003a auditable settlement).
+- `008_settlement_rabin_attest.sql` — `exec_batches` += `rabin_key`/`rabin_sig`/`seq_rabin_pubkey` (CONC-003b
+  on-chain-verifiable attestation → slashable equivocation).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

@@ -295,6 +295,13 @@ export class MarketService {
       plan.effects.settle.batchDigest = batchDigest;
       plan.effects.settle.attestationSig = att.sig;
       plan.effects.settle.attestationPubkey = att.pubkey;
+      // CONC-003b: also record the on-chain-verifiable Rabin attestation (makes equivocation slashable).
+      if (this.engine.rabinAttest) {
+        const r = this.engine.rabinAttest(id, toVersion, batchDigest);
+        plan.effects.settle.rabinKey = r.key;
+        plan.effects.settle.rabinSig = r.sig;
+        plan.effects.settle.seqRabinPubkey = r.pubkey;
+      }
     }
     return this.enqueue(id, plan);
   }
@@ -386,9 +393,9 @@ export class MarketService {
     if (eff.settle) {
       // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.
       const b = this.db.prepare(
-        `INSERT INTO exec_batches(market_id, from_version, to_version, order_count, net_yes_units, net_no_units, net_collateral_sats, txid, status, batch_digest, attestation_sig, attestation_pubkey)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled', ?, ?, ?)`,
-      ).run(marketId, fromVersion, toVersion, eff.settle.orderIds.length, eff.settle.netYesUnits, eff.settle.netNoUnits, eff.settle.netCollateralSats, result.txid, eff.settle.batchDigest ?? null, eff.settle.attestationSig ?? null, eff.settle.attestationPubkey ?? null);
+        `INSERT INTO exec_batches(market_id, from_version, to_version, order_count, net_yes_units, net_no_units, net_collateral_sats, txid, status, batch_digest, attestation_sig, attestation_pubkey, rabin_key, rabin_sig, seq_rabin_pubkey)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled', ?, ?, ?, ?, ?, ?)`,
+      ).run(marketId, fromVersion, toVersion, eff.settle.orderIds.length, eff.settle.netYesUnits, eff.settle.netNoUnits, eff.settle.netCollateralSats, result.txid, eff.settle.batchDigest ?? null, eff.settle.attestationSig ?? null, eff.settle.attestationPubkey ?? null, eff.settle.rabinKey ?? null, eff.settle.rabinSig ?? null, eff.settle.seqRabinPubkey ?? null);
       const batchId = Number(b.lastInsertRowid);
       const stamp = this.db.prepare('UPDATE exec_orders SET batch_id=? WHERE id=? AND batch_id IS NULL');
       for (const oid of eff.settle.orderIds) stamp.run(batchId, oid);

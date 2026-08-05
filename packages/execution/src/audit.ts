@@ -63,6 +63,8 @@ export interface AuditReport {
   ok: boolean;
   receiptCount: number;
   violations: AuditViolation[];
+  /** CONC-003b: whether this settlement carries an on-chain-verifiable Rabin attestation (slashable on equivocation). */
+  rabinAttested: boolean;
 }
 
 /** Fold the settled receipts into net unit deltas + net cash — the ground truth the settlement must match. */
@@ -88,7 +90,7 @@ export function auditSettlement(db: Db, marketId: number, batchId: number): Audi
   const batch = db.prepare('SELECT * FROM exec_batches WHERE id=? AND market_id=?').get(batchId, marketId) as
     | ExecBatchRow
     | undefined;
-  if (!batch) return { marketId, batchId, ok: false, receiptCount: 0, violations: [{ check: 'batch', detail: 'no such batch' }] };
+  if (!batch) return { marketId, batchId, ok: false, receiptCount: 0, violations: [{ check: 'batch', detail: 'no such batch' }], rabinAttested: false };
 
   const rows = db
     .prepare('SELECT * FROM exec_orders WHERE market_id=? AND batch_id=? ORDER BY seq')
@@ -156,5 +158,5 @@ export function auditSettlement(db: Db, marketId: number, batchId: number): Audi
     }
   }
 
-  return { marketId, batchId, ok: violations.length === 0, receiptCount: rows.length, violations };
+  return { marketId, batchId, ok: violations.length === 0, receiptCount: rows.length, violations, rabinAttested: !!batch.rabin_sig };
 }

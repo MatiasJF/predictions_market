@@ -86,7 +86,10 @@ early and harden:
    settlement doesn't match the receipts / LMSR rules, slashing the bond. Now cheating is unprofitable.
    _Progress: CONC-003a (ADR-022, DONE) delivered the auditability substrate — each settlement pins a `batchDigest`
    commitment on-chain (OP_RETURN) + a sequencer attestation, and `auditSettlement` lets anyone PROVE a settlement
-   matches its signed receipts (detection). CONC-003b adds the bond UTXO + on-chain slash contract (enforcement)._
+   matches its signed receipts (detection). **CONC-003b (ADR-023, DONE)** added the enforcement: a `Bond` contract
+   holding the operator's stake, slashable on-chain by anyone presenting an equivocation proof (two conflicting
+   Rabin-signed attestations for one settlement), verified via `RabinVerifier`. Equivocation is now unprofitable.
+   Remaining: full net-vs-receipts enforcement (validity proof / dispute game) — step 3 below._
 3. **Validity-proof settlement (endgame).** The pool contract verifies, on-chain, that the batch's net state
    change and token issuance are a correct LMSR transition from the prior state (a compact proof / the contract
    re-checks the net `eYes/eNo` update against the batch's signed orders). Now settlement is **trustless** — the

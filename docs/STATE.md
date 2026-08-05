@@ -282,8 +282,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   `@pm/execution` audit tests + daemon audit-flow (honest ok; tampered receipt → receipt_sig+net_cash+digest);
   sCrypt settle-with-OP_RETURN local Script-verify — 83 workspace + 9 sCrypt green, typecheck clean. Trust: from
   "trust the operator" → "any cheat is cryptographically provable" (detection; enforcement is 003b).
-- ○ CONC-003b — Enforcement: operator **bond** UTXO + on-chain **fraud-proof slash** contract (two contradictory
-  sequencer sigs → slash); upgrade the flat digest to a **Merkle root** for compact inclusion proofs. Planned.
+- ● CONC-003b — **Operator bond + on-chain equivocation-slash — DONE (2026-08-05, ADR-023).** New `Bond` contract
+  (`src/contracts/bond.ts`, ~2.3 KB): `slash(key,digestA,sigA,digestB,sigB,challenger)` RabinVerifies two
+  conflicting sequencer attestations for the same settlement key → pays the bond to the challenger; `withdraw`
+  is CLTV-gated. Sequencer Rabin attestations (`src/attestation.ts`) recorded per settlement (migration 008;
+  `ScryptEngine.rabinAttest` + Mock stub; `/audit` shows `rabinAttested`). **Verified:** 4 Bond mocha tests
+  (real equivocation slashes + pays challenger; reject same-digest + forged sig; withdraw before/after maturity)
+  — 83 workspace + 13 sCrypt green, typecheck clean. Gated demo `mainnet-bond.ts`. Honest scope: slashes
+  equivocation (can't lie about WHICH settlement happened); full net-vs-receipts enforcement is the endgame.
 - ○ CONC-003c — Redeem **token verification**: require a co-spent on-chain ShareToken input (VERDICT gap #2). Planned.
 - ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.

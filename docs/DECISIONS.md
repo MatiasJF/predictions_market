@@ -394,3 +394,28 @@ Template:
   changed. Verified: `@pm/execution` audit tests (digest determinism/order/tamper, ts-persist re-verify,
   attestation sign/verify+tamper), daemon audit-flow (honest ok; tampered receipt → receipt_sig+net_cash+digest
   violations), sCrypt settle-with-OP_RETURN local Script-verify — 83 workspace + 9 sCrypt green, typecheck clean.
+
+## ADR-023 · Operator bond + on-chain equivocation-slash (CONC-003b) · Accepted · 2026-08-05
+- Context: CONC-003a made settlements auditable (fraud is DETECTABLE off-chain) but nothing PUNISHES a cheating
+  operator. This adds the enforcement layer — a slashable bond — the second step on the ADR-019 trust spectrum
+  (custodial → **bonded + fraud-proof** → validity-proof).
+- Constraint: Bitcoin OP_CHECKSIG only verifies TX signatures, so an attestation a contract must check over an
+  arbitrary message has to be **Rabin**-signed (reusing the oracle machinery: `rabinsig` + `RabinVerifier`).
+- Decision: **Bond contract + equivocation-slash.** The sequencer additionally Rabin-signs each settlement
+  attestation `key ‖ digest` (`key = int2ByteString(marketId,4) ‖ int2ByteString(toVersion,4)`) — new
+  `src/attestation.ts`. A `Bond` contract (`src/contracts/bond.ts`, ~2.3 KB) holds the operator's stake and
+  offers: `slash(key, digestA, sigA, digestB, sigB, challenger)` — `RabinVerifier.verifySig` on both (each
+  reconstructed as `key ‖ digest`, so same settlement by construction) + `assert(digestA != digestB)` ⇒
+  equivocation ⇒ pay the whole bond to the challenger; and `withdraw(sig, pubkey)` — operator reclaim gated by a
+  CLTV challenge window (`timeLock(matureAt)` + `checkSig`). No in-script byte-slicing (challenger supplies the
+  fields). Daemon records the Rabin attestation per settlement (migration 008; `ScryptEngine.rabinAttest`,
+  `MockEngine` stub) so a real equivocation is slashable; `/audit` surfaces `rabinAttested`.
+- Honest scope: slashes **equivocation** (double-committing conflicting settlements for one version) — the
+  operator cannot lie about WHICH settlement happened without losing the bond. It does NOT alone prove a single
+  settlement's net equals its receipts arithmetically (validity-proof/dispute endgame). Challenge-window,
+  bond-size, partial-slashing, griefing are noted for production, not tuned.
+- Consequences: equivocation is now unprofitable on-chain; combined with the 003a on-chain commitment, the
+  canonical settlement can't be contradicted. Verified: 4 Bond mocha tests (slash a REAL equivocation verifies vs
+  node Script + pays the challenger; reject same-digest + forged Rabin sig; withdraw CLTV-gated before/after
+  maturity), daemon records + surfaces the attestation — 83 workspace + 13 sCrypt green, typecheck clean. Gated
+  mainnet demo runner `mainnet-bond.ts` (deploy Bond → slash).

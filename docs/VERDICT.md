@@ -102,8 +102,12 @@ settlement fee**, and interactive latency is off-chain. Trust scope: the settle 
 transition + solvency, not per-fill cash; position tokens remain signed receipts. **CONC-003a (ADR-022, DONE)**
 made every settlement auditable + non-equivocable — it pins a `batchDigest` commitment on-chain (OP_RETURN) + a
 sequencer attestation, and `auditSettlement` lets anyone PROVE a settlement matches its signed receipts, so an
-operator cheat is now cryptographically provable (detection). Enforcement (bond + on-chain fraud-proof slash,
-CONC-003b), redeem token verification (CONC-003c), and validity-proof settlement (endgame) remain.
+operator cheat is now cryptographically provable (detection). **CONC-003b (ADR-023, DONE)** added the
+enforcement: an operator **Bond** contract, slashable on-chain by anyone who presents an equivocation proof (two
+conflicting Rabin-signed attestations for one settlement, verified via `RabinVerifier`) — proven by local
+Script-verify (a real equivocation slashes + pays the challenger; forged/same-digest rejected; CLTV withdraw).
+Equivocation is now *unprofitable*. Remaining: redeem token verification (CONC-003c) and full net-vs-receipts
+enforcement via a validity proof / dispute game (the trustless endgame).
 
 ## The six unknowns
 

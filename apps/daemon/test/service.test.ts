@@ -226,6 +226,7 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     expect(good.batches).toBe(1);
     expect(good.reports[0]!.violations).toHaveLength(0);
     expect(good.reports[0]!.receiptCount).toBe(4);
+    expect(good.reports[0]!.rabinAttested).toBe(true); // CONC-003b: recorded a slashable Rabin attestation
 
     // Tamper a settled receipt in the DB → the auditor proves the mismatch (sig + net cash + digest).
     db.prepare('UPDATE exec_orders SET cost_sats = cost_sats + 1 WHERE market_id=? AND seq=1').run(m.id);

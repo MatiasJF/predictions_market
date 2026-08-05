@@ -99,6 +99,10 @@ export interface TxEffects {
     batchDigest?: string;
     attestationSig?: string;
     attestationPubkey?: string;
+    // CONC-003b: the sequencer's Rabin attestation (on-chain-verifiable → slashable on equivocation):
+    rabinKey?: string;
+    rabinSig?: string;
+    seqRabinPubkey?: string;
   };
   /** Market lifecycle transition to write onto the `markets` row. */
   marketState?: 'deployed' | 'trading' | 'resolved';
@@ -157,6 +161,10 @@ export interface ChainEngine {
   /** Batch settlement (CONC-002): advance the pool by a whole batch's net state in one tx. Optional — only
    *  engines with a `settle` contract path implement it (ScryptEngine, MockEngine). Throws/absent otherwise. */
   buildSettleBatch?(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan>;
+
+  /** CONC-003b: Rabin-sign the sequencer's settlement attestation (on-chain-verifiable by a Bond's slash).
+   *  Optional — only engines with the Rabin machinery implement it. `sig` is a JSON-serialized RabinSig. */
+  rabinAttest?(marketId: number, toVersion: number, digest: string): { key: string; sig: string; pubkey: string };
 
   /**
    * THE ONLY method that loads the funding key, signs, and broadcasts. Rebuilds the exact tx from `plan.build`,

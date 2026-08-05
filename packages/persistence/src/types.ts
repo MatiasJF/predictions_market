@@ -141,6 +141,10 @@ export interface ExecBatchRow {
   batch_digest: string | null;       // hex sha256 commitment to the ordered receipts (also pinned on-chain)
   attestation_sig: string | null;    // sequencer signature over the settlement claim (DER hex)
   attestation_pubkey: string | null; // sequencer pubkey (DER hex)
+  // Added in 008_settlement_rabin_attest (CONC-003b); NULL for pre-008 rows:
+  rabin_key: string | null;          // marketId‖toVersion (hex) — the settlement key the Rabin sig commits to
+  rabin_sig: string | null;          // JSON RabinSig {s, padding} — verifiable on-chain by a Bond's slash
+  seq_rabin_pubkey: string | null;   // sequencer Rabin modulus (decimal string)
 }
 
 /** BigInt <-> DB TEXT boundary helpers. */
