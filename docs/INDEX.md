@@ -38,7 +38,12 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Daemon engine selector (`PM_ENGINE=runar\|scrypt`) | `apps/daemon/src/server.ts` |
 | sCrypt package build/why-npm-isolated | `packages/contracts-scrypt/README.md` |
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
-| **Swap seam: ChainEngine interface + TxPlan/PoolRef types** | `packages/engine/src/types.ts` |
+| **Off-chain execution engine (CONC-001): instant fills + serialization** | `packages/execution/src/engine.ts` |
+| Signed off-chain receipts (sign/verify, sequencer key) | `packages/execution/src/receipt.ts` |
+| Execution + settlement tests (incl. 25-way concurrency) | `packages/execution/test/execution.test.ts` |
+| Net-state batch settlement contract method (`settle`) | `settle()` in `packages/contracts-scrypt/src/contracts/lmsrMarket.ts` |
+| Batch settlement engine path (`buildSettleBatch`/`execSettle`) | `packages/contracts-scrypt/src/scryptEngine.ts` |
+| **Swap seam: ChainEngine interface + TxPlan/PoolRef/SettleBatch types** | `packages/engine/src/types.ts` |
 | RunarEngine (Rúnar tx-building behind the seam) | `packages/engine/src/runar.ts` |
 | Multi-share 0-conf chain overlay (BUG-003 workaround) | `packages/engine/src/chaining-provider.ts` |
 | MockEngine (no-network engine for tests) | `packages/engine/src/mock.ts` |
@@ -55,7 +60,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
 | Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |
 | Oracle Rabin-sig verification | `runar-lang/oracle#verifyRabinSig` |
-| SQLite migrations (001 init · 002 broadcasts · 003 pool-state) | `packages/persistence/migrations/` |
+| SQLite migrations (001 init · 002 broadcasts · 003 pool-state · 004 execution · 005 settlement · 006 broadcast-kind) | `packages/persistence/migrations/` |
 | SQLite open/migrate helpers + default DB path | `packages/persistence/src/db.ts` |
 | Migrate CLI (`pnpm db:migrate`) | `packages/persistence/src/migrate-cli.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |

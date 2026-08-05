@@ -4,13 +4,14 @@
 // (the sole WIF use), then applies the plan's DB effects and advances the pool_utxos lineage. Nothing reaches
 // mainnet without an explicit authorize() call (ADR-010).
 import type { Db } from '@pm/persistence';
-import type { BroadcastRow, MarketRow, PoolUtxoRow } from '@pm/persistence';
+import type { BroadcastRow, ExecOrderRow, MarketRow, PoolUtxoRow } from '@pm/persistence';
 import {
   WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
   buyChargeApproxSats, sellPayoutApproxSats, priceYesSats, priceNoSats,
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
-import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type Side, type TxPlan } from '@pm/engine';
+import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
+import type { ExecutionEngine } from '@pm/execution';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -31,6 +32,11 @@ const asSide = (s: string): Side => {
   if (v !== 'yes' && v !== 'no') throw badReq(`side must be 'yes' or 'no', got '${s}'`);
   return v;
 };
+const asAction = (s: string): 'buy' | 'sell' => {
+  const v = (s ?? '').toLowerCase();
+  if (v !== 'buy' && v !== 'sell') throw badReq(`action must be 'buy' or 'sell', got '${s}'`);
+  return v;
+};
 const intShares = (n: number): bigint => {
   if (!Number.isInteger(n) || n < 1 || n > MAX_UNITS) throw badReq(`shares must be an integer in 1..${MAX_UNITS}`);
   return BigInt(n);
@@ -45,7 +51,30 @@ async function built(fn: () => Promise<TxPlan>): Promise<TxPlan> {
 }
 
 export class MarketService {
-  constructor(private readonly db: Db, private readonly engine: ChainEngine) {}
+  constructor(
+    private readonly db: Db,
+    private readonly engine: ChainEngine,
+    private readonly exec?: ExecutionEngine
+  ) {}
+
+  private execOrThrow(): ExecutionEngine {
+    if (!this.exec) throw new ServiceError(501, 'off-chain execution engine not configured on this daemon', 'no_exec');
+    return this.exec;
+  }
+  /** Open the market on the execution engine, resuming its authoritative state from the exec_orders ledger. */
+  private ensureExecOpen(m: MarketRow): void {
+    if (!this.exec || this.exec.hasMarket(m.id)) return;
+    const p = paramsOf(cfgOf(m));
+    const last = this.db
+      .prepare('SELECT seq, q_yes, q_no, e_yes, e_no FROM exec_orders WHERE market_id=? ORDER BY seq DESC LIMIT 1')
+      .get(m.id) as { seq: number; q_yes: string; q_no: string; e_yes: string; e_no: string } | undefined;
+    if (last) {
+      this.exec.openMarket(m.id, p, { eYes: BigInt(last.e_yes), eNo: BigInt(last.e_no), qYes: BigInt(last.q_yes), qNo: BigInt(last.q_no) }, last.seq);
+    } else {
+      const pool = this.currentPool(m.id);
+      this.exec.openMarket(m.id, p, pool ? poolStateToMarketState(pool) : initState(p), 0);
+    }
+  }
 
   // ── markets ───────────────────────────────────────────────────────────────────────────────────────
   async createMarket(input: { question: string; description?: string; bUnits: number | bigint; payoutUnit?: number | bigint; network?: string }) {
@@ -188,6 +217,63 @@ export class MarketService {
     return this.enqueue(id, await this.engine.buildRedeem(cfgOf(m), poolRef(pool), side, BigInt(shares)));
   }
 
+  // ── off-chain execution (CONC-001/002) — instant fills; settlement enqueues into the same sign-off queue ──
+  /** Fill one order off-chain INSTANTLY over @pm/lmsr (no broadcast). Returns the signed receipt. */
+  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number }) {
+    const exec = this.execOrThrow();
+    const m = this.marketRow(id);
+    const pool = this.currentPool(id);
+    if (!pool) throw conflict('market not deployed — deploy the pool before off-chain trading');
+    if (pool.resolved === 1) throw conflict('market is resolved — trading is closed');
+    const side = asSide(input.side);
+    const action = asAction(input.action);
+    const trader = (input.trader ?? '').trim();
+    if (!trader) throw badReq('trader public key is required');
+    const units = input.units ?? 1;
+    if (!Number.isInteger(units) || units < 1 || units > MAX_UNITS) throw badReq(`units must be an integer in 1..${MAX_UNITS}`);
+    this.ensureExecOpen(m);
+    try {
+      const sr = await exec.submit({ marketId: id, trader, side, action, units: BigInt(units) });
+      return { market_id: id, receipt: sr.receipt, sig: sr.sig, signer_pubkey: sr.signerPubkey };
+    } catch (e) {
+      throw badReq(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  listReceipts(id: number, trader?: string) {
+    this.execOrThrow();
+    this.marketRow(id);
+    const rows = (trader
+      ? this.db.prepare('SELECT * FROM exec_orders WHERE market_id=? AND trader_pubkey=? ORDER BY seq').all(id, trader)
+      : this.db.prepare('SELECT * FROM exec_orders WHERE market_id=? ORDER BY seq').all(id)) as ExecOrderRow[];
+    return { market_id: id, count: rows.length, receipts: rows.map(execOrderView) };
+  }
+
+  execPositions(id: number, trader?: string) {
+    const exec = this.execOrThrow();
+    this.marketRow(id);
+    return { market_id: id, positions: exec.positionsOf(id, trader) };
+  }
+
+  /** Build a settlement of all unsettled off-chain fills and PARK it in the sign-off queue (human authorizes). */
+  async enqueueSettle(id: number) {
+    const exec = this.execOrThrow();
+    const { m, pool } = this.tradablePool(id);
+    this.ensureExecOpen(m);
+    const batch = exec.pendingBatch(id);
+    if (batch.orderIds.length === 0) throw badReq('no unsettled off-chain fills to settle');
+    if (!this.engine.buildSettleBatch) {
+      throw new EngineLimitation('settle', 'this engine has no batch-settlement path — run PM_ENGINE=scrypt');
+    }
+    const sb: SettleBatch = {
+      netYesUnits: batch.netYesUnits, netNoUnits: batch.netNoUnits, netCollateralSats: batch.netCollateralSats,
+      orderIds: batch.orderIds,
+      fills: batch.fills.map((f) => ({ trader: f.trader, side: f.side, action: f.action, shares: f.shares, costSats: f.costSats })),
+    };
+    const buildSettle = this.engine.buildSettleBatch.bind(this.engine);
+    return this.enqueue(id, await built(() => buildSettle(cfgOf(m), poolRef(pool), sb)));
+  }
+
   // ── sign-off queue ──────────────────────────────────────────────────────────────────────────────────
   listBroadcasts(status?: string) {
     const rows = (status
@@ -255,6 +341,21 @@ export class MarketService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(marketId, fromVersion, toVersion, eff.trade.side, eff.trade.action, eff.trade.shares, eff.trade.costSats, result.txid);
     }
+    if (eff.settle) {
+      // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.
+      const b = this.db.prepare(
+        `INSERT INTO exec_batches(market_id, from_version, to_version, order_count, net_yes_units, net_no_units, net_collateral_sats, txid, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled')`,
+      ).run(marketId, fromVersion, toVersion, eff.settle.orderIds.length, eff.settle.netYesUnits, eff.settle.netNoUnits, eff.settle.netCollateralSats, result.txid);
+      const batchId = Number(b.lastInsertRowid);
+      const stamp = this.db.prepare('UPDATE exec_orders SET batch_id=? WHERE id=? AND batch_id IS NULL');
+      for (const oid of eff.settle.orderIds) stamp.run(batchId, oid);
+      const insTrade = this.db.prepare(
+        `INSERT INTO trades(market_id, from_version, to_version, side, action, shares, cost_sats, txid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const t of eff.settle.trades) insTrade.run(marketId, fromVersion, toVersion, t.side, t.action, t.shares, t.costSats, result.txid);
+    }
     if (eff.marketState) {
       if (eff.resolution) {
         this.db.prepare("UPDATE markets SET state=?, resolution=?, resolved_at=datetime('now') WHERE id=?").run(eff.marketState, eff.resolution, marketId);
@@ -314,5 +415,11 @@ const poolStateToMarketState = (r: PoolUtxoRow): MarketState => ({ eYes: BigInt(
 const poolFullState = (r: PoolUtxoRow): PoolState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no), collateral: BigInt(r.collateral), resolved: BigInt(r.resolved), winner: BigInt(r.winner) });
 const poolRef = (r: PoolUtxoRow): PoolRef => ({ txid: r.txid, vout: r.vout, satoshis: r.sats, lockingScript: r.locking_script ?? '', state: poolFullState(r) });
 const broadcastView = (r: BroadcastRow) => ({ id: r.id, market_id: r.market_id, kind: r.kind, summary: r.summary, spend_sats: r.spend_sats, status: r.status, txid: r.txid, error: r.error, created_at: r.created_at, decided_at: r.decided_at });
+const execOrderView = (r: ExecOrderRow) => ({
+  seq: r.seq, trader: r.trader_pubkey, side: r.side, action: r.action, shares: r.shares,
+  price_sats: r.price_sats, cost_sats: r.cost_sats, state_hash: r.state_hash,
+  sig: r.sig, signer_pubkey: r.signer_pubkey, settled: r.batch_id !== null, batch_id: r.batch_id,
+  created_at: r.created_at,
+});
 
 export { EngineLimitation };

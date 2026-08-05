@@ -341,3 +341,32 @@ Template:
   budget, ~½ per-trade cost). Callers updated (`scryptEngine.ts`, `lifecycle.ts`, tests). Further slimming now
   needs opcode-level work (shared math helpers), with diminishing returns vs. this collapse. Optional gated
   mainnet re-measure of the real on-chain size remains (a user-authorized spend).
+
+## ADR-021 · Off-chain execution engine + net-state batch settlement (CONC-001/002) · Accepted · 2026-08-05
+- Context: ADR-019 chose off-chain execution + on-chain batched settlement. This ADR records the concrete MVP.
+- CONC-001 — **execution layer.** New pure package `@pm/execution`: `ExecutionEngine` holds the authoritative
+  in-memory LMSR state per market and fills orders instantly over `@pm/lmsr`; concurrent submits for a market
+  are serialized by a per-market promise chain (a single total order, no UTXO contention). Each fill persists to
+  `exec_orders` with an ECDSA-signed **receipt** (trader's proof + a state commitment); the sequencer key is
+  env-only (Golden Rule 6). Proven by a 25-way concurrency test (seq 1..N, final state == N sequential fills).
+- CONC-002 — **net-state settlement (MVP scope, chosen over full per-participant minting).** Because
+  `eYes = exp(qYes/b)` depends only on NET `qYes`, a whole batch's e-state effect is `eYes *= mult^(net units)`
+  (or `invMult` if net-negative) — a bounded multiplicative move. New contract method `settle(netYesUnits,
+  netYesIsBuy, netNoUnits, netNoIsBuy, collateralDelta, collateralIsUp)` (bounded loops, `MAX_BATCH=20`) advances
+  the pool by the batch net in ONE pool-version tx; the sequencer computes the identical net move, so state
+  matches by construction. New engine path `buildSettleBatch` + `'settle'` BroadcastKind; daemon gains
+  `POST /markets/:id/orders` (instant off-chain fill), `/receipts`, `/exec-positions`, and `POST /:id/settle`
+  (enqueues into the SAME human sign-off queue). `applyEffects` writes one `exec_batches` row + N `trades` rows
+  + stamps the settled orders, for one pool-version jump.
+- Integer-rounding caveat: net-from-baseline `mult^net` equals the fill-by-fill state exactly for single-direction
+  batches; mixing buys+sells on a side drifts sub-ppm (q stays exact). The settled state is DEFINED by the net
+  computation (contract == engine), so the pool lineage is self-consistent across batches. Local test uses a
+  buys-only batch for an exact three-way check (contract == engine == `@pm/lmsr` sequential).
+- Trust scope (MVP): the contract verifies the net state transition + solvency, NOT per-fill cash validity, and
+  position tokens stay as the signed receipts (no per-participant on-chain mint). Exact-cash validity + trustless
+  settlement are CONC-003 (bond + fraud proofs → on-chain validity check). Reuses `@pm/lmsr`, `@pm/persistence`,
+  `ScryptEngine`, and the daemon sign-off queue unchanged in shape. Contract script 21.4 → **30.2 KB** (settle's
+  two bounded loops); still 34% below the pre-slim baseline, and amortized across a whole batch.
+- Consequences: interactive off-chain trading with no UTXO contention; on-chain load = batches, not trades;
+  per-trade cost → sub-cent amortized. Verified: `@pm/execution` 5 tests (incl. concurrency), daemon settle test,
+  sCrypt `settle` local Script-verify + MAX_BATCH bound — 79 workspace + 9 sCrypt green, typecheck clean.

@@ -42,7 +42,21 @@ export interface PoolRef {
   state: PoolState;
 }
 
-export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem';
+export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem' | 'settle';
+
+/**
+ * A batch of off-chain fills (CONC-002) folded into the NET effect one settlement tx must apply. `netYesUnits`/
+ * `netNoUnits` are SIGNED unit deltas (+ = net buys). The settlement advances the pool by these net units (the
+ * multiplicative e-state is path-independent) and by the net cash; `fills`/`orderIds` let the service record the
+ * trade rows and link the settled orders.
+ */
+export interface SettleBatch {
+  netYesUnits: bigint;
+  netNoUnits: bigint;
+  netCollateralSats: number;
+  orderIds: number[];
+  fills: { trader: string; side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[];
+}
 
 /** Result of a successful broadcast. `poolLockingScript` is the produced pool output's script (needed to spend it next). */
 export interface BroadcastResult {
@@ -72,6 +86,14 @@ export interface TxEffects {
   spendsPrevPool: boolean;
   /** A trade row to record (buy/sell). */
   trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number };
+  /** Batch settlement (CONC-002): N off-chain fills collapsed into this one pool-version advance. */
+  settle?: {
+    orderIds: number[];
+    netYesUnits: string;
+    netNoUnits: string;
+    netCollateralSats: number;
+    trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[];
+  };
   /** Market lifecycle transition to write onto the `markets` row. */
   marketState?: 'deployed' | 'trading' | 'resolved';
   /** Resolution outcome (resolve only). */
@@ -125,6 +147,10 @@ export interface ChainEngine {
   buildSell(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
   buildResolve(cfg: MarketConfig, pool: PoolRef, outcome: Side): Promise<TxPlan>;
   buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
+
+  /** Batch settlement (CONC-002): advance the pool by a whole batch's net state in one tx. Optional — only
+   *  engines with a `settle` contract path implement it (ScryptEngine, MockEngine). Throws/absent otherwise. */
+  buildSettleBatch?(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan>;
 
   /**
    * THE ONLY method that loads the funding key, signs, and broadcasts. Rebuilds the exact tx from `plan.build`,

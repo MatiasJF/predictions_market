@@ -55,6 +55,11 @@ export class WifReceiptSigner implements ReceiptSigner {
   }
 }
 
+/** Build a receipt signer from a WIF, or a fresh random key if none is supplied (dev/local). Key stays in memory. */
+export function makeReceiptSigner(wif?: string): ReceiptSigner {
+  return new WifReceiptSigner(wif && wif.length > 0 ? wif : PrivateKey.fromRandom().toWif());
+}
+
 /** Verify a receipt against the signer's public key. Anyone can run this — no secrets needed. */
 export function verifyReceipt(r: Receipt, sig: string, signerPubkeyHex: string): boolean {
   try {

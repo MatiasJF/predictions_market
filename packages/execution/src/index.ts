@@ -7,6 +7,7 @@ export {
 } from './engine.js';
 export {
   WifReceiptSigner,
+  makeReceiptSigner,
   verifyReceipt,
   receiptPayload,
   stateCommitment,

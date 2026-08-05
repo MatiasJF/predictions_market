@@ -258,10 +258,19 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   state into a commitment barely helps (code, not the 7 state ints, is the bulk) and splitting Rabin off the trade
   path saves only ~5 KB (needs a 2nd contract). **Remaining (optional):** gated mainnet re-measure of the real
   on-chain size — a user-authorized spend.
-- ○ CONC-001 — Execution layer MVP: off-chain fills over `@pm/lmsr` + signed receipts in `@pm/persistence`;
-  concurrency test (N simultaneous orders → deterministic serialized fills). Planned (ADR-019).
-- ○ CONC-002 — Batched on-chain settlement: extend `ScryptEngine` from one-trade-per-tx → one-batch-per-tx
-  (net state + batch token set); prove a multi-trade batch settles in a single mainnet tx. Planned.
+- ● CONC-001 — **Execution layer MVP — DONE (2026-08-05, ADR-021).** New pure pkg `@pm/execution`:
+  `ExecutionEngine` holds authoritative in-memory LMSR state per market, fills orders INSTANTLY over `@pm/lmsr`,
+  serializes concurrent submits per market (promise chain → single total order, no UTXO contention), persists
+  each fill to `exec_orders` (migration 004) with an ECDSA-signed **receipt** (sequencer key env-only). **5 tests
+  incl. a 25-way concurrency test** (seq 1..N, final == N sequential fills; receipt sign/verify + tamper).
+- ● CONC-002 — **Net-state batch settlement — LOCAL-VERIFIED (2026-08-05, ADR-021); mainnet run pending
+  (user-authorized).** Contract `settle(...)` (bounded loops, MAX_BATCH=20) advances the pool by the batch NET in
+  ONE pool-version tx (e-state path-independent) — script 21.4→30.2 KB. Engine `buildSettleBatch` + `'settle'`
+  kind; daemon `POST /:id/orders` (instant off-chain fill), `/receipts`, `/exec-positions`, `POST /:id/settle`
+  (into the sign-off queue); migration 005 (`exec_batches`) + 006 (broadcasts kind). **Verified:** sCrypt `settle`
+  local Script-verify + MAX_BATCH bound (9 sCrypt green); daemon test — 5 off-chain fills → 1 settle broadcast →
+  1 version advance + 5 trade rows (79 workspace green, typecheck clean). **Remaining:** SCRYPT-005-style gated
+  mainnet settlement (one authorized spend) to prove amortized cost live.
 - ○ CONC-003 — Trust hardening: signed-receipt verification → operator bond + fraud proofs → on-chain validity
   check (trustless settlement). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.

@@ -4,12 +4,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { openDb, migrate, type Db } from '@pm/persistence';
 import { MockEngine, EngineLimitation } from '@pm/engine';
+import { ExecutionEngine, makeReceiptSigner, verifyReceipt } from '@pm/execution';
+import { WAD } from '@pm/lmsr';
 import { MarketService, ServiceError } from '../src/service.js';
 
 function freshService() {
   const db: Db = openDb(':memory:');
   migrate(db);
   return { db, svc: new MarketService(db, new MockEngine()) };
+}
+
+function freshExecService() {
+  const db: Db = openDb(':memory:');
+  migrate(db);
+  const exec = new ExecutionEngine(db, makeReceiptSigner());
+  return { db, svc: new MarketService(db, new MockEngine(), exec) };
 }
 
 describe('MarketService — market lifecycle + sign-off queue', () => {
@@ -140,5 +149,66 @@ describe('MarketService — market lifecycle + sign-off queue', () => {
     const bal = await svc.walletBalance();
     expect(bal.balance_sats).toBe(2_000_000); // MockEngine default fixture
     expect(bal.address).toMatch(/^1/);
+  });
+
+  it('surfaces 501 when no execution engine is configured', async () => {
+    const m = await svc.createMarket({ question: 'no-exec', bUnits: 1000 });
+    await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
+    await expect(
+      svc.submitOrder(m.id, { trader: 'ab'.repeat(33), side: 'yes', action: 'buy' })
+    ).rejects.toThrow(/execution engine not configured/);
+  });
+});
+
+describe('MarketService — off-chain execution + batch settlement (CONC-001/002)', () => {
+  const TRADER = 'aa'.repeat(33);
+
+  it('fills orders off-chain instantly, then settles the whole batch in ONE authorized pool-version advance', async () => {
+    const { db, svc } = freshExecService();
+    const m = await svc.createMarket({ question: 'concurrency', bUnits: 1000 });
+    await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id); // pool v0
+
+    // Five INSTANT off-chain fills (3 YES buys, 2 NO buys) — no broadcasts, signed receipts returned.
+    const r1 = await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
+    expect(r1.receipt.seq).toBe(1);
+    expect(verifyReceipt(r1.receipt, r1.sig, r1.signer_pubkey)).toBe(true);
+    await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
+    await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
+    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
+    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
+
+    // Fills are off-chain: the pool is still at v0 and no NEW broadcast was queued by the fills
+    // (the only broadcast so far is the already-authorized deploy; nothing is pending).
+    expect(svc.getMarket(m.id).pool?.version).toBe(0);
+    expect(svc.listBroadcasts('pending')).toHaveLength(0);
+    expect(svc.listReceipts(m.id).count).toBe(5);
+
+    const pos = svc.execPositions(m.id, TRADER).positions;
+    expect(pos).toHaveLength(1);
+    expect(pos[0]!.netYesShares).toBe((3n * WAD).toString());
+    expect(pos[0]!.netNoShares).toBe((2n * WAD).toString());
+
+    // SETTLE: one broadcast collapses all five fills into a single pool-version advance.
+    const settle = await svc.enqueueSettle(m.id);
+    expect(settle.kind).toBe('settle');
+    const ok = await svc.authorize(settle.broadcast_id);
+    expect(ok.pool_version).toBe(1); // ONE version jump for the whole batch
+
+    const mv = svc.getMarket(m.id);
+    expect(BigInt(mv.pool!.qYes)).toBe(3n * WAD); // pool advanced by the NET: 3 YES, 2 NO
+    expect(BigInt(mv.pool!.qNo)).toBe(2n * WAD);
+    expect(mv.state).toBe('trading');
+
+    // Ledger: 5 trade rows, one settlement row, every order stamped settled.
+    const trades = db.prepare('SELECT COUNT(*) AS c FROM trades WHERE market_id=?').get(m.id) as { c: number };
+    expect(trades.c).toBe(5);
+    const batches = db.prepare('SELECT order_count FROM exec_batches WHERE market_id=?').all(m.id) as { order_count: number }[];
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.order_count).toBe(5);
+    const unsettled = db.prepare('SELECT COUNT(*) AS c FROM exec_orders WHERE market_id=? AND batch_id IS NULL').get(m.id) as { c: number };
+    expect(unsettled.c).toBe(0);
+
+    // Nothing left to settle → 400.
+    await expect(svc.enqueueSettle(m.id)).rejects.toThrow(/no unsettled/);
   });
 });

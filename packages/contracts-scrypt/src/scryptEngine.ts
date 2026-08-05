@@ -50,8 +50,14 @@ interface TxEffects {
     pool: { vout: number; satoshis: number; eYes: string; eNo: string; qYes: string; qNo: string; collateral: string; resolved: 0 | 1; winner: 0 | 1; lockingScript: string }
     spendsPrevPool: boolean
     trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }
+    settle?: { orderIds: number[]; netYesUnits: string; netNoUnits: string; netCollateralSats: number; trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[] }
     marketState?: 'deployed' | 'trading' | 'resolved'
     resolution?: Side
+}
+interface SettleBatch {
+    netYesUnits: bigint; netNoUnits: bigint; netCollateralSats: number
+    orderIds: number[]
+    fills: { trader: string; side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[]
 }
 interface TxPlan { kind: string; summary: string; spendSats: number; build: unknown; effects: TxEffects }
 interface BroadcastResult { txid: string; poolLockingScript: string }
@@ -77,6 +83,7 @@ interface BuyBuild { kind: 'buy'; marketId: number; side: Side; charge: string }
 interface SellBuild { kind: 'sell'; marketId: number; side: Side }
 interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side }
 interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string }
+interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number }
 
 export class ScryptEngine {
     readonly name: string = 'scrypt'
@@ -187,6 +194,48 @@ export class ScryptEngine {
         return { kind: 'redeem', summary: `redeem ${shares} ${side.toUpperCase()} → pay winner ${payout} sat`, spendSats: Number(payout) + 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true } }
     }
 
+    async buildSettleBatch(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan> {
+        // Net-state advance (CONC-002): the settled state = pool advanced by the batch's NET units, computed the
+        // SAME way the contract does (repeated mult/invMult), so it matches by construction.
+        const WADc = WAD
+        const stepE = (e0: bigint, net: bigint, isBuy: boolean): bigint => {
+            const n = net < 0n ? -net : net
+            const m = isBuy ? cfg.mult : cfg.invMult
+            let e = e0
+            for (let i = 0n; i < n; i++) e = (e * m) / WADc
+            return e
+        }
+        const eYes = stepE(pool.state.eYes, batch.netYesUnits, batch.netYesUnits >= 0n)
+        const eNo = stepE(pool.state.eNo, batch.netNoUnits, batch.netNoUnits >= 0n)
+        const s: PoolState = {
+            eYes, eNo,
+            qYes: pool.state.qYes + batch.netYesUnits * WADc,
+            qNo: pool.state.qNo + batch.netNoUnits * WADc,
+            collateral: pool.state.collateral + BigInt(batch.netCollateralSats),
+            resolved: 0n, winner: 0n,
+        }
+        const build: SettleBuild = {
+            kind: 'settle', marketId: cfg.marketId,
+            netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
+            netCollateralSats: batch.netCollateralSats,
+        }
+        return {
+            kind: 'settle',
+            summary: `settle ${batch.orderIds.length} off-chain fills → net YES ${batch.netYesUnits}, NO ${batch.netNoUnits}`,
+            spendSats: 200, build,
+            effects: {
+                pool: poolEffect(s), spendsPrevPool: true,
+                settle: {
+                    orderIds: batch.orderIds,
+                    netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
+                    netCollateralSats: batch.netCollateralSats,
+                    trades: batch.fills.map((f) => ({ side: f.side, action: f.action, shares: f.shares, costSats: f.costSats })),
+                },
+                marketState: 'trading',
+            },
+        }
+    }
+
     // ── authorizeAndBroadcast (the only key use / broadcast) ──────────────────────────────────────────────
     async authorizeAndBroadcast(plan: TxPlan): Promise<BroadcastResult> {
         await this.ready()
@@ -196,7 +245,36 @@ export class ScryptEngine {
         if (kind === 'sell') return this.execSell(plan.build as SellBuild)
         if (kind === 'resolve') return this.execResolve(plan.build as ResolveBuild)
         if (kind === 'redeem') return this.execRedeem(plan.build as RedeemBuild)
+        if (kind === 'settle') return this.execSettle(plan.build as SettleBuild)
         throw new Error(`sCrypt engine: unknown plan kind '${kind}'`)
+    }
+
+    private async execSettle(b: SettleBuild): Promise<BroadcastResult> {
+        const current = this.instances.get(b.marketId)
+        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const netYes = BigInt(b.netYesUnits)
+        const netNo = BigInt(b.netNoUnits)
+        const yBuy = netYes >= 0n
+        const nBuy = netNo >= 0n
+        const yAbs = yBuy ? netYes : -netYes
+        const nAbs = nBuy ? netNo : -netNo
+        const next = current.next()
+        let eYes = current.eYes
+        for (let i = 0n; i < yAbs; i++) eYes = (eYes * (yBuy ? current.mult : current.invMult)) / current.scale
+        next.eYes = eYes
+        let eNo = current.eNo
+        for (let i = 0n; i < nAbs; i++) eNo = (eNo * (nBuy ? current.mult : current.invMult)) / current.scale
+        next.eNo = eNo
+        next.qYes = current.qYes + netYes * current.unit
+        next.qNo = current.qNo + netNo * current.unit
+        const colUp = b.netCollateralSats >= 0
+        const colAbs = BigInt(Math.abs(b.netCollateralSats))
+        next.collateral = colUp ? current.collateral + colAbs : current.collateral - colAbs
+        const res = await current.methods.settle(yAbs, yBuy, nAbs, nBuy, colAbs, colUp, {
+            next: { instance: next, balance: current.balance },
+        } as MethodCallOptions<LMSRMarket>)
+        this.instances.set(b.marketId, next)
+        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
     }
 
     private async execDeploy(b: DeployBuild): Promise<BroadcastResult> {

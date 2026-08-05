@@ -133,10 +133,14 @@ payout on-chain) is the part we already built and confirmed.
 
 ## Concrete next build (proposed phases)
 
-- **CONC-001 — Execution layer MVP:** order intake + signed fills over `@pm/lmsr`, positions/receipts in
-  `@pm/persistence`, concurrency test (N simultaneous orders → deterministic serialized fills).
-- **CONC-002 — Batched settlement:** extend the `ScryptEngine` to settle a batch (net state + token set) in one
-  pool-version tx; prove on mainnet that a multi-trade batch settles in a single tx (amortized cost).
+- **CONC-001 — Execution layer MVP: DONE (2026-08-05, ADR-021).** `@pm/execution` fills orders instantly over
+  `@pm/lmsr`, serializes concurrent submits per market (no UTXO contention), persists signed receipts to
+  `exec_orders`. Proven by a 25-way concurrency test (seq 1..N, final == N sequential fills).
+- **CONC-002 — Batched settlement: LOCAL-VERIFIED (2026-08-05, ADR-021); mainnet run pending.** Net-state MVP —
+  a whole batch collapses into ONE pool-version tx via the `settle` contract method (`eYes *= mult^(net units)`,
+  path-independent), enqueued through the human sign-off queue. Position tokens stay as signed receipts (full
+  per-participant on-chain minting + exact-cash validity are CONC-003). Local Script-verify green; gated mainnet
+  settlement is the remaining step.
 - **CONC-003 — Trust hardening:** signed-receipt verification → operator bond → fraud-proof path; then design the
   on-chain validity check (trustless settlement).
 - **CONC-004 — Contract slimming (parallel): FIRST CUT DONE (2026-08-05, ADR-020).** Collapsed the 9 YES/NO

@@ -40,6 +40,8 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
       return svc.quote(id, query.get('side') ?? '', intParam(query.get('shares') ?? '1', 'shares'));
     }
     if (method === 'GET' && segs.length === 3 && segs[2] === 'positions') return svc.positions(id);
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'receipts') return svc.listReceipts(id, query.get('trader') ?? undefined);
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'exec-positions') return svc.execPositions(id, query.get('trader') ?? undefined);
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       switch (segs[2]) {
@@ -48,6 +50,8 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
         case 'sell': return svc.enqueueSell(id, body.side, Number(body.shares ?? 1));
         case 'resolve': return svc.enqueueResolve(id, body.outcome);
         case 'redeem': return svc.enqueueRedeem(id, body.side, Number(body.shares ?? 1));
+        case 'orders': return svc.submitOrder(id, body); // off-chain instant fill (CONC-001)
+        case 'settle': return svc.enqueueSettle(id); // batch settlement → sign-off queue (CONC-002)
       }
     }
   }

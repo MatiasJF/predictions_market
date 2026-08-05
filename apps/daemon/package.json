@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@pm/engine": "workspace:*",
+    "@pm/execution": "workspace:*",
     "@pm/lmsr": "workspace:*",
     "@pm/persistence": "workspace:*"
   },

@@ -7,17 +7,22 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, migrate, defaultDbPath } from '@pm/persistence';
 import { RunarEngine, type ChainEngine } from '@pm/engine';
+import { ExecutionEngine, makeReceiptSigner } from '@pm/execution';
 import { MarketService } from './service.js';
 import { startServer } from './http.js';
 
-/** The funding WIF from the repo-root .env — passed to the sCrypt engine's authorize path only. */
-function fundingWif(): string {
+/** Read a WIF from the repo-root .env (used at runtime only — never stored/echoed; Golden Rule 6). */
+function envWif(name: string): string {
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.env');
   if (!existsSync(envPath)) return '';
-  const m = readFileSync(envPath, 'utf8').match(/^PM_FUNDING_WIF=(.+)$/m);
+  const m = readFileSync(envPath, 'utf8').match(new RegExp(`^${name}=(.+)$`, 'm'));
   const wif = m?.[1];
   return wif ? wif.trim().replace(/^["']|["']$/g, '') : '';
 }
+/** Funding WIF — passed to the sCrypt engine's authorize path only. */
+const fundingWif = (): string => envWif('PM_FUNDING_WIF');
+/** Sequencer WIF for signing off-chain receipts — falls back to the funding key, then a random dev key. */
+const sequencerWif = (): string => envWif('PM_SEQUENCER_WIF') || fundingWif();
 
 async function makeEngine(): Promise<{ engine: ChainEngine; label: string }> {
   const kind = process.env.PM_ENGINE ?? 'runar';
@@ -40,7 +45,8 @@ const db = openDb(dbPath);
 const applied = migrate(db);
 
 const { engine, label } = await makeEngine();
-const service = new MarketService(db, engine);
+const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()));
+const service = new MarketService(db, engine, exec);
 const port = Number(process.env.PM_PORT ?? 8787);
 
 startServer(service, port);
@@ -48,6 +54,7 @@ startServer(service, port);
 console.log(`pm-daemon listening on http://127.0.0.1:${port}`);
 console.log(`  db:        ${dbPath} (migrations applied this start: ${applied})`);
 console.log(`  engine:    ${label}`);
+console.log(`  exec:      off-chain fills (POST /markets/:id/orders) → settle (POST /markets/:id/settle) into the sign-off queue`);
 console.log(`  sign-off:  state-changing ops park in the broadcasts queue; POST /broadcasts/:id/authorize to send`);
 engine.fundingAddress()
   .then((a) => console.log(`  funding:   ${a}`))

@@ -197,6 +197,47 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         ).to.equal(true)
     })
 
+    it('settle advances the pool by a whole batch (net state) in ONE tx and verifies vs real Script', async () => {
+        // Batch: 3 net YES buys + 2 net NO buys (buys-only ⇒ net == the actual fill sequence, so the on-chain
+        // net-state equals @pm/lmsr applied fill-by-fill — an exact three-way check).
+        const instance = freshPool()
+        await instance.connect(localSigner())
+        await instance.deploy(POOL_SATS)
+
+        // Independently compute the expected net state the SAME way @pm/lmsr's applyUnitBuy does: e *= mult/WAD.
+        // (vectors.json is generated from @pm/lmsr, so mult/WAD here IS the reference multiplicative update.)
+        let eYes = b(V.init.eYes)
+        let eNo = b(V.init.eNo)
+        for (let i = 0; i < 3; i++) eYes = (eYes * b(V.mult)) / b(V.WAD)
+        for (let i = 0; i < 2; i++) eNo = (eNo * b(V.mult)) / b(V.WAD)
+        const collateralDelta = 1234n // batch net cash (MVP: contract bounds solvency, not exact cash)
+
+        const next = instance.next()
+        next.eYes = eYes
+        next.eNo = eNo
+        next.qYes = 3n * b(V.unit)
+        next.qNo = 2n * b(V.unit)
+        next.collateral = b(V.collateral) + collateralDelta
+
+        // Not rejected ⇒ the contract computed the identical net state (its buildStateOutput matched `next`).
+        await instance.methods.settle(3n, true, 2n, true, collateralDelta, true, {
+            next: { instance: next, balance: POOL_SATS },
+        } as MethodCallOptions<LMSRMarket>)
+    })
+
+    it('settle rejects a batch that exceeds MAX_BATCH', async () => {
+        const instance = freshPool()
+        await instance.connect(localSigner())
+        await instance.deploy(POOL_SATS)
+        const next = instance.next()
+        next.qYes = 999n * b(V.unit)
+        await expectReject(() =>
+            instance.methods.settle(999n, true, 0n, true, 0n, true, {
+                next: { instance: next, balance: POOL_SATS },
+            } as MethodCallOptions<LMSRMarket>)
+        )
+    })
+
     it('resolve verifies a REAL Rabin oracle signature on-chain and flips the pool to YES', async () => {
         const pool = new LMSRMarket(
             b(V.init.eYes), b(V.init.eNo), 0n, 0n, b(V.collateral), 0n, 0n,

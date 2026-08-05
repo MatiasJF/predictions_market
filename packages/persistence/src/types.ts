@@ -123,6 +123,21 @@ export interface ExecOrderRow {
   created_at: string;
 }
 
+/** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */
+export interface ExecBatchRow {
+  id: number;
+  market_id: number;
+  from_version: number;
+  to_version: number;
+  order_count: number;
+  net_yes_units: string;       // signed BigInt as decimal string
+  net_no_units: string;
+  net_collateral_sats: number; // signed
+  txid: string | null;
+  status: 'settled';
+  created_at: string;
+}
+
 /** BigInt <-> DB TEXT boundary helpers. */
 export const toText = (v: bigint): string => v.toString();
 export const fromText = (s: string): bigint => BigInt(s);

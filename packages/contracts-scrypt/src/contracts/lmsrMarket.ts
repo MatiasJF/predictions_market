@@ -28,6 +28,9 @@ import { RabinPubKey, RabinSig, RabinVerifier } from 'scrypt-ts-lib'
  * Rabin modulus, marketTag (binds the oracle sig to this market).
  */
 export class LMSRMarket extends SmartContract {
+    // CONC-002: max unit moves per side a single batch settlement may apply (bounds the settle() loops).
+    static readonly MAX_BATCH = 20n
+
     @prop(true)
     eYes: bigint
     @prop(true)
@@ -143,6 +146,58 @@ export class LMSRMarket extends SmartContract {
         const proceeds = (e * this.payoutUnit) / sum
         assert(this.collateral >= proceeds, 'insolvent')
         this.collateral -= proceeds
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
+
+    /**
+     * BATCH SETTLEMENT (CONC-002, net-state MVP). Advances the pool by a whole batch of off-chain fills in ONE
+     * pool-version tx. Because `eYes = exp(qYes/b)` depends only on NET `qYes`, the batch's effect is
+     * `eYes *= mult^(net YES unit delta)` (or `invMult^…` if net-negative) — computed as |net| repeated
+     * multiplicative moves (bounded by MAX_BATCH). The off-chain sequencer computes the identical net move, so
+     * the settled state matches by construction. `collateralDelta` is the batch's net cash; the MVP verifies the
+     * state transition + solvency, not the exact per-fill cash (that is the CONC-003 fraud/validity layer).
+     * Position tokens stay as the signed off-chain receipts in this MVP (no per-participant mint here).
+     */
+    @method()
+    public settle(
+        netYesUnits: bigint,
+        netYesIsBuy: boolean,
+        netNoUnits: bigint,
+        netNoIsBuy: boolean,
+        collateralDelta: bigint,
+        collateralIsUp: boolean
+    ) {
+        assert(this.resolved == 0n, 'resolved')
+        assert(netYesUnits >= 0n && netYesUnits <= LMSRMarket.MAX_BATCH, 'yes batch out of range')
+        assert(netNoUnits >= 0n && netNoUnits <= LMSRMarket.MAX_BATCH, 'no batch out of range')
+
+        // Net YES move: multiply eYes by mult (net buys) or invMult (net sells), |net| times. Bounded loop with
+        // early exit — path-independent end state, identical to the sequencer's net computation.
+        for (let i = 0n; i < LMSRMarket.MAX_BATCH; i++) {
+            if (i < netYesUnits) {
+                this.eYes = (this.eYes * (netYesIsBuy ? this.mult : this.invMult)) / this.scale
+            }
+        }
+        this.qYes = netYesIsBuy
+            ? this.qYes + netYesUnits * this.unit
+            : this.qYes - netYesUnits * this.unit
+
+        for (let i = 0n; i < LMSRMarket.MAX_BATCH; i++) {
+            if (i < netNoUnits) {
+                this.eNo = (this.eNo * (netNoIsBuy ? this.mult : this.invMult)) / this.scale
+            }
+        }
+        this.qNo = netNoIsBuy
+            ? this.qNo + netNoUnits * this.unit
+            : this.qNo - netNoUnits * this.unit
+
+        this.collateral = collateralIsUp
+            ? this.collateral + collateralDelta
+            : this.collateral - collateralDelta
+        assert(this.collateral >= 0n, 'insolvent')
+
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
