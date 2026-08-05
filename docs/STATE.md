@@ -248,6 +248,24 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   returned to self). Recorded in `docs/VERDICT.md` (Phase 2 section). Remaining Phase 2 (optional productization):
   wrap `runLifecycle` behind `ScryptEngine implements ChainEngine` + `PM_ENGINE` daemon swap (SCRYPT-002/003).
 
+### Phase P5 — Platform (concurrency + hardening; design ADR-019)
+- ● CONC-004 — **Contract slimming — DONE (2026-08-05, ADR-020).** Collapsed the 9 YES/NO twin methods to **4
+  side-parameterized** ones — `buy(isYes,…)` (always mints its token), `sell(isYes)`, `resolve`, `redeem(isYes,…)`.
+  Measured on a real compile: locking **script 45,675 → 21,447 bytes (−53%)**, per-spend ~93 KB → ~44 KB (~2× the
+  trades per ancestor budget, ~½ per-trade cost). **Pricing unchanged** — `@pm/lmsr` equivalence vectors + all
+  local Script-verify tests green (**7 sCrypt incl. full lifecycle + 72 workspace**), `tsc` clean. Callers updated:
+  `scryptEngine.ts`, `lifecycle.ts`, `tests/lmsrMarket.test.ts`. Ablation ruled out two pre-plan ideas: hashing
+  state into a commitment barely helps (code, not the 7 state ints, is the bulk) and splitting Rabin off the trade
+  path saves only ~5 KB (needs a 2nd contract). **Remaining (optional):** gated mainnet re-measure of the real
+  on-chain size — a user-authorized spend.
+- ○ CONC-001 — Execution layer MVP: off-chain fills over `@pm/lmsr` + signed receipts in `@pm/persistence`;
+  concurrency test (N simultaneous orders → deterministic serialized fills). Planned (ADR-019).
+- ○ CONC-002 — Batched on-chain settlement: extend `ScryptEngine` from one-trade-per-tx → one-batch-per-tx
+  (net state + batch token set); prove a multi-trade batch settles in a single mainnet tx. Planned.
+- ○ CONC-003 — Trust hardening: signed-receipt verification → operator bond + fraud proofs → on-chain validity
+  check (trustless settlement). Planned.
+- ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
+
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
   bindings file", run `npm --prefix node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3 run

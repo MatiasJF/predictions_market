@@ -12,16 +12,20 @@ import {
 import { RabinPubKey, RabinSig, RabinVerifier } from 'scrypt-ts-lib'
 
 /**
- * LMSRMarket (sCrypt port — Phase 2). Native on-chain LMSR pool, mirroring the Rúnar contract
- * (packages/contracts/src/LMSRMarket.runar.ts) and the @pm/lmsr integer reference. Same on-chain-only ops
- * (bigint mul/div — no exp/ln): multiplicative state (ADR-007) + post-trade-price MM-safe charge (ADR-011).
+ * LMSRMarket (sCrypt port — Phase 2, SLIMMED per CONC-004). Native on-chain LMSR pool, mirroring the @pm/lmsr
+ * integer reference. On-chain-only ops (bigint mul/div — no exp/ln): multiplicative state (ADR-007) +
+ * post-trade-price MM-safe charge (ADR-011).
+ *
+ * SLIMMING (CONC-004, ADR-020): the whole compiled script is re-carried by OP_PUSH_TX on every spend, so its
+ * size sets the per-spend footprint (~93 KB before). The nine YES/NO twin methods
+ * (buyYes/buyNo/sellYes/sellNo/buyYesWithToken/buyNoWithToken/redeemYes/redeemNo + resolve) are collapsed to
+ * FOUR side-parameterized methods — buy/sell/resolve/redeem — with a `isYes` flag. Measured: locking script
+ * 45.7 KB → 21.5 KB (−53%), per-spend ~93 KB → ~44 KB. Pricing is unchanged (verified by the @pm/lmsr
+ * equivalence vectors). Every buy now mints its position token (the state-only buy path was a spike artifact).
  *
  * State (mutable): eYes, eNo, qYes, qNo, collateral, resolved (0/1), winner (0=NO,1=YES).
  * Constants: mult = exp(unit/b)·scale, invMult = exp(−unit/b)·scale, payoutUnit, scale (WAD), unit, oracle
  * Rabin modulus, marketTag (binds the oracle sig to this market).
- *
- * This core file has buy/sell/resolve (state-only continuation). Token mint (multi-output) + redeem
- * (multi-input) — the runar-sdk BUG-005 unblock — build on sCrypt's native multi-output support next.
  */
 export class LMSRMarket extends SmartContract {
     @prop(true)
@@ -87,60 +91,57 @@ export class LMSRMarket extends SmartContract {
         this.marketTag = marketTag
     }
 
+    /**
+     * BUY one unit of `isYes ? YES : NO` and mint a claim ticket to the buyer in the SAME tx (multi-output).
+     * Emits: pool continuation + a P2PKH "token" UTXO to the buyer (`tokenSats`, a dust claim ticket) + change.
+     * The multiplicative update (ADR-007) advances the bought side's stored exponential; the MM-safe charge
+     * (ADR-011) is the post-trade price rounded UP: ceil(newE·payoutUnit / (eYes+eNo)).
+     */
     @method()
-    public buyYes(paymentSats: bigint) {
+    public buy(isYes: boolean, paymentSats: bigint, buyer: PubKeyHash, tokenSats: bigint) {
         assert(this.resolved == 0n, 'resolved')
-        this.eYes = (this.eYes * this.mult) / this.scale
+        let e = isYes ? this.eYes : this.eNo
+        e = (e * this.mult) / this.scale
+        if (isYes) {
+            this.eYes = e
+            this.qYes += this.unit
+        } else {
+            this.eNo = e
+            this.qNo += this.unit
+        }
         const sum = this.eYes + this.eNo
-        // MM-safe post-trade price, rounded UP: ceil(newEYes·payoutUnit / sum)
-        const charge = (this.eYes * this.payoutUnit + sum - 1n) / sum
+        const charge = (e * this.payoutUnit + sum - 1n) / sum
         assert(paymentSats >= charge, 'underpaid')
-        this.qYes += this.unit
         this.collateral += paymentSats
         const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
+            this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }
 
+    /**
+     * SELL one unit of `isYes ? YES : NO` back to the pool (state-only continuation). Inverse multiplicative
+     * update; the proceeds are the post-trade price rounded DOWN: floor(newE·payoutUnit / (eYes+eNo)).
+     */
     @method()
-    public buyNo(paymentSats: bigint) {
+    public sell(isYes: boolean) {
         assert(this.resolved == 0n, 'resolved')
-        this.eNo = (this.eNo * this.mult) / this.scale
+        let e = 0n
+        if (isYes) {
+            assert(this.qYes >= this.unit, 'no YES outstanding')
+            e = (this.eYes * this.invMult) / this.scale
+            this.eYes = e
+            this.qYes -= this.unit
+        } else {
+            assert(this.qNo >= this.unit, 'no NO outstanding')
+            e = (this.eNo * this.invMult) / this.scale
+            this.eNo = e
+            this.qNo -= this.unit
+        }
         const sum = this.eYes + this.eNo
-        const charge = (this.eNo * this.payoutUnit + sum - 1n) / sum
-        assert(paymentSats >= charge, 'underpaid')
-        this.qNo += this.unit
-        this.collateral += paymentSats
-        const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
-        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
-    }
-
-    @method()
-    public sellYes() {
-        assert(this.resolved == 0n, 'resolved')
-        assert(this.qYes >= this.unit, 'no YES outstanding')
-        this.eYes = (this.eYes * this.invMult) / this.scale
-        const sum = this.eYes + this.eNo
-        // MM-safe post-trade price, rounded DOWN: floor(newEYes·payoutUnit / sum)
-        const proceeds = (this.eYes * this.payoutUnit) / sum
+        const proceeds = (e * this.payoutUnit) / sum
         assert(this.collateral >= proceeds, 'insolvent')
-        this.qYes -= this.unit
-        this.collateral -= proceeds
-        const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
-        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
-    }
-
-    @method()
-    public sellNo() {
-        assert(this.resolved == 0n, 'resolved')
-        assert(this.qNo >= this.unit, 'no NO outstanding')
-        this.eNo = (this.eNo * this.invMult) / this.scale
-        const sum = this.eYes + this.eNo
-        const proceeds = (this.eNo * this.payoutUnit) / sum
-        assert(this.collateral >= proceeds, 'insolvent')
-        this.qNo -= this.unit
         this.collateral -= proceeds
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) + this.buildChangeOutput()
@@ -162,71 +163,15 @@ export class LMSRMarket extends SmartContract {
     }
 
     /**
-     * BUY YES + mint a claim ticket to the buyer in the SAME tx (multi-output). Emits: pool continuation +
-     * a P2PKH "token" UTXO to the buyer (`tokenSats`, a dust claim ticket) + change. This 3-output spend is
-     * exactly what runar-sdk could not build (BUG-005); sCrypt builds it natively. The buyer's YES position is
-     * also recorded off-chain in the trades ledger (documented-trust) — the on-chain ticket proves the mint.
+     * REDEEM a winning `isYes ? YES : NO` position (multi-output). Requires the market resolved with the winning
+     * side matching `isYes`. Pays the winner `supply × payoutUnit` sats via a P2PKH payout output, reduces the
+     * pool collateral, and continues the pool. Documented-trust (spike): the pool trusts the supplied
+     * supply/side; production needs SPV/pushdata verification of a co-spent token (see VERDICT).
      */
     @method()
-    public buyYesWithToken(paymentSats: bigint, buyer: PubKeyHash, tokenSats: bigint) {
-        assert(this.resolved == 0n, 'resolved')
-        this.eYes = (this.eYes * this.mult) / this.scale
-        const sum = this.eYes + this.eNo
-        const charge = (this.eYes * this.payoutUnit + sum - 1n) / sum
-        assert(paymentSats >= charge, 'underpaid')
-        this.qYes += this.unit
-        this.collateral += paymentSats
-        const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) +
-            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
-            this.buildChangeOutput()
-        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
-    }
-
-    /**
-     * REDEEM a winning YES position (multi-output). Requires the market resolved with winner == YES. Pays the
-     * winner `supply × payoutUnit` sats via a P2PKH payout output, reduces the pool collateral, and continues
-     * the pool. Emits: reduced pool + winner payout + change — the multi-output payout runar-sdk could not
-     * build (BUG-005). Documented-trust (spike): the pool trusts the supplied supply/winner; production needs
-     * SPV/pushdata verification of a co-spent token (see VERDICT).
-     */
-    @method()
-    public redeemYes(supply: bigint, winner: PubKeyHash) {
+    public redeem(isYes: boolean, supply: bigint, winner: PubKeyHash) {
         assert(this.resolved == 1n, 'not resolved')
-        assert(this.winner == 1n, 'YES did not win')
-        assert(supply > 0n, 'no shares')
-        const payout = supply * this.payoutUnit
-        assert(this.collateral >= payout, 'insolvent')
-        this.collateral -= payout
-        const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) +
-            Utils.buildPublicKeyHashOutput(winner, payout) +
-            this.buildChangeOutput()
-        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
-    }
-
-    /** BUY NO + mint a claim ticket (multi-output). Mirror of `buyYesWithToken` on the NO side. */
-    @method()
-    public buyNoWithToken(paymentSats: bigint, buyer: PubKeyHash, tokenSats: bigint) {
-        assert(this.resolved == 0n, 'resolved')
-        this.eNo = (this.eNo * this.mult) / this.scale
-        const sum = this.eYes + this.eNo
-        const charge = (this.eNo * this.payoutUnit + sum - 1n) / sum
-        assert(paymentSats >= charge, 'underpaid')
-        this.qNo += this.unit
-        this.collateral += paymentSats
-        const outputs: ByteString =
-            this.buildStateOutput(this.ctx.utxo.value) +
-            Utils.buildPublicKeyHashOutput(buyer, tokenSats) +
-            this.buildChangeOutput()
-        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
-    }
-
-    /** REDEEM a winning NO position (multi-output). Mirror of `redeemYes`; requires winner == NO. */
-    @method()
-    public redeemNo(supply: bigint, winner: PubKeyHash) {
-        assert(this.resolved == 1n, 'not resolved')
-        assert(this.winner == 0n, 'NO did not win')
+        assert(this.winner == (isYes ? 1n : 0n), 'wrong side')
         assert(supply > 0n, 'no shares')
         const payout = supply * this.payoutUnit
         assert(this.collateral >= payout, 'insolvent')

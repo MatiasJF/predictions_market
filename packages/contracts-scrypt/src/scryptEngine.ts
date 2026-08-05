@@ -32,8 +32,8 @@ const FEE_PER_KB = 500 // 0.5 sat/byte — the rate sCrypt's builders actually u
 
 /**
  * Forces an explicit fee rate. sCrypt derives tx fees from the provider's getFeePerKb(); WhatsOnChain returns
- * ~50 sat/KB (0.05 sat/byte), which is too low for the ~26 KB pool txs to confirm promptly (they sat unconfirmed
- * for 40+ min). Overriding it to 500 sat/KB is the real fee-control fix — the platform sets fees here.
+ * ~50 sat/KB (0.05 sat/byte), which is too low for the pool txs (~44 KB/spend after CONC-004 slimming) to confirm
+ * promptly (they sat unconfirmed for 40+ min). Overriding it to 500 sat/KB is the real fee-control fix.
  */
 class FeeProvider extends DefaultProvider {
     override async getFeePerKb(): Promise<number> {
@@ -212,11 +212,12 @@ export class ScryptEngine {
         if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId} (deploy first)`)
         const charge = BigInt(b.charge)
         const buyer = await this.selfPkh()
-        const method = b.side === 'yes' ? 'buyYesWithToken' : 'buyNoWithToken'
+        const isYes = b.side === 'yes'
         let captured!: LMSRMarket
-        current.bindTxBuilder(method, async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, paymentSats: bigint, buyerArg: PubKeyHash, tokenSats: bigint): Promise<ContractTransaction> => {
+        // Slimmed contract (CONC-004): single side-parameterized `buy(isYes, paymentSats, buyer, tokenSats)`.
+        current.bindTxBuilder('buy', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, isYesArg: boolean, paymentSats: bigint, buyerArg: PubKeyHash, tokenSats: bigint): Promise<ContractTransaction> => {
             const next = cur.next()
-            if (b.side === 'yes') { next.eYes = (cur.eYes * cur.mult) / cur.scale; next.qYes = cur.qYes + cur.unit }
+            if (isYesArg) { next.eYes = (cur.eYes * cur.mult) / cur.scale; next.qYes = cur.qYes + cur.unit }
             else { next.eNo = (cur.eNo * cur.mult) / cur.scale; next.qNo = cur.qNo + cur.unit }
             next.collateral = cur.collateral + paymentSats
             const tokenScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(buyerArg))
@@ -228,8 +229,7 @@ export class ScryptEngine {
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
         })
-        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
-        const res = await call(charge, buyer, BigInt(TOKEN_SATS), { changeAddress: await this.signer().getDefaultAddress() })
+        const res = await current.methods.buy(isYes, charge, buyer, BigInt(TOKEN_SATS), { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, captured)
         return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }
@@ -242,9 +242,8 @@ export class ScryptEngine {
         else { next.eNo = (current.eNo * current.invMult) / current.scale; next.qNo = current.qNo - current.unit }
         const newE = b.side === 'yes' ? next.eYes : next.eNo
         next.collateral = current.collateral - (newE * current.payoutUnit) / (next.eYes + next.eNo)
-        const method = b.side === 'yes' ? 'sellYes' : 'sellNo'
-        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
-        const res = await call({ next: { instance: next, balance: current.balance } })
+        // Slimmed contract (CONC-004): single side-parameterized `sell(isYes)` (state-only continuation).
+        const res = await current.methods.sell(b.side === 'yes', { next: { instance: next, balance: current.balance } } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, next)
         return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
     }
@@ -267,9 +266,10 @@ export class ScryptEngine {
         if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
         const supply = BigInt(b.supply)
         const winner = await this.selfPkh()
-        const method = b.side === 'yes' ? 'redeemYes' : 'redeemNo'
+        const isYes = b.side === 'yes'
         let captured!: LMSRMarket
-        current.bindTxBuilder(method, async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, supplyArg: bigint, winnerArg: PubKeyHash): Promise<ContractTransaction> => {
+        // Slimmed contract (CONC-004): single side-parameterized `redeem(isYes, supply, winner)`.
+        current.bindTxBuilder('redeem', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>, isYesArg: boolean, supplyArg: bigint, winnerArg: PubKeyHash): Promise<ContractTransaction> => {
             const next = cur.next()
             next.collateral = cur.collateral - supplyArg * cur.payoutUnit
             const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(winnerArg))
@@ -281,8 +281,7 @@ export class ScryptEngine {
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
         })
-        const call = (current.methods as Record<string, (...a: unknown[]) => Promise<{ tx: { id: string } }>>)[method]!
-        const res = await call(supply, winner, { changeAddress: await this.signer().getDefaultAddress() })
+        const res = await current.methods.redeem(isYes, supply, winner, { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, captured)
         return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }

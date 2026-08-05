@@ -322,3 +322,22 @@ Template:
   the pool contract/`ScryptEngine`/daemon/`@pm/lmsr`/`@pm/persistence` are all reused (extend one-trade-per-tx →
   one-batch-per-tx). Resolves the project's founding native-vs-off-chain tension as a **synthesis**: off-chain
   execution + native on-chain settlement. Full rationale + phased build (CONC-001..005) in `docs/CONCURRENCY.md`.
+
+## ADR-020 · Slim the pool contract by collapsing YES/NO twins to side-parameterized methods · Accepted · 2026-08-05
+- Context: OP_PUSH_TX re-carries the ENTIRE compiled pool script on every spend, so script size sets the
+  per-spend footprint (~93 KB, the biggest lever on per-trade cost + how many trades chain per block — CONC-004).
+- Empirical ablation (real compiles, artifact `hex` measured): baseline nine methods = **45,675 B**; removing
+  `resolve`/Rabin = 40,714 B (Rabin ≈ **5 KB**); collapsing the YES/NO twins to `buy/sell/resolve/redeem`
+  (5 methods) = 26,557 B; **4 methods (buy always mints) = 21,447 B (−53%)**.
+- Decision: **collapse the 9 twins to 4 side-parameterized methods** — `buy(isYes,…)`, `sell(isYes)`, `resolve`,
+  `redeem(isYes,…)` — passing side as a `boolean`. Drop the state-only no-token buy (a spike artifact): every buy
+  mints its position token. Semantics/pricing unchanged, proven by the `@pm/lmsr` equivalence vectors + all local
+  Script-verify tests staying green.
+- Rejected/deferred (ruled out by the ablation, correcting the pre-measurement plan): (a) **state → hash
+  commitment** — barely helps size (the bulk is method *code*, not the 7 state ints) while adding covenant-
+  verification risk; dropped. (b) **split `resolve`+Rabin into a separate contract** to give trades a Rabin-free
+  script — only ~5 KB, needs a 2nd contract/UTXO; deferred as low-priority.
+- Consequences: locking script 45.7 KB → **21.4 KB**, per-spend ~93 KB → ~44 KB (~2× more trades per ancestor
+  budget, ~½ per-trade cost). Callers updated (`scryptEngine.ts`, `lifecycle.ts`, tests). Further slimming now
+  needs opcode-level work (shared math helpers), with diminishing returns vs. this collapse. Optional gated
+  mainnet re-measure of the real on-chain size remains (a user-authorized spend).

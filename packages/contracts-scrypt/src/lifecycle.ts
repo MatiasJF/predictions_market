@@ -71,10 +71,11 @@ export async function runLifecycle(
 
     let afterBuy!: LMSRMarket
     pool.bindTxBuilder(
-        'buyYesWithToken',
+        'buy',
         async (
             current: LMSRMarket,
             options: MethodCallOptions<LMSRMarket>,
+            _isYes: boolean,
             paymentSats: bigint,
             buyerArg: PubKeyHash,
             tokenSats: bigint
@@ -97,7 +98,7 @@ export async function runLifecycle(
             }
         }
     )
-    const buyRes = await pool.methods.buyYesWithToken(charge, winner, BigInt(p.tokenSats), {
+    const buyRes = await pool.methods.buy(true, charge, winner, BigInt(p.tokenSats), {
         changeAddress,
     } as MethodCallOptions<LMSRMarket>)
     log(`buy+mint: ${buyRes.tx.id}  (charge ${charge} sat, token ${p.tokenSats} sat)`)
@@ -117,10 +118,11 @@ export async function runLifecycle(
     const payout = supply * p.payoutUnit
     let afterRedeem!: LMSRMarket
     resolveNext.bindTxBuilder(
-        'redeemYes',
+        'redeem',
         async (
             current: LMSRMarket,
             options: MethodCallOptions<LMSRMarket>,
+            _isYes: boolean,
             supplyArg: bigint,
             winnerArg: PubKeyHash
         ): Promise<ContractTransaction> => {
@@ -140,7 +142,7 @@ export async function runLifecycle(
             }
         }
     )
-    const redeemRes = await resolveNext.methods.redeemYes(supply, winner, {
+    const redeemRes = await resolveNext.methods.redeem(true, supply, winner, {
         changeAddress,
     } as MethodCallOptions<LMSRMarket>)
     log(`redeem:   ${redeemRes.tx.id}  (winner paid ${payout} sat)`)

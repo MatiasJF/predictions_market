@@ -139,7 +139,11 @@ payout on-chain) is the part we already built and confirmed.
   pool-version tx; prove on mainnet that a multi-trade batch settles in a single tx (amortized cost).
 - **CONC-003 — Trust hardening:** signed-receipt verification → operator bond → fraud-proof path; then design the
   on-chain validity check (trustless settlement).
-- **CONC-004 — Contract slimming (parallel):** cut the ~93 KB spend toward single-digit KB (leaner methods,
-  push state off the covenant into a commitment) — reduces settlement cost ~10×.
+- **CONC-004 — Contract slimming (parallel): FIRST CUT DONE (2026-08-05, ADR-020).** Collapsed the 9 YES/NO
+  twin methods to 4 side-parameterized ones (`buy/sell/resolve/redeem`) — measured **45.7 KB → 21.4 KB locking
+  script (−53%)**, per-spend ~93 KB → ~44 KB, pricing unchanged (equivalence + local-verify tests green). Note:
+  the ablation showed pushing state off the covenant into a commitment barely helps (the bulk is method *code*,
+  not the state ints), and moving Rabin off the trade path saves only ~5 KB (needs a 2nd contract) — so further
+  slimming is opcode-level (shared math), with diminishing returns vs. this collapse.
 - **CONC-005 — Ops:** restart-safe state (reconstruct pools from chain), automated fee/UTXO-pool management (the
   fee-control + funding findings from SCRYPT-005 become the sequencer's job).
