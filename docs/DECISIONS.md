@@ -438,7 +438,16 @@ Template:
   co-spent token input is signed with a real key; the offline-only DummyProvider fee simulation (which conflicts
   with bsv's fee guard for this large-covenant multi-input tx) is stubbed — the Script verify is the guarantee.
   16 sCrypt + 83 workspace green, typecheck clean.
-- Honest scope: the redeem COVENANT is proven. Driving it through the daemon/mainnet (engine tracking each
-  market's minted token UTXO + mint tx, co-spending it, signing that P2PKH input via the funding key) is
-  engine-integration work still pending — `ScryptEngine.execRedeem` surfaces an `EngineLimitation` until then
-  rather than broadcasting a redeem the hardened contract would reject; `runLifecycle` covers deploy→buy→resolve.
+- **Engine integration (DONE, same ticket):** `ScryptEngine` now tracks the token minted by each `buy` (script +
+  the split mint-tx pieces, with the reconstruction verified against the real txid before use) and `execRedeem`
+  builds the co-spend explicitly — pool #0, token #1, funding #2 — so `allOutpoints` is deterministic and matches
+  `hashPrevouts`; it signs the two P2PKH inputs with the funding key (NONE|ANYONECANPAY, since the framework
+  inserts the pool's covenant unlock afterwards) and reserves fee for that unlock. `autoPayFee:false` stops the
+  framework appending inputs after the covenant committed to the outpoint set. Redeeming without a tracked token
+  is refused (`EngineLimitation`) rather than broadcasting something the hardened contract would reject.
+  Offline `network='local'` uses a `LocalProvider` that stubs the (chainless) broadcast simulation — its fee
+  re-check conflicts with bsv's guard on these large multi-input txs and runs only AFTER real Script verification.
+- Verified end-to-end: `tests/engineRedeem.test.ts` drives **deploy → buy(mint) → resolve → redeem(co-spend +
+  backtrace)** through the engine, all against the real node Script (18 sCrypt + 83 workspace green).
+- Honest remaining scope: a **gated mainnet run** of the hardened redeem (a real spend) is not yet done;
+  `runLifecycle` still covers deploy→buy→resolve (the engine path is the integrated one).

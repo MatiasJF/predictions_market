@@ -112,9 +112,11 @@ network accepted the on-chain Rabin fraud-proof (both conflicting attestations v
 and paid the bond to the challenger. Equivocation is now *unprofitable*. **CONC-003c (ADR-024)** closed VERDICT
 gap #2 at the contract level: `redeem` co-spends a genuine on-chain token and BACKTRACES it (reconstruct token
 output → mint txid → bind via `hashPrevouts`), so supply/holder/side come from the chain — no token-less redeem,
-over-claim, or redirection (proven in `tests/redeemBacktrace.test.ts`: a real co-spend redeem passes the node
-Script; over-claim / redirection / wrong-vout rejected; driving it through the daemon/mainnet is pending engine
-integration). Remaining: full net-vs-receipts enforcement via a validity proof / dispute game (the endgame).
+over-claim, or redirection. Proven in `tests/redeemBacktrace.test.ts` (a real co-spend redeem passes the node
+Script; over-claim / redirection / wrong-vout rejected) and integrated end-to-end in `tests/engineRedeem.test.ts`
+(**deploy → buy(mint) → resolve → redeem(co-spend + backtrace)** driven through the `ScryptEngine`, which tracks
+the minted token and refuses a token-less redeem). A gated mainnet run of the hardened redeem is still to do.
+Remaining: full net-vs-receipts enforcement via a validity proof / dispute game (the endgame).
 
 ## The six unknowns
 

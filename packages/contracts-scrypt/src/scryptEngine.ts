@@ -43,6 +43,18 @@ class FeeProvider extends DefaultProvider {
     }
 }
 
+/**
+ * Offline (network='local') provider. DummyProvider re-simulates a fee check in sendTransaction which conflicts
+ * with bsv's own fee guard for the large multi-input covenant txs (redeem co-spend). That simulation runs AFTER
+ * the real node Script interpreter has already verified every input — the meaningful guarantee — and there is no
+ * chain to broadcast to offline, so the "broadcast" is stubbed. The mainnet path uses FeeProvider + a real send.
+ */
+class LocalProvider extends DummyProvider {
+    override async sendTransaction(tx: bsv.Transaction): Promise<string> {
+        return tx.id
+    }
+}
+
 // ── structural mirrors of @pm/engine types (kept in sync; the daemon casts ScryptEngine → ChainEngine) ─────
 type Side = 'yes' | 'no'
 interface MarketConfig { marketId: number; bUnits: bigint; payoutUnit: bigint; mult: bigint; invMult: bigint }
@@ -88,12 +100,63 @@ interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side }
 interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string }
 interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number; batchDigest: string }
 
+/** A minted position token (CONC-003c) + the pieces redeem's on-chain backtrace needs to prove it. */
+interface TokenRef {
+    txid: string        // mint txid, display order
+    vout: number        // always 1 (buy emits pool, token, change)
+    satoshis: number
+    script: string      // the data+P2PKH token locking script (hex)
+    holderPkh: string
+    supply: bigint
+    isYes: boolean
+    prevHeader: string  // version ‖ varint(nIn) ‖ inputs ‖ varint(nOut)
+    poolOut: string     // serialized output 0 (exactly ONE output ⇒ the token is output index 1)
+    prevTail: string    // serialized outputs 2.. ‖ nLockTime
+}
+
+/**
+ * Split a mint tx into the three backtrace pieces so that
+ * `hash256(prevHeader ‖ poolOut ‖ tokenOutput ‖ prevTail)` reproduces its txid — exactly what the pool's
+ * `redeem` recomputes on-chain. Throws if the reconstruction doesn't match (defensive: never hand the contract
+ * pieces that cannot verify).
+ */
+function splitMintTx(tx: bsv.Transaction, tokenVout: number): { prevHeader: string; poolOut: string; prevTail: string } {
+    const t = tx as unknown as { version: number; inputs: { toBufferWriter: (w: unknown) => void }[]; outputs: { toBufferWriter: (w: unknown) => void }[]; nLockTime: number; toBuffer: () => Buffer }
+    const ser = (o: { toBufferWriter: (w: unknown) => void }): string => {
+        const w = new bsv.encoding.BufferWriter()
+        o.toBufferWriter(w)
+        return w.toBuffer().toString('hex')
+    }
+    const hw = new bsv.encoding.BufferWriter() as unknown as { writeUInt32LE: (n: number) => void; writeVarintNum: (n: number) => void; toBuffer: () => Buffer }
+    hw.writeUInt32LE(t.version)
+    hw.writeVarintNum(t.inputs.length)
+    for (const i of t.inputs) i.toBufferWriter(hw)
+    hw.writeVarintNum(t.outputs.length)
+    const prevHeader = hw.toBuffer().toString('hex')
+
+    const tw = new bsv.encoding.BufferWriter() as unknown as { writeUInt32LE: (n: number) => void; toBuffer: () => Buffer }
+    for (let i = tokenVout + 1; i < t.outputs.length; i++) t.outputs[i]!.toBufferWriter(tw)
+    tw.writeUInt32LE(t.nLockTime)
+    const prevTail = tw.toBuffer().toString('hex')
+
+    const poolOut = ser(t.outputs[0]!)
+    const tokenOutput = ser(t.outputs[tokenVout]!)
+    const rebuilt = Buffer.from(prevHeader + poolOut + tokenOutput + prevTail, 'hex')
+    if (!rebuilt.equals(t.toBuffer())) {
+        throw new Error('sCrypt engine: mint-tx reconstruction mismatch (token must be output index 1)')
+    }
+    return { prevHeader, poolOut, prevTail }
+}
+
 export class ScryptEngine {
     readonly name: string = 'scrypt'
     private readonly network: 'local' | 'mainnet'
     private readonly getWif: () => string
     private readonly instances = new Map<number, LMSRMarket>()
     private _signer?: Signer
+    private _priv?: bsv.PrivateKey
+    /** CONC-003c: the position token minted by the latest buy per market — co-spent + backtraced by redeem. */
+    private readonly tokens = new Map<number, TokenRef>()
     private loaded = false
 
     constructor(network: 'local' | 'mainnet' = 'local', getWif: () => string = () => '') {
@@ -104,14 +167,21 @@ export class ScryptEngine {
     private async ready(): Promise<void> {
         if (!this.loaded) { LMSRMarket.loadArtifact(lmsrArtifact as never); this.loaded = true }
     }
+    /** The funding key, in memory only (Golden Rule 6). Also signs the co-spent token/funding inputs (CONC-003c). */
+    private priv(): bsv.PrivateKey {
+        if (!this._priv) {
+            this._priv = this.network === 'mainnet'
+                ? bsv.PrivateKey.fromWIF(this.getWif())
+                : bsv.PrivateKey.fromRandom(bsv.Networks.testnet)
+        }
+        return this._priv
+    }
     private signer(): Signer {
         if (!this._signer) {
-            if (this.network === 'mainnet') {
-                // FeeProvider forces an adequate fee rate (the WoC default is too low for 26 KB txs to confirm).
-                this._signer = new TestWallet(bsv.PrivateKey.fromWIF(this.getWif()), new FeeProvider({ network: bsv.Networks.mainnet }))
-            } else {
-                this._signer = new TestWallet(bsv.PrivateKey.fromRandom(bsv.Networks.testnet), new DummyProvider())
-            }
+            // FeeProvider forces an adequate fee rate (the WoC default is too low for large pool txs to confirm).
+            this._signer = this.network === 'mainnet'
+                ? new TestWallet(this.priv(), new FeeProvider({ network: bsv.Networks.mainnet }))
+                : new TestWallet(this.priv(), new LocalProvider())
         }
         return this._signer
     }
@@ -335,6 +405,15 @@ export class ScryptEngine {
         })
         const res = await current.methods.buy(isYes, charge, buyer, BigInt(TOKEN_SATS), { changeAddress: await this.signer().getDefaultAddress() } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, captured)
+
+        // CONC-003c: remember the minted token + the backtrace pieces so redeem can co-spend and PROVE it.
+        const tokenScript = '21' + marketTagHex(b.marketId) + (isYes ? '01' : '00') + int2ByteString(1n, 8n) + buyer +
+            '75' + Utils.buildPublicKeyHashScript(buyer)
+        const { prevHeader, poolOut, prevTail } = splitMintTx(res.tx as unknown as bsv.Transaction, 1)
+        this.tokens.set(b.marketId, {
+            txid: res.tx.id, vout: 1, satoshis: TOKEN_SATS, script: tokenScript,
+            holderPkh: buyer, supply: 1n, isYes, prevHeader, poolOut, prevTail,
+        })
         return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }
 
@@ -365,12 +444,96 @@ export class ScryptEngine {
         return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
     }
 
-    private async execRedeem(_b: RedeemBuild): Promise<BroadcastResult> {
-        // CONC-003c: redeem is now BACKTRACE-verified against a co-spent on-chain token (the covenant is proven in
-        // tests/redeemBacktrace.test.ts). Driving it through the engine requires tracking each market's minted
-        // token UTXO + its mint tx, co-spending it as input #1, and signing that P2PKH input across the funding
-        // key — engine-integration work still pending. Until then the engine surfaces this rather than
-        // broadcasting a redeem the hardened contract would reject.
-        throw new EngineLimitation('redeem', 'CONC-003c backtrace co-spend redeem — engine integration pending (contract proven in tests/redeemBacktrace.test.ts)')
+    /**
+     * REDEEM (CONC-003c) — co-spends the market's minted position token as input #1 and lets the pool BACKTRACE
+     * it on-chain. Inputs are added explicitly (pool, token, funding) so `allOutpoints` is deterministic and
+     * matches `hashPrevouts`; the token + funding P2PKH inputs are signed here with the funding key (the token
+     * holder is this engine's own address). `autoPayFee: false` keeps the framework from appending inputs after
+     * the covenant has committed to the outpoint set.
+     */
+    private async execRedeem(b: RedeemBuild): Promise<BroadcastResult> {
+        const current = this.instances.get(b.marketId)
+        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const token = this.tokens.get(b.marketId)
+        if (!token) {
+            throw new EngineLimitation('redeem', 'no minted position token tracked for this market in this run — buy first (CONC-003c requires co-spending the real token)')
+        }
+        const isYes = b.side === 'yes'
+        if (token.isYes !== isYes) throw new Error(`sCrypt engine: tracked token is ${token.isYes ? 'YES' : 'NO'}, not ${b.side.toUpperCase()}`)
+
+        const priv = this.priv()
+        const address = await this.signer().getDefaultAddress()
+        const payout = token.supply * current.payoutUnit
+
+        // Explicit funding input (the payout is real sats; the pool UTXO is dust).
+        const utxos = await this.signer().listUnspent(address)
+        const funding = utxos.find((u) => u.satoshis >= Number(payout) + 50_000) ?? utxos[0]
+        if (!funding) throw new Error('sCrypt engine: no funding UTXO available for redeem')
+
+        const poolInput = current.buildContractInput()
+        const tokenInput = new bsv.Transaction.Input({
+            prevTxId: Buffer.from(token.txid, 'hex'),
+            outputIndex: token.vout,
+            script: bsv.Script.fromHex(''),
+            sequenceNumber: 0xffffffff,
+        })
+        const fundingInput = new bsv.Transaction.Input({
+            prevTxId: Buffer.from(funding.txId, 'hex'),
+            outputIndex: funding.outputIndex,
+            script: bsv.Script.fromHex(''),
+            sequenceNumber: 0xffffffff,
+        })
+        const opHex = (i: bsv.Transaction.Input): string => {
+            const w = new bsv.encoding.BufferWriter() as unknown as { write: (b: Buffer) => void; writeUInt32LE: (n: number) => void; toBuffer: () => Buffer }
+            w.write(Buffer.from((i as unknown as { prevTxId: Buffer }).prevTxId).reverse()) // bsv holds prevTxId display-order; outpoints serialize internal
+            w.writeUInt32LE((i as unknown as { outputIndex: number }).outputIndex)
+            return w.toBuffer().toString('hex')
+        }
+        const allOutpoints = opHex(poolInput) + opHex(tokenInput) + opHex(fundingInput)
+
+        let captured!: LMSRMarket
+        current.bindTxBuilder('redeem', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
+            const next = cur.next()
+            next.collateral = cur.collateral - payout
+            const payoutScript = bsv.Script.fromHex(Utils.buildPublicKeyHashScript(PubKeyHash(toByteString(token.holderPkh))))
+            const tx = new bsv.Transaction().addInput(poolInput)
+                .addInput(tokenInput, bsv.Script.fromHex(token.script), token.satoshis)
+                .addInput(fundingInput, bsv.Script.fromHex(funding.script), funding.satoshis)
+                .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
+                .addOutput(new bsv.Transaction.Output({ script: payoutScript, satoshis: Number(payout) }))
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(FEE_PER_KB)
+            if (options.changeAddress) {
+                // The framework inserts the pool's (large) covenant unlocking script AFTER this builder runs, so
+                // size-based change would under-fund the fee. Reserve for it explicitly.
+                const unlockEst = (cur.lockingScript as unknown as { toBuffer: () => Buffer }).toBuffer().length * 1.2 + 2000
+                const sizeEst = (tx as unknown as { toBuffer: () => Buffer }).toBuffer().length + unlockEst
+                ;(tx.change(options.changeAddress) as unknown as { fee: (n: number) => void }).fee(
+                    Math.ceil((sizeEst / 1000) * FEE_PER_KB)
+                )
+            }
+            // Sign the two P2PKH inputs with the funding key. NONE|ANYONECANPAY so each commits only to its own
+            // input — the framework fills the pool's covenant unlock afterwards, which would break SIGHASH_ALL.
+            const sighashType = bsv.crypto.Signature.SIGHASH_NONE | bsv.crypto.Signature.SIGHASH_ANYONECANPAY | bsv.crypto.Signature.SIGHASH_FORKID
+            const signP2PKH = (idx: number, subscript: bsv.Script, sats: number): void => {
+                const sig = bsv.Transaction.Sighash.sign(tx, priv, sighashType, idx, subscript, new bsv.crypto.BN(sats))
+                const unlock = bsv.Script.fromHex('') as unknown as { add: (b: Buffer) => void }
+                unlock.add(Buffer.concat([sig.toDER(), Buffer.from([sighashType])]))
+                unlock.add(priv.publicKey.toBuffer())
+                ;(tx.inputs[idx] as unknown as { setScript: (s: unknown) => void }).setScript(unlock)
+            }
+            signP2PKH(1, bsv.Script.fromHex(token.script), token.satoshis)
+            signP2PKH(2, bsv.Script.fromHex(funding.script), funding.satoshis)
+            captured = next
+            return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
+        })
+
+        const res = await current.methods.redeem(
+            isYes, token.supply, PubKeyHash(toByteString(token.holderPkh)), BigInt(token.satoshis),
+            toByteString(token.prevHeader), toByteString(token.poolOut), toByteString(token.prevTail), toByteString(allOutpoints),
+            { changeAddress: address, autoPayFee: false } as MethodCallOptions<LMSRMarket>
+        )
+        this.instances.set(b.marketId, captured)
+        this.tokens.delete(b.marketId) // the token is burned by this redeem
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
     }
 }
