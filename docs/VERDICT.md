@@ -77,10 +77,31 @@ per-spend human authorization. Engineering learnings baked in: **fee control = `
 **~93 KB** (OP_PUSH_TX re-carries the pool script) so trades cost ~15–20k sat and 4 pool txs exceed the 101 KB
 mempool-ancestor budget (sequence deploy→buy, confirm, then resolve→redeem).
 
-**Still-open platform work (design, not feasibility):** (1) **concurrency** — one pool UTXO serialises trades, so
-many simultaneous users collide (needs a sequencer / sharded pools / off-chain-match+on-chain-settle); (2)
-**security** — redeem trusts supplied shares/holder (needs SPV/pushdata token verification); (3) **slim the
-~26 KB pool Script** to cut per-trade cost; (4) **restart-safe state** (reconstruct pool instances from chain).
+**Still-open platform work (design, not feasibility):** (1) **concurrency** — addressed by CONC-001/002 below;
+(2) **security** — redeem/settle trust supplied shares/cash (needs SPV/pushdata token verification + settlement
+validity proofs, CONC-003); (3) further **slim the pool Script** (CONC-004 cut it 45.7→21.4 KB, −53%); (4)
+**restart-safe state** (reconstruct pool instances from chain, CONC-005).
+
+### Concurrency MVP — off-chain execution + net-state batched settlement, live on mainnet (2026-08-05)
+
+The single-UTXO pool serialises trades (~1/block) — inherent to a single-UTXO AMM, not a bug (ADR-019). The
+resolution (ADR-021): execute trades **off-chain** (instant, no UTXO contention) and settle **on-chain in
+batches**. Built + verified: `@pm/execution` fills orders instantly over `@pm/lmsr` with per-market
+serialization + signed receipts (25-way concurrency test green); the sCrypt `settle()` method advances the pool
+by a whole batch's **net** state (path-independent `eYes = exp(qYes/b)`) in one pool-version tx.
+
+**Proven live** — a batch of **5 off-chain fills settled in ONE on-chain transaction** on BSV mainnet:
+
+| tx | txid | detail |
+|---|---|---|
+| deploy | [`68fee818…56ca48`](https://whatsonchain.com/tx/68fee81873163cbc6ea4cd20a3a84a34f012e28e358441f74025e30e1a56ca48) | fresh pool, 1-in/2-out, 30,915 B |
+| **settle** | [`cc13883b…662d2f`](https://whatsonchain.com/tx/cc13883b35695ac9c9b1caf40b1166633f2dcb552e27ce7478fcfb64ff662d2f) | **5 fills → 1 tx**, 2-in/2-out (spends the pool + advances net state), 61,896 B |
+
+Both **accepted into the mainnet mempool** (network-validated the settle covenant); confirmation follows BSV
+block timing, as in the Phase-2 full circle. This demonstrates the amortization: **N trades cost ONE settlement
+fee**, and interactive latency is off-chain. Trust scope (MVP): the settle contract verifies the net state
+transition + solvency, not per-fill cash; position tokens remain signed receipts. Trustless settlement (bond +
+fraud proofs → on-chain validity check) and per-participant on-chain minting are **CONC-003**.
 
 ## The six unknowns
 
