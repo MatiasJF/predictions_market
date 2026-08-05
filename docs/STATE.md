@@ -288,8 +288,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   is CLTV-gated. Sequencer Rabin attestations (`src/attestation.ts`) recorded per settlement (migration 008;
   `ScryptEngine.rabinAttest` + Mock stub; `/audit` shows `rabinAttested`). **Verified:** 4 Bond mocha tests
   (real equivocation slashes + pays challenger; reject same-digest + forged sig; withdraw before/after maturity)
-  — 83 workspace + 13 sCrypt green, typecheck clean. Gated demo `mainnet-bond.ts`. Honest scope: slashes
-  equivocation (can't lie about WHICH settlement happened); full net-vs-receipts enforcement is the endgame.
+  — 83 workspace + 13 sCrypt green, typecheck clean. **PROVEN LIVE on mainnet (2026-08-05):** bond deploy
+  `04e80444…700e0a` → **slash `53972656…03956ed`** (2-in: spends the bond + funding / 2-out) — the slash spends
+  the bond via the on-chain Rabin equivocation proof, both accepted into the mainnet mempool (fraud-proof
+  script network-validated); confirmation follows BSV block timing. Runner: `mainnet-bond.ts --broadcast`.
+  Honest scope: slashes equivocation (can't lie about WHICH settlement happened); full net-vs-receipts
+  enforcement is the endgame.
 - ○ CONC-003c — Redeem **token verification**: require a co-spent on-chain ShareToken input (VERDICT gap #2). Planned.
 - ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.

@@ -104,10 +104,13 @@ made every settlement auditable + non-equivocable — it pins a `batchDigest` co
 sequencer attestation, and `auditSettlement` lets anyone PROVE a settlement matches its signed receipts, so an
 operator cheat is now cryptographically provable (detection). **CONC-003b (ADR-023, DONE)** added the
 enforcement: an operator **Bond** contract, slashable on-chain by anyone who presents an equivocation proof (two
-conflicting Rabin-signed attestations for one settlement, verified via `RabinVerifier`) — proven by local
-Script-verify (a real equivocation slashes + pays the challenger; forged/same-digest rejected; CLTV withdraw).
-Equivocation is now *unprofitable*. Remaining: redeem token verification (CONC-003c) and full net-vs-receipts
-enforcement via a validity proof / dispute game (the trustless endgame).
+conflicting Rabin-signed attestations for one settlement, verified via `RabinVerifier`). **Proven live on BSV
+mainnet** — deploy [`04e80444…700e0a`](https://whatsonchain.com/tx/04e80444a7c8332bdac3f3096336f6a8a066c9fcd092113333a21e5cd8700e0a)
+(bond, 1-in/2-out) → **slash** [`53972656…03956ed`](https://whatsonchain.com/tx/539726563f8d4288e70cd7dd30f3846de1686b6b2f0b7478a195e7e0e03956ed)
+(**2-in**: spends the bond + funding / 2-out): the slash spends the bond UTXO, so the network accepted the
+on-chain Rabin fraud-proof (both conflicting attestations verified + equivocation proven) and paid the bond to
+the challenger. Equivocation is now *unprofitable*. Remaining: redeem token verification (CONC-003c) and full
+net-vs-receipts enforcement via a validity proof / dispute game (the trustless endgame).
 
 ## The six unknowns
 
