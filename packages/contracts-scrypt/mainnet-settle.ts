@@ -57,6 +57,7 @@ async function main() {
             trader: 'aa'.repeat(33), side: (i <= 3 ? 'yes' : 'no') as 'yes' | 'no',
             action: 'buy' as const, shares: WAD.toString(), costSats: 50,
         })),
+        batchDigest: 'ab'.repeat(32), // CONC-003a commitment (placeholder for this synthetic demo batch)
     }
 
     console.log('\n=== BROADCAST 2/2: SETTLE batch of 5 fills (net YES 3, NO 2) in ONE tx ===')
