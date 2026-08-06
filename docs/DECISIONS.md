@@ -708,3 +708,29 @@ Template:
 - Pattern worth noting, third time now: the acceptance test kept passing because it configures itself correctly
   (it writes the token straight to localStorage). Every defect in this UI so far has been in the gap between
   "correctly configured" and "what a person actually walks into".
+
+## ADR-033 · A polled balance view silently emptied the funding wallet (MAINNET-003) · Accepted · 2026-08-06
+- Context: the first real mainnet attempt failed at authorize with `no sufficient utxos to pay the fee of 18740`,
+  on a wallet holding **515,369 sat**. Nothing was broadcast; no money was spent.
+- **Root cause — a regression introduced by ADR-031's own bug fix.** That fix made `/wallet/balance` real by
+  calling `this.signer().listUnspent(address)`. But `TestWallet.listUnspent()` is **not a query**: with
+  `splitFeeTx` on (the scrypt-ts default) it delegates to `CacheableUtxoManager.fetchUtxos(0)`, whose first line
+  is `return this.availableUtxos.splice(0)` — it **drains** the wallet's funding cache and hands the entries to
+  the caller. The operator console polls the balance every 10 s, so the first poll emptied the wallet and every
+  subsequent spend found nothing to fund with. (The second poll also blocks ~30 s in a "waiting for available
+  utxos" retry loop before returning 0 — the endpoint got both slower and wrong.)
+- Fix: **the provider and the signer are now separate.** `provider()` holds the read-only chain provider and all
+  reads go through it; only spends touch the signer. Verified on mainnet: six consecutive `/wallet/balance`
+  polls all return `515,369 sat / 4 utxos`, stable. `execRedeem` still reads through the signer — that path
+  *claims* a utxo to spend explicitly, so draining is intended there; it is now commented as a trap not to copy.
+- **Second fix, from the same investigation: a failed broadcast used to poison the process.** sCrypt removes the
+  utxos it claims when funding and restores them only on success, so after any failure the wallet is missing
+  them and every later spend reports "no sufficient utxos" — indistinguishable from being broke. Now
+  `authorizeAndBroadcast` catches, drops the signer/provider and clears the warm contract instances, so the next
+  attempt re-reads the chain. Rebuilding those instances is free and network-less — precisely what CONC-005 was
+  built for. This matters because the mainnet run needs **3 confirmation waits**, and a retry after a genuine
+  failure has to work.
+- Verified: 116 tests green, typecheck + build clean, and the **full UI journey passes** after the refactor.
+- **Lesson worth keeping:** the failure was loud and cost nothing because the fee check runs before signing.
+  A read-shaped API (`listUnspent`) with write semantics is a genuine trap in scrypt-ts — the name gives no
+  hint, and the damage only shows up on the *next* operation, far from the call that caused it.

@@ -224,12 +224,26 @@ export class ScryptEngine {
         }
         return this._priv
     }
+    /**
+     * The read-only chain provider. Held separately from the signer because reads MUST NOT go through the
+     * wallet: `TestWallet.listUnspent()` is not a query — with `splitFeeTx` on (the default) it delegates to
+     * `CacheableUtxoManager.fetchUtxos(0)`, whose first line is `availableUtxos.splice(0)`. It DRAINS the
+     * wallet's funding cache and hands the entries to the caller. A polled balance view therefore empties the
+     * wallet, and the next spend dies with "no sufficient utxos". Reads go here; only spends touch the signer.
+     */
+    private _provider?: DefaultProvider | LocalProvider
+    private provider(): DefaultProvider | LocalProvider {
+        if (!this._provider) {
+            // FeeProvider forces an adequate fee rate (the WoC default is too low for large pool txs to confirm).
+            this._provider = this.network === 'mainnet'
+                ? new FeeProvider({ network: bsv.Networks.mainnet })
+                : new LocalProvider()
+        }
+        return this._provider
+    }
     private signer(): Signer {
         if (!this._signer) {
-            // FeeProvider forces an adequate fee rate (the WoC default is too low for large pool txs to confirm).
-            this._signer = this.network === 'mainnet'
-                ? new TestWallet(this.priv(), new FeeProvider({ network: bsv.Networks.mainnet }))
-                : new TestWallet(this.priv(), new LocalProvider())
+            this._signer = new TestWallet(this.priv(), this.provider() as never)
         }
         return this._signer
     }
@@ -349,7 +363,8 @@ export class ScryptEngine {
      */
     async getUtxos(address: string): Promise<{ txid: string; outputIndex: number; satoshis: number; script: string }[]> {
         if (this.network !== 'mainnet') return []
-        const utxos = await this.signer().listUnspent(bsv.Address.fromString(address))
+        // Straight to the provider — see provider() for why this must never go through the signer.
+        const utxos = await this.provider().listUnspent(bsv.Address.fromString(address))
         return utxos.map((u) => ({ txid: u.txId, outputIndex: u.outputIndex, satoshis: u.satoshis, script: u.script }))
     }
 
@@ -560,14 +575,26 @@ export class ScryptEngine {
     async authorizeAndBroadcast(plan: TxPlan): Promise<BroadcastResult> {
         await this.ready()
         const kind = (plan.build as { kind: string }).kind
-        if (kind === 'deploy') return this.execDeploy(plan.build as DeployBuild)
-        if (kind === 'buy') return this.execBuy(plan.build as BuyBuild)
-        if (kind === 'sell') return this.execSell(plan.build as SellBuild)
-        if (kind === 'resolve') return this.execResolve(plan.build as ResolveBuild)
-        if (kind === 'redeem') return this.execRedeem(plan.build as RedeemBuild)
-        if (kind === 'settle') return this.execSettle(plan.build as SettleBuild)
-        if (kind === 'payout') return this.execPayout(plan.build as PayoutBuild)
-        throw new Error(`sCrypt engine: unknown plan kind '${kind}'`)
+        try {
+            if (kind === 'deploy') return await this.execDeploy(plan.build as DeployBuild)
+            if (kind === 'buy') return await this.execBuy(plan.build as BuyBuild)
+            if (kind === 'sell') return await this.execSell(plan.build as SellBuild)
+            if (kind === 'resolve') return await this.execResolve(plan.build as ResolveBuild)
+            if (kind === 'redeem') return await this.execRedeem(plan.build as RedeemBuild)
+            if (kind === 'settle') return await this.execSettle(plan.build as SettleBuild)
+            if (kind === 'payout') return await this.execPayout(plan.build as PayoutBuild)
+            throw new Error(`sCrypt engine: unknown plan kind '${kind}'`)
+        } catch (e) {
+            // A failed broadcast leaves the wallet's funding cache MISSING the utxos it had already claimed for
+            // the attempt — sCrypt removes them when it funds and restores them only on success. Without this,
+            // one failure poisons every later spend in the process with "no sufficient utxos". Drop the wallet so
+            // the next attempt re-reads the chain, and drop the warm contract instances bound to it: CONC-005
+            // rebuilds those from the plan's pool UTXO with no network call, which is exactly this situation.
+            this._signer = undefined
+            this._provider = undefined
+            this.instances.clear()
+            throw e
+        }
     }
 
     private async execSettle(b: SettleBuild): Promise<BroadcastResult> {
@@ -700,6 +727,8 @@ export class ScryptEngine {
         const payout = token.supply * current.payoutUnit
 
         // Explicit funding input (the payout is real sats; the pool UTXO is dust).
+        // NOTE: going through the signer here DRAINS the wallet's funding cache (see provider()). That is
+        // tolerable only because this path claims a funding utxo to spend explicitly; never copy it for a read.
         const utxos = await this.signer().listUnspent(address)
         const funding = utxos.find((u) => u.satoshis >= Number(payout) + 50_000) ?? utxos[0]
         if (!funding) throw new Error('sCrypt engine: no funding UTXO available for redeem')
