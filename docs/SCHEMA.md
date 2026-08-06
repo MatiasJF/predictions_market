@@ -79,6 +79,8 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   now actually written — on buy, and burned on redeem).
 - `010_order_auth.sql` — `exec_orders` += `order_sig`/`nonce` + UNIQUE(market_id, trader_pubkey, nonce)
   (LIVE-001a: orders are authenticated by the trader; a replay fails at the DB too).
+- `011_payout_kind.sql` — allows `kind='payout'` in `broadcasts` + a `payouts` table (PAYOUT-001 audit
+  trail: who was paid, how much, and the digest pinned on-chain).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

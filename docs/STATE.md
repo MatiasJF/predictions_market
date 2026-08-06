@@ -321,6 +321,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
+- ● PAYOUT-001 — **Receipt → on-chain payout bridge — DONE + PROVEN LIVE (2026-08-06, ADR-028).** Closed the
+  last hole in the user journey: winners could not collect. New `payout` contract method pays every winner in
+  ONE tx (bounded loop, MAX_PAYOUTS=8) while the contract asserts resolved + `collateral >= total` and
+  decrements collateral by exactly what leaves; `winningPayouts` derives the list from the audited receipts
+  (losers/flat traders get nothing) and the digest is pinned on-chain. Payout address = `hash160(trader pubkey)`
+  — the key you trade with is the key you get paid to. Script 29,801 → 36,762 B. **PROVEN ON MAINNET:** deploy
+  `6ab9da17…` → settle `3092f3dc…` (26 real signed fills → 1 tx) → resolve `81d94c76…` → **payout `4332b024…`,
+  block 961094, 4 winners paid 15,000 sat**; trader-2's address independently confirmed holding 4,000 sat.
+  **98 workspace + 28 sCrypt green.** Remaining: on-chain verification of each winner's receipts
+  (validity-proof settlement).
 - ● LIVE-001 — **Trader-authenticated orders + the REAL multi-wallet market — DONE (2026-08-06, ADR-027).**
   Found and fixed a real security gap: `submit()` verified nothing, so the operator could fabricate fills in any
   user's name. Traders now sign `marketId|trader|side|action|units|nonce`; the engine verifies BEFORE filling

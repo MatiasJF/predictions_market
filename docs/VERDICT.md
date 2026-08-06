@@ -74,7 +74,32 @@ authenticated, so the operator cannot fabricate a trade in a user's name — LIV
 
 **Traders hold no BSV.** They sign orders; the operator pays every fee — zero-friction onboarding.
 
-### 4 · Concurrency — N trades settle in ONE transaction
+### 4 · Winners paid — the complete user journey, end to end (2026-08-06)
+
+The whole thing, one continuous run on mainnet: real wallets trade, the batch settles, and **the winners
+actually collect**.
+
+| Step | Transaction | Detail |
+|---|---|---|
+| Deploy | [`6ab9da17…3756b3`](https://whatsonchain.com/tx/6ab9da1772e50086d4a83805e9f3235cbc3c798e6bd2ca1854da93af603756b3) | pool |
+| Settle | [`3092f3dc…5a347c`](https://whatsonchain.com/tx/3092f3dc13f296b9b773bfebadaf48101387e5512b0677d2124283de5e5a347c) | **26 real signed fills → ONE tx** |
+| Resolve | [`81d94c76…84be6c`](https://whatsonchain.com/tx/81d94c76b6aa7d3ca2289986301c97e7685339a05ba2cc7b3cf8f4317584be6c) | Rabin oracle YES |
+| **Payout** | [`4332b024…fad7b4`](https://whatsonchain.com/tx/4332b02491a588005fdc2da67418a95eea96a04b275205e0045efd119efad7b4) | **4 winners paid 15,000 sat**, 75,374 B — **confirmed, block 961094** |
+
+The payout tx's outputs are the pool continuation, the OP_RETURN payout commitment, and **one output per
+winner** — each landing in the address derived from the key that trader signed its orders with:
+
+| Trader | Address | Winning shares | Paid |
+|---|---|---|---|
+| trader-1 | `15usAUqZyjkYtDW5gkbF63CYGoP8VP5qjs` | 3 | 3,000 sat |
+| trader-2 | `199XhHbYrDUSYcVf9Lwwf7QoaoqEDNPvEZ` | 4 | 4,000 sat |
+| trader-3 | `1G9y66zSVEK7Kqex34DauqLV6ABe7VpTxz` | 4 | 4,000 sat |
+| trader-4 | `1DbTVpmU9LuEw1NSwTq2aUaTr3Lbvtk9hs` | 4 | 4,000 sat |
+
+Independently confirmed on-chain: trader-2's address holds **4,000 confirmed satoshis** (unspent, block
+961094). **Real users won real money on a real market**, with the settlement provably matching what they signed.
+
+### 5 · Concurrency — N trades settle in ONE transaction
 
 | Transaction | Detail |
 |---|---|
@@ -84,7 +109,7 @@ authenticated, so the operator cannot fabricate a trade in a user's name — LIV
 Both confirmed, **block 960978**. Demonstrates the amortization: **N trades cost ONE settlement fee**, while
 users get instant off-chain fills.
 
-### 5 · Enforcement — a cheating operator's bond is slashable by anyone
+### 6 · Enforcement — a cheating operator's bond is slashable by anyone
 
 | Transaction | Detail |
 |---|---|
@@ -94,7 +119,7 @@ users get instant off-chain fills.
 Both confirmed, **block 960994**. The network executed the fraud proof — two conflicting sequencer attestations
 verified in Script — and paid the bond to the challenger. **Equivocation is unprofitable.**
 
-### 6 · Token-verified payout — a redeem that provably requires a real token
+### 7 · Token-verified payout — a redeem that provably requires a real token
 
 | Transaction | Detail |
 |---|---|
@@ -207,10 +232,6 @@ with instant fills; **N-trades-in-one-settlement**; settlement auditability; and
 enforcement**.
 
 **Owed before this is a product:**
-- **Receipt → on-chain payout.** Settled *off-chain* positions have no payout path: traders hold audited signed
-  receipts, not per-participant tokens, and `redeem` needs a token minted by an on-chain buy. This is the one
-  visible hole in the user journey — closing it means per-participant minting at settlement, or validity-proof
-  settlement (below). Surfaced by the first real multi-wallet run.
 - **Trustless settlement (the endgame).** The settle contract verifies the net state transition + solvency, and
   equivocation is slashable — but it does **not** prove on-chain that a batch's net equals the sum of its
   receipts. That needs a validity proof or an interactive dispute game. This is the one substantive trust

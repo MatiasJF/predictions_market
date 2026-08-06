@@ -42,6 +42,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Signed off-chain receipts (sign/verify, sequencer key) | `packages/execution/src/receipt.ts` |
 | **Throughput benchmark (fills/sec + fills per settlement)** | `packages/execution/bench/bench.ts` |
 | **Trader-authenticated orders (sign/verify, LIVE-001a)** | `packages/execution/src/order.ts` |
+| **Receipt → payout derivation (winningPayouts, PAYOUT-001)** | `packages/execution/src/payout.ts` |
+| Multi-winner `payout` contract method + tests | `packages/contracts-scrypt/tests/payout.test.ts` |
 | **Real multi-wallet market runner (HTTP against the daemon)** | `apps/spike/src/live-market.ts` |
 | Trader wallet keygen (WIFs git-ignored) | `apps/spike/src/trader-keygen.ts` |
 | Square-and-multiply `powFixed` (consensus-critical, CONC-006) | `powFixed` in `packages/lmsr/src/fixed.ts` |
