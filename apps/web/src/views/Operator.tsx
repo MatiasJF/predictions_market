@@ -36,7 +36,10 @@ export function Operator({ network }: { network?: string }) {
     setBusy(label); setMsg('');
     try {
       const r = await fn();
-      setMsg(`${label}: ${r.txid ? `broadcast ${String(r.txid).slice(0, 20)}…` : `queued #${r.broadcast_id ?? ''}`}`);
+      const cost = r.size_bytes
+        ? ` · ${(r.size_bytes / 1024).toFixed(1)} KB, fee ${Number(r.fee_sats ?? 0).toLocaleString()} sat`
+        : '';
+      setMsg(`${label}: ${r.txid ? `broadcast ${String(r.txid).slice(0, 20)}…${cost}` : `queued #${r.broadcast_id ?? ''}`}`);
       if (r.id && r.question) setSel(r.id); // a market we just created — select it
       await refreshQueue();
     } catch (e) {

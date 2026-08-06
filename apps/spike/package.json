@@ -9,7 +9,8 @@
     "keygen:sequencer": "tsx src/sequencer-keygen.ts",
     "mainnet": "tsx src/mainnet.ts",
     "keygen:traders": "tsx src/trader-keygen.ts",
-    "live": "tsx src/live-market.ts"
+    "live": "tsx src/live-market.ts",
+    "measure:journey": "tsx src/measure-journey.ts"
   },
   "dependencies": {
     "@bsv/sdk": "^2.1.9",

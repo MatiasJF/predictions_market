@@ -85,7 +85,7 @@ interface SettleBatch {
     batchDigest: string
 }
 interface TxPlan { kind: string; summary: string; spendSats: number; build: unknown; effects: TxEffects }
-interface BroadcastResult { txid: string; poolLockingScript: string }
+interface BroadcastResult { txid: string; poolLockingScript: string; sizeBytes?: number; feeSats?: number }
 
 export class EngineLimitation extends Error {
     constructor(public readonly kind: string, public readonly pointer: string) {
@@ -341,8 +341,16 @@ export class ScryptEngine {
         const a = attest(marketId, toVersion, digest)
         return { key: a.key, sig: JSON.stringify({ s: a.sig.s.toString(), padding: a.sig.padding }), pubkey: seqRabinPubKey.toString() }
     }
-    async getUtxos(_address: string): Promise<{ txid: string; outputIndex: number; satoshis: number; script: string }[]> {
-        return [] // wallet-balance view; sCrypt auto-funds internally. (local has no real UTXOs.)
+    /**
+     * The funding wallet's spendable UTXOs. sCrypt auto-funds internally, so this exists purely for the
+     * wallet-balance view — but that view is what an operator checks BEFORE authorizing a mainnet spend, so
+     * returning a stubbed empty list (as this did) reports a real, funded wallet as EMPTY. Offline there is no
+     * chain to ask, so `local` legitimately has none.
+     */
+    async getUtxos(address: string): Promise<{ txid: string; outputIndex: number; satoshis: number; script: string }[]> {
+        if (this.network !== 'mainnet') return []
+        const utxos = await this.signer().listUnspent(bsv.Address.fromString(address))
+        return utxos.map((u) => ({ txid: u.txId, outputIndex: u.outputIndex, satoshis: u.satoshis, script: u.script }))
     }
 
     // ── build* (keyless) ────────────────────────────────────────────────────────────────────────────────
@@ -534,7 +542,18 @@ export class ScryptEngine {
             changeAddress: address,
         } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, captured)
-        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex(), ...this.cost(res.tx) }
+    }
+
+    /** Size + fee of a broadcast tx. Fee = inputs − outputs; the covenant makes size the dominant cost. */
+    private cost(tx: bsv.Transaction): { sizeBytes: number; feeSats: number } {
+        let feeSats = 0
+        try {
+            feeSats = (tx as unknown as { getFee: () => number }).getFee()
+        } catch {
+            feeSats = 0
+        }
+        return { sizeBytes: (tx as unknown as { toBuffer: () => Buffer }).toBuffer().length, feeSats }
     }
 
     // ── authorizeAndBroadcast (the only key use / broadcast) ──────────────────────────────────────────────
@@ -585,7 +604,7 @@ export class ScryptEngine {
             changeAddress: await this.signer().getDefaultAddress(),
         } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, captured)
-        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex(), ...this.cost(res.tx) }
     }
 
     private async execDeploy(b: DeployBuild): Promise<BroadcastResult> {
@@ -593,7 +612,7 @@ export class ScryptEngine {
         await pool.connect(this.signer())
         const tx = await pool.deploy(POOL_SATS)
         this.instances.set(b.marketId, pool)
-        return { txid: tx.id, poolLockingScript: pool.lockingScript.toHex() }
+        return { txid: tx.id, poolLockingScript: pool.lockingScript.toHex(), ...this.cost(tx) }
     }
 
     private async execBuy(b: BuyBuild): Promise<BroadcastResult> {
@@ -632,7 +651,7 @@ export class ScryptEngine {
             txid: res.tx.id, vout: 1, satoshis: TOKEN_SATS, script: tokenScript,
             holderPkh: buyer, supply: 1n, isYes, prevHeader, poolOut, prevTail,
         })
-        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex(), ...this.cost(res.tx) }
     }
 
     private async execSell(b: SellBuild): Promise<BroadcastResult> {
@@ -645,7 +664,7 @@ export class ScryptEngine {
         // Slimmed contract (CONC-004): single side-parameterized `sell(isYes)` (state-only continuation).
         const res = await current.methods.sell(b.side === 'yes', { next: { instance: next, balance: current.balance } } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, next)
-        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex(), ...this.cost(res.tx) }
     }
 
     private async execResolve(b: ResolveBuild): Promise<BroadcastResult> {
@@ -657,7 +676,7 @@ export class ScryptEngine {
         const sig = signOutcome(marketTagHex(b.marketId), outcomeN)
         const res = await current.methods.resolve(sig, outcomeN, { next: { instance: next, balance: current.balance } } as MethodCallOptions<LMSRMarket>)
         this.instances.set(b.marketId, next)
-        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: next.lockingScript.toHex(), ...this.cost(res.tx) }
     }
 
     /**
@@ -749,6 +768,6 @@ export class ScryptEngine {
         )
         this.instances.set(b.marketId, captured)
         this.tokens.delete(b.marketId) // the token is burned by this redeem
-        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex(), ...this.cost(res.tx) }
     }
 }

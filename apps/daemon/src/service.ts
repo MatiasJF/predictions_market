@@ -10,7 +10,7 @@ import {
   buyChargeApproxSats, sellPayoutApproxSats, priceYesSats, priceNoSats,
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
-import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
+import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, type ExecutionEngine } from '@pm/execution';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
@@ -393,7 +393,7 @@ export class MarketService {
     if (row.status !== 'pending') throw conflict(`broadcast ${bid} is '${row.status}', not pending`);
     const plan = JSON.parse(row.plan) as TxPlan;
 
-    let result: { txid: string; poolLockingScript: string };
+    let result: BroadcastResult;
     try {
       result = await this.engine.authorizeAndBroadcast(plan);
     } catch (e) {
@@ -421,7 +421,7 @@ export class MarketService {
   }
 
   // ── internals ───────────────────────────────────────────────────────────────────────────────────────
-  private applyEffects(row: BroadcastRow, plan: TxPlan, result: { txid: string; poolLockingScript: string }) {
+  private applyEffects(row: BroadcastRow, plan: TxPlan, result: BroadcastResult) {
     const marketId = row.market_id!;
     const eff = plan.effects;
     let fromVersion = -1;
@@ -491,7 +491,12 @@ export class MarketService {
       }
     }
     this.db.prepare("UPDATE broadcasts SET status='broadcast', txid=?, decided_at=datetime('now') WHERE id=?").run(result.txid, row.id);
-    return { id: row.id, status: 'broadcast' as const, txid: result.txid, market_id: marketId, pool_version: toVersion };
+    // size/fee are what this actually cost on chain — the number that matters on mainnet, and the one that
+    // decides whether the next tx still fits the ~101 KB unconfirmed-ancestor budget.
+    return {
+      id: row.id, status: 'broadcast' as const, txid: result.txid, market_id: marketId, pool_version: toVersion,
+      size_bytes: result.sizeBytes, fee_sats: result.feeSats,
+    };
   }
 
   private enqueue(marketId: number, plan: TxPlan) {

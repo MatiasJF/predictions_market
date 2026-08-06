@@ -72,6 +72,13 @@ export interface SettleBatch {
 export interface BroadcastResult {
   txid: string;
   poolLockingScript: string;
+  /**
+   * What this transaction actually cost. The pool covenant carries the whole compiled contract in every spend,
+   * so size — not economic value — dominates the fee, and it is the number that decides whether a sequence of
+   * trades fits the ~101 KB unconfirmed-ancestor budget. Optional: engines that don't build real txs omit it.
+   */
+  sizeBytes?: number;
+  feeSats?: number;
 }
 
 /**

@@ -652,3 +652,37 @@ Template:
 - **Bonus, and the good news:** the user's run also closed UI-001's honest gap — their order was signed by a
   **real BRC-100 wallet** (the UI showed "Signed with your wallet") and the daemon verified it and filled.
   `WalletSigner` is now proven against a live wallet, not just unit tests.
+
+## ADR-031 · Mainnet pre-flight: measure the cost before spending it (MAINNET-002) · Accepted · 2026-08-06
+- Context: asked to run the full journey on mainnet "to demonstrate production". Every prior mainnet run was
+  scripted; this one is to be **clicked through a UI**, which makes wall-clock and per-click cost user-visible
+  facts rather than script details. Two things had to be known before spending: what it costs, and whether it
+  can be done in one sitting. Neither was measurable — so the first work was making them measurable.
+- **`BroadcastResult` now carries `sizeBytes`/`feeSats`,** surfaced through `authorize` and shown in the
+  operator console (`… broadcast abc123… · 73.3 KB, fee 37,514 sat`). The covenant re-publishes the whole
+  compiled contract on every spend, so **size, not economic value, is the cost** — that number belongs in front
+  of the person authorizing it.
+- **New `pnpm --filter @pm/spike measure:journey`** — drives create → deploy → 3 signed fills → settle → resolve
+  → payout against a `PM_NETWORK=local` daemon (free; tx construction is byte-identical to mainnet) and reports
+  per-stage size, the mainnet fee at 500 sat/KB, and where the ~101 KB unconfirmed-ancestor budget forces a wait.
+  **Measured (current build, 36,762 B contract):**
+  | stage | size | mainnet fee |
+  |---|---|---|
+  | deploy | 37,444 B | ~18,722 sat |
+  | settle (3 fills → 1 tx) | 75,028 B | ~37,514 sat |
+  | resolve | 75,365 B | ~37,683 sat |
+  | payout | 75,301 B | ~37,651 sat |
+  | **total** | **257 KB** | **~131,570 sat** |
+- **Finding — the journey no longer fits in one block window.** `live-market.ts` was written when deploy (~31 KB)
+  + settle (~60 KB) = 91 KB fit inside ~101 KB. Adding `payout` grew the contract to 36,762 B, so deploy+settle
+  is now **109.9 KB** and every stage needs its own window: **3 confirmation waits**, 10–60 min each. A "quick
+  live demo" is really a 30-minute-to-3-hour exercise. Stated up front rather than discovered mid-demo.
+- **Bug found in pre-flight — `/wallet/balance` reported 0 on a funded mainnet wallet.** `ScryptEngine.getUtxos`
+  returned a hardcoded `[]` ("sCrypt auto-funds internally"), which is harmless for funding and actively
+  dangerous for the **one number an operator checks before authorizing a spend**. Now queries the provider on
+  mainnet; verified against WhatsOnChain: `1GfBrmSWX9jrMPJ2jUjkyhVs1gMj8E8PBD` → **515,369 sat / 4 UTXOs**,
+  matching exactly. (4 separate UTXOs is also useful: sequential stages can each take a different confirmed
+  input, which is what BUG-003 was about.)
+- Funding check: ~131,570 sat of fees + 5,000 sat of payouts + dust ≈ **~137k sat** against **515,369 sat**
+  available — comfortable, ~27% of the wallet.
+- Not yet spent. This ADR covers the pre-flight only; the run itself is gated on explicit user go-ahead.
