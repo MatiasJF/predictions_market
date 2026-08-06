@@ -6,7 +6,8 @@ const TOKEN_KEY = 'pm.operator.token';
 
 export const operatorToken = {
   get: (): string => localStorage.getItem(TOKEN_KEY) ?? '',
-  set: (t: string): void => localStorage.setItem(TOKEN_KEY, t),
+  // Trim: a pasted token routinely carries a trailing space or newline, and the daemon compares exactly.
+  set: (t: string): void => localStorage.setItem(TOKEN_KEY, t.trim()),
 };
 
 async function call(method: string, path: string, body?: unknown, operator = false): Promise<any> {
@@ -17,6 +18,9 @@ async function call(method: string, path: string, body?: unknown, operator = fal
     method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const json = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    throw new Error('operator token missing or wrong — paste the daemon\'s PM_OPERATOR_TOKEN in the field above');
+  }
   if (!res.ok) throw new Error(json?.message ?? `${method} ${path} failed (${res.status})`);
   return json;
 }
@@ -32,6 +36,8 @@ export const api = {
   payoutPreview: (id: number) => call('GET', `/markets/${id}/payout-preview`),
   broadcasts: (status?: string) => call('GET', `/broadcasts${status ? `?status=${status}` : ''}`),
   balance: () => call('GET', '/wallet/balance'),
+  /** Side-effect-free token check, so the console can say "accepted" before anything is spent. */
+  operatorCheck: () => call('GET', '/operator/check', undefined, true),
 
   // trader
   submitOrder: (id: number, o: unknown) => call('POST', `/markets/${id}/orders`, o),

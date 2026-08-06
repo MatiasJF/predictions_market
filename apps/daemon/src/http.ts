@@ -96,6 +96,13 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'POST' && segs.length === 3 && segs[2] === 'reject') { assertOperator(ctx); return svc.reject(id); }
   }
 
+  // Side-effect-free "is my token accepted?". Without this the only way to find out is to attempt a real spend
+  // and read a 401 — which is exactly how a user discovers it at the worst possible moment.
+  if (p0 === 'operator' && method === 'GET' && segs[1] === 'check') {
+    assertOperator(ctx);
+    return { ok: true, required: operatorTokenRequired().length > 0 };
+  }
+
   if (p0 === 'wallet' && method === 'GET' && segs[1] === 'balance') return svc.walletBalance();
 
   throw new ServiceError(404, `no route for ${method} /${segs.join('/')}`);

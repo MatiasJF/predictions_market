@@ -9,7 +9,7 @@ const shares = (s: string) => Number(BigInt(s) / WAD);
  * chain until a human authorizes it here. That is the safety property the whole system is built around, so the
  * queue is the centrepiece rather than a footnote.
  */
-export function Operator({ network }: { network?: string }) {
+export function Operator({ network, authRequired }: { network?: string; authRequired?: boolean }) {
   const [markets] = usePoll<any[]>(() => api.markets(), []);
   const [queue, , refreshQueue] = usePoll<any[]>(() => api.broadcasts(), [], 2000);
   const [balance] = usePoll<any>(() => api.balance(), [], 10000);
@@ -18,6 +18,13 @@ export function Operator({ network }: { network?: string }) {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const [confirming, setConfirming] = useState<number | undefined>();
+  // Verified against the daemon, not merely "is the box non-empty" — a wrong token looks identical otherwise.
+  const [tokenOk] = usePoll<boolean>(
+    () => api.operatorCheck().then(() => true).catch(() => false),
+    [token],
+    5000,
+  );
+  const blocked = authRequired && tokenOk !== true;
 
   // Default to the NEWEST market, not the oldest: a DB accumulates markets across runs, and silently pointing
   // the console at a months-old one is how you end up acting on the wrong market.
@@ -51,8 +58,15 @@ export function Operator({ network }: { network?: string }) {
 
   return (
     <div>
-      <div className="card">
-        <h3>Operator token</h3>
+      <div className={`card${blocked ? ' danger' : ''}`}>
+        <h3>
+          Operator token{' '}
+          {authRequired
+            ? tokenOk === true
+              ? <span className="pill good">accepted</span>
+              : <span className="pill bad">{token ? 'rejected' : 'required'}</span>
+            : <span className="pill dev">not required by this daemon</span>}
+        </h3>
         <p className="dim tiny">
           Operator actions spend real money, so they require this token. It is a shared secret over loopback —
           fine locally, never a reason to expose the daemon to a network.
@@ -62,6 +76,13 @@ export function Operator({ network }: { network?: string }) {
             onChange={(e) => { setToken(e.target.value); operatorToken.set(e.target.value); }} />
           {balance && <span className="dim">wallet {balance.balance_sats.toLocaleString()} sat</span>}
         </div>
+        {blocked && (
+          <p className="err tiny">
+            This daemon requires an operator token and {token ? 'the one entered was rejected' : 'none is set'}.
+            Paste the value you started it with — the same <code>PM_OPERATOR_TOKEN=…</code> from the daemon's
+            command line. Until it is accepted, nothing here can be queued or authorized.
+          </p>
+        )}
       </div>
 
       <div className="card">
@@ -79,7 +100,7 @@ export function Operator({ network }: { network?: string }) {
             <div className="row">
               {confirming === b.id ? (
                 <>
-                  <button className="danger" disabled={!!busy}
+                  <button className="danger" disabled={!!busy || blocked}
                     onClick={() => { setConfirming(undefined); void act(`authorize #${b.id}`, () => api.authorize(b.id)); }}>
                     confirm — spend {b.spend_sats} sat
                   </button>
@@ -87,13 +108,13 @@ export function Operator({ network }: { network?: string }) {
                 </>
               ) : (
                 <>
-                  <button className="primary" disabled={!!busy}
+                  <button className="primary" disabled={!!busy || blocked}
                     onClick={() => (isMainnet
                       ? setConfirming(b.id)
                       : void act(`authorize #${b.id}`, () => api.authorize(b.id)))}>
                     authorize
                   </button>
-                  <button disabled={!!busy}
+                  <button disabled={!!busy || blocked}
                     onClick={() => void act(`reject #${b.id}`, () => api.reject(b.id))}>reject</button>
                 </>
               )}
@@ -122,7 +143,7 @@ export function Operator({ network }: { network?: string }) {
               </option>
             ))}
           </select>
-          <button disabled={!!busy} onClick={() => void act('create market', () => api.createMarket({
+          <button disabled={!!busy || blocked} onClick={() => void act('create market', () => api.createMarket({
             question: `Market ${new Date().toISOString().slice(0, 16)}`, bUnits: 1000, payoutUnit: 1000,
           }))}>new market</button>
         </div>
@@ -148,15 +169,15 @@ export function Operator({ network }: { network?: string }) {
             )}
 
             <div className="row wrapping">
-              <button disabled={!!busy || !!market.pool}
+              <button disabled={!!busy || blocked || !!market.pool}
                 onClick={() => void act('deploy', () => api.deploy(market.id))}>deploy pool</button>
-              <button disabled={!!busy || !market.pool || stranded}
+              <button disabled={!!busy || blocked || !market.pool || stranded}
                 onClick={() => void act('settle', () => api.settle(market.id))}>settle batch</button>
-              <button disabled={!!busy || !market.pool || stranded || market.pool?.resolved === 1}
+              <button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
                 onClick={() => void act('resolve YES', () => api.resolve(market.id, 'yes'))}>resolve YES</button>
-              <button disabled={!!busy || !market.pool || stranded || market.pool?.resolved === 1}
+              <button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
                 onClick={() => void act('resolve NO', () => api.resolve(market.id, 'no'))}>resolve NO</button>
-              <button className="primary" disabled={!!busy || stranded || !payout?.winners?.length}
+              <button className="primary" disabled={!!busy || blocked || stranded || !payout?.winners?.length}
                 onClick={() => void act('payout', () => api.payout(market.id))}>pay winners</button>
             </div>
             {msg && <p className={msg.startsWith('✗') ? 'err' : 'ok'}>{msg}</p>}

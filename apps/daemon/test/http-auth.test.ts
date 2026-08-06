@@ -87,6 +87,15 @@ describe('operator token gating', () => {
     expect(r.broadcast_id).toBeGreaterThan(0);
   });
 
+  // Reported by a user: clicking "deploy" on a token-protected mainnet daemon returned a bare 401 with no way
+  // to tell a missing token from a wrong one. This endpoint lets a client find out BEFORE attempting a spend.
+  it('/operator/check confirms a good token and refuses a bad one, without side effects', async () => {
+    await expect(route(svc, ctx('GET', '/operator/check', true))).resolves.toMatchObject({ ok: true, required: true });
+    await expect(route(svc, ctx('GET', '/operator/check', false))).rejects.toMatchObject({ status: 401 });
+    // ...and checking must never queue anything.
+    expect(await route(svc, ctx('GET', '/broadcasts', false))).toEqual([]);
+  });
+
   // A client that can't tell mainnet from local will happily authorize a real spend thinking it's a dry run.
   it('/health names the network, engine and whether a token is required', async () => {
     process.env.PM_NETWORK = 'local';

@@ -102,7 +102,7 @@ export function App() {
           <Market id={marketId} signer={signer} identity={identity} onBack={() => setMarketId(undefined)} />
         ))}
 
-      {tab === 'operator' && <Operator network={network} />}
+      {tab === 'operator' && <Operator network={network} authRequired={health?.operator_auth === true} />}
     </div>
   );
 }

@@ -686,3 +686,25 @@ Template:
 - Funding check: ~131,570 sat of fees + 5,000 sat of payouts + dust ≈ **~137k sat** against **515,369 sat**
   available — comfortable, ~27% of the wallet.
 - Not yet spent. This ADR covers the pre-flight only; the run itself is gated on explicit user go-ahead.
+
+## ADR-032 · The operator token had no way to be checked (UI-003) · Accepted · 2026-08-06
+- Context: on the first token-protected mainnet daemon, clicking *deploy* returned `operator token required for
+  this action` — a bare 401 at the moment of a real spend. The token gate (ADR-029) was working exactly as
+  designed; the failure was that **nothing told the operator a token was needed, and nothing could tell them
+  whether the one they had was right.** Note `PM_OPERATOR_TOKEN` is read from `process.env` only, never from
+  `.env` — so it must be on the daemon's command line, and the browser needs the same value entered separately.
+- Decision: make the token's status **observable before it costs anything**.
+  - New side-effect-free `GET /operator/check` → 200 `{ok, required}` with a valid token, 401 without. Verified
+    it queues nothing.
+  - The console polls it and shows **accepted / rejected / required** next to the field, distinguishing "no
+    token set" from "token is wrong" — indistinguishable from a 401 alone.
+  - While not accepted, **every button that queues or authorizes is disabled**, with an explanation naming the
+    daemon's command line as the source of the value. A spend can no longer be attempted into a 401.
+  - 401s from any route now render as a human sentence rather than the raw server message.
+  - Pasted tokens are **trimmed** — a trailing newline is the classic silent mismatch.
+- Verified live against a token-protected daemon: `/health` reports `operator_auth: true`; `/operator/check`
+  returns 401 for a missing token, 401 for a wrong one, 200 for the right one; and the **full UI journey passes
+  with auth enabled** (create → deploy → signed order → settle → audit → resolve → pay winners). 116 tests green.
+- Pattern worth noting, third time now: the acceptance test kept passing because it configures itself correctly
+  (it writes the token straight to localStorage). Every defect in this UI so far has been in the gap between
+  "correctly configured" and "what a person actually walks into".
