@@ -23,7 +23,8 @@ function freshExecService() {
 
 describe('MarketService — market lifecycle + sign-off queue', () => {
   let svc: MarketService;
-  beforeEach(() => { svc = freshService().svc; });
+  let db: Db;
+  beforeEach(() => { const f = freshService(); svc = f.svc; db = f.db; });
 
   it('creates a market with 50/50 opening prices and pure LMSR quotes', async () => {
     const m = await svc.createMarket({ question: 'Will X happen?', bUnits: 1000 });
@@ -126,6 +127,14 @@ describe('MarketService — market lifecycle + sign-off queue', () => {
     const mv = svc.getMarket(m.id);
     expect(BigInt(mv.pool!.qYes)).toBe(5n * 1_000_000_000_000_000_000n); // 5 shares
     expect(mv.positions.yes_net_shares).toBe(5);
+
+    // CONC-005: the minted position token is PERSISTED, so a restarted daemon can still redeem it.
+    const tok = db.prepare('SELECT * FROM tokens WHERE market_id=? AND burned=0').get(m.id) as
+      { side: string; script: string | null; holder_pkh: string | null; sats: number; txid: string } | undefined;
+    expect(tok, 'token row written on buy').toBeTruthy();
+    expect(tok!.side).toBe('yes');
+    expect(tok!.script).toBeTruthy();
+    expect(tok!.holder_pkh).toBeTruthy();
     const pos = svc.positions(m.id);
     expect(pos.yes.bought_shares).toBe(5);
     expect(pos.yes.net_cost_sats).toBeGreaterThan(0);

@@ -194,8 +194,9 @@ enforcement**.
   equivocation is slashable — but it does **not** prove on-chain that a batch's net equals the sum of its
   receipts. That needs a validity proof or an interactive dispute game. This is the one substantive trust
   assumption left, and it is research-grade work.
-- **Restart-safe state (CONC-005).** The engine holds pool/token state in-process; a daemon restart mid-lifecycle
-  loses it. Production must reconstruct from chain.
+- ~~Restart-safe state~~ — **done (CONC-005 / ADR-026).** A restarted daemon rebuilds a market's pool from the
+  plan's UTXO (`fromUTXO`, measured to restore full state) and recovers the position token from the persisted
+  identity + the mint tx re-fetched from chain. Remaining ops work is automated fee/UTXO-pool management.
 - **Further slimming.** At ~33 KB the pool constrains chain depth (§Economics). Opcode-level work, with
   diminishing returns after the −53 % collapse.
 - **Collateral binding.** The spike tracks `collateral` as state and locks only dust; production should bind it
@@ -209,11 +210,9 @@ enforcement**.
 
 1. **Close the trust endgame** — design and prototype validity-proof (or dispute-game) settlement so a batch's
    net is provably its receipts. Everything else is already trust-minimized around it.
-2. **Make it restartable** (CONC-005) — reconstruct pool and token state from chain; this is what turns the
-   daemon from a spike harness into an operable service.
-3. **Slim the contract further** — directly buys chain depth and per-settlement cost.
-4. **Integrate a real oracle** and build the product surface (catalogue, client, liquidity scaling per the
-   source docs' 3-stage plan).
+2. **Slim the contract further** — directly buys chain depth and per-settlement cost.
+3. **Integrate a real oracle** and build the product surface (catalogue, client, liquidity scaling per the
+   source docs' 3-stage plan), plus the remaining ops piece (automated fee/UTXO-pool management).
 
 ---
 

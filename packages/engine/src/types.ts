@@ -88,6 +88,12 @@ export interface TxEffects {
   spendsPrevPool: boolean;
   /** A trade row to record (buy/sell). */
   trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number };
+  /**
+   * The position token this tx mints (buy) or burns (redeem) — persisted so the market survives a daemon
+   * restart (CONC-005). The engine supplies vout/script/holder/shares/side; the service fills in the txid from
+   * the broadcast result, exactly as it does for `pool`.
+   */
+  token?: { vout: number; satoshis: number; script: string; holderPkh: string; shares: string; side: Side; burned?: boolean };
   /** Batch settlement (CONC-002): N off-chain fills collapsed into this one pool-version advance. */
   settle?: {
     orderIds: number[];
@@ -156,7 +162,14 @@ export interface ChainEngine {
   buildBuy(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
   buildSell(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
   buildResolve(cfg: MarketConfig, pool: PoolRef, outcome: Side): Promise<TxPlan>;
-  buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan>;
+  /** `token` (optional) is the persisted token identity, so redeem survives a daemon restart (CONC-005). */
+  buildRedeem(
+    cfg: MarketConfig,
+    pool: PoolRef,
+    side: Side,
+    shares: bigint,
+    token?: { txid: string; vout: number; satoshis: number; script: string; holderPkh: string; shares: string; side: Side },
+  ): Promise<TxPlan>;
 
   /** Batch settlement (CONC-002): advance the pool by a whole batch's net state in one tx. Optional — only
    *  engines with a `settle` contract path implement it (ScryptEngine, MockEngine). Throws/absent otherwise. */

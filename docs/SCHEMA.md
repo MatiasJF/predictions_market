@@ -25,8 +25,11 @@ only; signing material is injected from env at runtime.
 - **trades** — one row per executed buy/sell; records `from_version → to_version`, `side`, `action`,
   `shares`, `cost_sats`, `fee_sats`, optional `txid`. Under the Rúnar engine this is also the off-chain
   position ledger for state-only (plain) buys/sells (documented-trust model; on-chain tokens are Phase 2).
-- **tokens** — YES/NO claim-ticket UTXOs held by users; `burned` flips on sell/redeem. `(txid, vout)` unique.
-  Populated once on-chain minting is available (Phase 2 / sCrypt); the Rúnar engine does not mint.
+- **tokens** — YES/NO position-token UTXOs held by users; `burned` flips on redeem. `(txid, vout)` unique.
+  **Now populated** (CONC-005): the sCrypt engine surfaces the minted token as a `TxEffects.token` and the service
+  writes it on buy. Since `009` it also carries `script` (the exact locking script the backtrace redeem needs),
+  `holder_pkh`, and `sats` — enough for a restarted daemon to redeem. The ~30 KB mint-tx backtrace pieces are NOT
+  stored; they are re-derived from the chain at redeem time.
 - **broadcasts** (`002`) — the **sign-off queue**. One row per prepared-but-unsent spend: `market_id`, `kind`
   (`deploy|buy|sell|resolve|redeem`), human `summary`, `spend_sats`, `plan` (JSON `TxPlan` — unsigned
   descriptor + DB effects, **NO key material**), `status` (`pending→broadcast|rejected|failed`), `txid`,
@@ -72,6 +75,8 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   `exec_orders` += `ts` (CONC-003a auditable settlement).
 - `008_settlement_rabin_attest.sql` — `exec_batches` += `rabin_key`/`rabin_sig`/`seq_rabin_pubkey` (CONC-003b
   on-chain-verifiable attestation → slashable equivocation).
+- `009_token_script.sql` — `tokens` += `script`/`holder_pkh`/`sats` (CONC-005 restart recovery; the table is
+  now actually written — on buy, and burned on redeem).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

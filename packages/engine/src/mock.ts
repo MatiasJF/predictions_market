@@ -4,7 +4,7 @@
 // full enqueue → authorize → apply-effects → advance-lineage flow be tested with zero broadcasts.
 import { WAD, powFixed } from '@pm/lmsr';
 import { RunarEngine } from './runar.js';
-import type { BroadcastResult, MarketConfig, PoolRef, SettleBatch, TxEffects, TxPlan, Utxo } from './types.js';
+import type { BroadcastResult, MarketConfig, PoolRef, SettleBatch, Side, TxEffects, TxPlan, Utxo } from './types.js';
 
 export class MockEngine extends RunarEngine {
   override readonly name: string = 'mock';
@@ -64,6 +64,16 @@ export class MockEngine extends RunarEngine {
       build: { kind: 'settle', batchDigest: batch.batchDigest },
       effects,
     };
+  }
+
+  /** Mirrors the sCrypt engine's token effect so the daemon's CONC-005 persistence path is covered in tests. */
+  override async buildBuy(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
+    const plan = await super.buildBuy(cfg, pool, side, shares);
+    plan.effects.token = {
+      vout: 1, satoshis: 1, script: '76a914' + 'ab'.repeat(20) + '88ac',
+      holderPkh: 'ab'.repeat(20), shares: (shares * WAD).toString(), side,
+    };
+    return plan;
   }
 
   /** Deterministic Rabin-attestation stub (no real Rabin key in tests) — exercises the recording path. */

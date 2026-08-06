@@ -321,7 +321,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
-- ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
+- ● CONC-005 — **Restart-safe engine state — DONE (2026-08-06, ADR-026).** A daemon restart used to strand a
+  market (`no live pool for market N`). Now every build descriptor carries the pool UTXO (txid/vout/sats/
+  lockingScript) — already persisted in `broadcasts.plan` — and `exec*` rebuilds via `LMSRMarket.fromUTXO`, which
+  was **measured** to restore all 7 state props + all 7 consts + marketTag with a byte-identical script (no
+  network call, no new storage). Token identity now persists to the previously-unused `tokens` table (migration
+  009 adds `script`/`holder_pkh`/`sats`; written on buy, burned on redeem) while the ~30 KB backtrace pieces are
+  **re-derived from the chain** at redeem time. **Verified:** `tests/restart.test.ts` drives a genuinely NEW
+  engine through resolve + settle from the persisted plan alone (**24 sCrypt + 88 workspace green**, typecheck
+  clean). Remaining ops work: automated fee/UTXO-pool management; cold-restart token recovery depends on the
+  provider's `getTransaction`.
 
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the

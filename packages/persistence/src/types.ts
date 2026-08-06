@@ -85,6 +85,10 @@ export interface TokenRow {
   owner_key_id: number | null;
   burned: 0 | 1;
   created_at: string;
+  // Added in 009_token_script (CONC-005 restart recovery); NULL for pre-009 rows:
+  script: string | null;     // the token's exact locking script (hex) — the backtrace redeem needs it
+  holder_pkh: string | null; // hash160 hex of the holder (payout target)
+  sats: number;              // the token UTXO's satoshis
 }
 
 export interface BroadcastRow {

@@ -4,7 +4,7 @@
 // (the sole WIF use), then applies the plan's DB effects and advances the pool_utxos lineage. Nothing reaches
 // mainnet without an explicit authorize() call (ADR-010).
 import type { Db } from '@pm/persistence';
-import type { BroadcastRow, ExecOrderRow, MarketRow, PoolUtxoRow } from '@pm/persistence';
+import type { BroadcastRow, ExecOrderRow, MarketRow, PoolUtxoRow, TokenRow } from '@pm/persistence';
 import {
   WAD, initState, unitMultiplier, unitInverseMultiplier, applyUnitBuy, applyUnitSell,
   buyChargeApproxSats, sellPayoutApproxSats, priceYesSats, priceNoSats,
@@ -213,8 +213,15 @@ export class MarketService {
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
     if (!pool) throw conflict('market not deployed');
-    // Lets the engine surface its EngineLimitation (→ 501) for the redeem path (BUG-005).
-    return this.enqueue(id, await this.engine.buildRedeem(cfgOf(m), poolRef(pool), side, BigInt(shares)));
+    // CONC-005: hand the engine the PERSISTED token so a restarted daemon can still redeem.
+    const t = this.db
+      .prepare('SELECT * FROM tokens WHERE market_id=? AND burned=0 ORDER BY id DESC LIMIT 1')
+      .get(id) as TokenRow | undefined;
+    const token = t && t.script && t.holder_pkh
+      ? { txid: t.txid, vout: t.vout, satoshis: t.sats, script: t.script, holderPkh: t.holder_pkh, shares: t.shares, side: t.side }
+      : undefined;
+    // Lets the engine surface its EngineLimitation (→ 501) for the redeem path.
+    return this.enqueue(id, await this.engine.buildRedeem(cfgOf(m), poolRef(pool), side, BigInt(shares), token));
   }
 
   // ── off-chain execution (CONC-001/002) — instant fills; settlement enqueues into the same sign-off queue ──
@@ -389,6 +396,17 @@ export class MarketService {
         `INSERT INTO trades(market_id, from_version, to_version, side, action, shares, cost_sats, txid)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(marketId, fromVersion, toVersion, eff.trade.side, eff.trade.action, eff.trade.shares, eff.trade.costSats, result.txid);
+    }
+    if (eff.token) {
+      // CONC-005: persist the minted token (or burn it on redeem) so a restarted daemon can still redeem.
+      if (eff.token.burned) {
+        this.db.prepare('UPDATE tokens SET burned=1 WHERE market_id=? AND burned=0').run(marketId);
+      } else {
+        this.db.prepare(
+          `INSERT INTO tokens(market_id, side, shares, txid, vout, script, holder_pkh, sats, burned)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        ).run(marketId, eff.token.side, eff.token.shares, result.txid, eff.token.vout, eff.token.script, eff.token.holderPkh, eff.token.satoshis);
+      }
     }
     if (eff.settle) {
       // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.

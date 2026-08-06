@@ -481,3 +481,30 @@ Template:
   rejected — **20 sCrypt + 88 workspace green**, typecheck clean. Practical note: the usable net is bounded by
   economics, not the cap — `n/b` must stay sane (at `b = 1000`, net 4095 ⇒ `e^4.1`; a toy `b = 10` would saturate
   long before 4095).
+
+## ADR-026 · Restart-safe engine state: rebuild from the plan + chain, not memory (CONC-005) · Accepted · 2026-08-06
+- Context: `ScryptEngine` held every market's live contract instance in `instances`/`tokens` maps, so a daemon
+  restart mid-lifecycle **stranded the market** (`no live pool for market N`) even though the pool UTXO was
+  healthy on-chain. Last item between the spike harness and an operable service (flagged in VERDICT "owed").
+- Enabler (de-risked first, before building on it): sCrypt's `LMSRMarket.fromUTXO({txId,outputIndex,script,
+  satoshis})` restores **all 7 mutable state props AND all 7 constructor consts** + `marketTag`, the locking
+  script round-trips byte-identically, and the rebuilt instance can produce a continuation — measured, not assumed.
+- Decision: **the pool recovers with no network call and no new storage.** Every build descriptor carries a
+  `PoolUtxoRef` (txid/vout/sats/lockingScript); those already round-trip through `broadcasts.plan`, so a plan
+  enqueued before a restart stays executable after one. `exec*` became
+  `this.instances.get(id) ?? await this.livePool(id, b.pool)`. The engine stays DB-free (npm-isolated,
+  structurally typed) — the service already computed exactly this `PoolRef` for every `build*`.
+- **Token recovery is chain-sourced.** The backtrace needs the mint tx split into `prevHeader‖poolOut‖prevTail`
+  (~30 KB — the pool output dominates), so those are **derived, never stored**: `liveToken` re-fetches the mint
+  tx by txid and re-splits it with the existing verified `splitMintTx`. Only the small identity (txid/vout/sats/
+  script/holderPkh/shares/side) is persisted — the previously-unused `tokens` table, now written on buy and
+  burned on redeem (migration `009_token_script` adds `script`/`holder_pkh`/`sats`; `owner_key_id` is a key-ref,
+  not a PKH). `TxEffects.token` carries it, mirroring how `pool` works (service fills the txid post-broadcast);
+  `buildRedeem` gained an optional persisted-token argument. `LocalProvider` remembers what it "broadcast" so the
+  offline path can exercise recovery without a chain.
+- Consequences: a restarted daemon resumes any market. Verified by `tests/restart.test.ts`, which drives a
+  **genuinely new `ScryptEngine`** (empty maps) through resolve + settle from the persisted plan alone, asserts
+  q/e carry across the restart untouched, and checks the token effect is persistable — **24 sCrypt + 88 workspace
+  green**, typecheck clean.
+- Honest scope: token recovery after a *cold* restart genuinely depends on the provider (`getTransaction`) —
+  offline it works only via the `LocalProvider` cache. One minted token per market (the spike's shape).

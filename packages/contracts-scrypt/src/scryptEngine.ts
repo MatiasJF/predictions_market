@@ -50,8 +50,16 @@ class FeeProvider extends DefaultProvider {
  * chain to broadcast to offline, so the "broadcast" is stubbed. The mainnet path uses FeeProvider + a real send.
  */
 class LocalProvider extends DummyProvider {
+    /** Offline stand-in for the chain: remember what we "broadcast" so getTransaction can serve it back. */
+    private readonly sent = new Map<string, bsv.Transaction>()
     override async sendTransaction(tx: bsv.Transaction): Promise<string> {
+        this.sent.set(tx.id, tx)
         return tx.id
+    }
+    override async getTransaction(txid: string): Promise<bsv.Transaction> {
+        const tx = this.sent.get(txid)
+        if (!tx) throw new Error(`LocalProvider: tx ${txid} not in the offline set (no chain to fetch from)`)
+        return tx
     }
 }
 
@@ -64,6 +72,7 @@ interface TxEffects {
     pool: { vout: number; satoshis: number; eYes: string; eNo: string; qYes: string; qNo: string; collateral: string; resolved: 0 | 1; winner: 0 | 1; lockingScript: string }
     spendsPrevPool: boolean
     trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }
+    token?: { vout: number; satoshis: number; script: string; holderPkh: string; shares: string; side: Side; burned?: boolean }
     settle?: { orderIds: number[]; netYesUnits: string; netNoUnits: string; netCollateralSats: number; trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[]; batchDigest?: string; attestationSig?: string; attestationPubkey?: string }
     marketState?: 'deployed' | 'trading' | 'resolved'
     resolution?: Side
@@ -113,14 +122,29 @@ const poolEffect = (s: PoolState): TxEffects['pool'] => ({
     lockingScript: '',
 })
 
-interface DeployBuild { kind: 'deploy'; marketId: number; cfg: { mult: string; invMult: string; payoutUnit: string } }
-interface BuyBuild { kind: 'buy'; marketId: number; side: Side; charge: string }
-interface SellBuild { kind: 'sell'; marketId: number; side: Side }
-interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side }
-interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string }
-interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number; batchDigest: string }
+/**
+ * The pool UTXO a plan spends (CONC-005). Carried inside every build descriptor — and therefore persisted in
+ * `broadcasts.plan` — so a plan enqueued before a daemon restart is still executable after one: the locking
+ * script IS the contract state, so `LMSRMarket.fromUTXO` rebuilds the live instance with no network call and
+ * no extra storage. Public data only.
+ */
+interface PoolUtxoRef { txid: string; vout: number; satoshis: number; lockingScript: string }
 
-/** A minted position token (CONC-003c) + the pieces redeem's on-chain backtrace needs to prove it. */
+/** The token identity as the DB stores it (no ~30 KB backtrace pieces — those are re-derived from the chain). */
+interface PersistedToken { txid: string; vout: number; satoshis: number; script: string; holderPkh: string; shares: string; side: Side }
+
+interface DeployBuild { kind: 'deploy'; marketId: number; cfg: { mult: string; invMult: string; payoutUnit: string } }
+interface BuyBuild { kind: 'buy'; marketId: number; side: Side; charge: string; pool: PoolUtxoRef }
+interface SellBuild { kind: 'sell'; marketId: number; side: Side; pool: PoolUtxoRef }
+interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side; pool: PoolUtxoRef }
+interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string; pool: PoolUtxoRef; token?: TokenRef }
+interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number; batchDigest: string; pool: PoolUtxoRef }
+
+/**
+ * A minted position token (CONC-003c). The identity fields are small enough to persist; the three backtrace
+ * pieces are ~30 KB so they are DERIVED (from the mint tx) rather than stored — absent after a restart, when
+ * `liveToken` re-fetches the mint tx and re-splits it (CONC-005).
+ */
 interface TokenRef {
     txid: string        // mint txid, display order
     vout: number        // always 1 (buy emits pool, token, change)
@@ -129,9 +153,9 @@ interface TokenRef {
     holderPkh: string
     supply: bigint
     isYes: boolean
-    prevHeader: string  // version ‖ varint(nIn) ‖ inputs ‖ varint(nOut)
-    poolOut: string     // serialized output 0 (exactly ONE output ⇒ the token is output index 1)
-    prevTail: string    // serialized outputs 2.. ‖ nLockTime
+    prevHeader?: string // version ‖ varint(nIn) ‖ inputs ‖ varint(nOut)
+    poolOut?: string    // serialized output 0 (exactly ONE output ⇒ the token is output index 1)
+    prevTail?: string   // serialized outputs 2.. ‖ nLockTime
 }
 
 /**
@@ -205,6 +229,48 @@ export class ScryptEngine {
         }
         return this._signer
     }
+    /**
+     * The market's live pool instance (CONC-005 — restart safety). Prefers the warm in-process instance; if the
+     * process restarted, rebuilds it from the plan's pool UTXO — the locking script encodes every @prop, so this
+     * is a full recovery with no network call. Verified: `fromUTXO` restores all mutable state AND the
+     * constructor consts, and the rebuilt instance can produce a continuation.
+     */
+    private async livePool(marketId: number, ref?: PoolUtxoRef): Promise<LMSRMarket> {
+        const warm = this.instances.get(marketId)
+        if (warm) return warm
+        if (!ref || !ref.lockingScript) {
+            throw new Error(`sCrypt engine: no live pool for market ${marketId} and no pool ref to rebuild from`)
+        }
+        const inst = LMSRMarket.fromUTXO({
+            txId: ref.txid, outputIndex: ref.vout, script: ref.lockingScript, satoshis: ref.satoshis,
+        })
+        await inst.connect(this.signer())
+        this.instances.set(marketId, inst)
+        return inst
+    }
+
+    private poolRefOf(pool: PoolRef): PoolUtxoRef {
+        return { txid: pool.txid, vout: pool.vout, satoshis: pool.satoshis, lockingScript: pool.lockingScript }
+    }
+
+    /**
+     * The market's minted position token (CONC-005). Prefers the warm in-process ref. After a restart the plan
+     * carries the token's identity (txid/vout/script/holder/supply/side) but NOT the mint tx's backtrace pieces —
+     * those are ~30 KB, so instead of storing them we re-derive them from the chain: fetch the mint tx by txid
+     * and re-split it with the same verified `splitMintTx`. Chain is the source of truth.
+     */
+    private async liveToken(marketId: number, ref?: TokenRef): Promise<TokenRef | undefined> {
+        const warm = this.tokens.get(marketId)
+        if (warm) return warm
+        if (!ref) return undefined
+        if (ref.prevHeader && ref.poolOut) return ref // already complete
+        const mint = await this.signer().provider!.getTransaction(ref.txid)
+        const { prevHeader, poolOut, prevTail } = splitMintTx(mint as unknown as bsv.Transaction, ref.vout)
+        const full: TokenRef = { ...ref, prevHeader, poolOut, prevTail }
+        this.tokens.set(marketId, full)
+        return full
+    }
+
     private async selfPkh(): Promise<PubKeyHash> {
         const addr = await this.signer().getDefaultAddress()
         return PubKeyHash(toByteString(addr.hashBuffer.toString('hex')))
@@ -255,8 +321,20 @@ export class ScryptEngine {
             charge = ceilDiv(newENo * cfg.payoutUnit, pool.state.eYes + newENo)
             s = { eYes: pool.state.eYes, eNo: newENo, qYes: pool.state.qYes, qNo: pool.state.qNo + WAD, collateral: pool.state.collateral + charge, resolved: 0n, winner: 0n }
         }
-        const build: BuyBuild = { kind: 'buy', marketId: cfg.marketId, side, charge: charge.toString() }
-        return { kind: 'buy', summary: `buy 1 ${side.toUpperCase()} + mint token → charge ${charge} sat`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, trade: { side, action: 'buy', shares: WAD.toString(), costSats: Number(charge) }, marketState: 'trading' } }
+        const build: BuyBuild = { kind: 'buy', marketId: cfg.marketId, side, charge: charge.toString(), pool: this.poolRefOf(pool) }
+        // The minted token is surfaced as an effect so the service can PERSIST it (CONC-005) — the txid is
+        // filled in from the broadcast result, exactly like the pool.
+        const tokenScript = '21' + marketTagHex(cfg.marketId) + (side === 'yes' ? '01' : '00') +
+            int2ByteString(1n, 8n) + (await this.selfPkh()) + '75' + Utils.buildPublicKeyHashScript(await this.selfPkh())
+        return {
+            kind: 'buy', summary: `buy 1 ${side.toUpperCase()} + mint token → charge ${charge} sat`, spendSats: 100, build,
+            effects: {
+                pool: poolEffect(s), spendsPrevPool: true,
+                trade: { side, action: 'buy', shares: WAD.toString(), costSats: Number(charge) },
+                token: { vout: 1, satoshis: TOKEN_SATS, script: tokenScript, holderPkh: await this.selfPkh(), shares: WAD.toString(), side },
+                marketState: 'trading',
+            },
+        }
     }
 
     async buildSell(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
@@ -274,22 +352,37 @@ export class ScryptEngine {
             proceeds = (newENo * cfg.payoutUnit) / (pool.state.eYes + newENo)
             s = { eYes: pool.state.eYes, eNo: newENo, qYes: pool.state.qYes, qNo: pool.state.qNo - WAD, collateral: pool.state.collateral - proceeds, resolved: 0n, winner: 0n }
         }
-        const build: SellBuild = { kind: 'sell', marketId: cfg.marketId, side }
+        const build: SellBuild = { kind: 'sell', marketId: cfg.marketId, side, pool: this.poolRefOf(pool) }
         return { kind: 'sell', summary: `sell 1 ${side.toUpperCase()} → proceeds ${proceeds} sat`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, trade: { side, action: 'sell', shares: WAD.toString(), costSats: Number(proceeds) }, marketState: 'trading' } }
     }
 
     async buildResolve(cfg: MarketConfig, pool: PoolRef, outcome: Side): Promise<TxPlan> {
         const s: PoolState = { ...pool.state, resolved: 1n, winner: outcome === 'yes' ? 1n : 0n }
-        const build: ResolveBuild = { kind: 'resolve', marketId: cfg.marketId, outcome }
+        const build: ResolveBuild = { kind: 'resolve', marketId: cfg.marketId, outcome, pool: this.poolRefOf(pool) }
         return { kind: 'resolve', summary: `resolve ${outcome.toUpperCase()} (Rabin oracle)`, spendSats: 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true, marketState: 'resolved', resolution: outcome } }
     }
 
-    async buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint): Promise<TxPlan> {
+    /**
+     * `token` (optional) is the PERSISTED token identity the service read back from the DB — it makes redeem
+     * survive a restart (CONC-005). When omitted, the warm in-process ref is used. Either way the backtrace
+     * pieces are re-derived from the mint tx at authorize time.
+     */
+    async buildRedeem(cfg: MarketConfig, pool: PoolRef, side: Side, shares: bigint, token?: PersistedToken): Promise<TxPlan> {
         if (pool.state.resolved !== 1n) throw new Error('market not resolved')
         const payout = shares * cfg.payoutUnit
         const s: PoolState = { ...pool.state, collateral: pool.state.collateral - payout }
-        const build: RedeemBuild = { kind: 'redeem', marketId: cfg.marketId, side, supply: shares.toString() }
-        return { kind: 'redeem', summary: `redeem ${shares} ${side.toUpperCase()} → pay winner ${payout} sat`, spendSats: Number(payout) + 100, build, effects: { pool: poolEffect(s), spendsPrevPool: true } }
+        const ref: TokenRef | undefined = this.tokens.get(cfg.marketId) ?? (token
+            ? { txid: token.txid, vout: token.vout, satoshis: token.satoshis, script: token.script, holderPkh: token.holderPkh, supply: BigInt(token.shares) / WAD, isYes: token.side === 'yes' }
+            : undefined)
+        const build: RedeemBuild = { kind: 'redeem', marketId: cfg.marketId, side, supply: shares.toString(), pool: this.poolRefOf(pool), token: ref }
+        return {
+            kind: 'redeem', summary: `redeem ${shares} ${side.toUpperCase()} → pay winner ${payout} sat`,
+            spendSats: Number(payout) + 100, build,
+            effects: {
+                pool: poolEffect(s), spendsPrevPool: true,
+                ...(ref ? { token: { vout: ref.vout, satoshis: ref.satoshis, script: ref.script, holderPkh: ref.holderPkh, shares: (ref.supply * WAD).toString(), side, burned: true } } : {}),
+            },
+        }
     }
 
     async buildSettleBatch(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan> {
@@ -314,6 +407,7 @@ export class ScryptEngine {
             kind: 'settle', marketId: cfg.marketId,
             netYesUnits: batch.netYesUnits.toString(), netNoUnits: batch.netNoUnits.toString(),
             netCollateralSats: batch.netCollateralSats, batchDigest: batch.batchDigest,
+            pool: this.poolRefOf(pool),
         }
         return {
             kind: 'settle',
@@ -347,8 +441,7 @@ export class ScryptEngine {
     }
 
     private async execSettle(b: SettleBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const current = await this.livePool(b.marketId, b.pool) // CONC-005: rebuild after a restart
         const netYes = BigInt(b.netYesUnits)
         const netNo = BigInt(b.netNoUnits)
         const yBuy = netYes >= 0n
@@ -393,8 +486,7 @@ export class ScryptEngine {
     }
 
     private async execBuy(b: BuyBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId} (deploy first)`)
+        const current = await this.livePool(b.marketId, b.pool) // CONC-005: rebuild after a restart
         const charge = BigInt(b.charge)
         const buyer = await this.selfPkh()
         const isYes = b.side === 'yes'
@@ -433,8 +525,7 @@ export class ScryptEngine {
     }
 
     private async execSell(b: SellBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const current = await this.livePool(b.marketId, b.pool) // CONC-005: rebuild after a restart
         const next = current.next()
         if (b.side === 'yes') { next.eYes = (current.eYes * current.invMult) / current.scale; next.qYes = current.qYes - current.unit }
         else { next.eNo = (current.eNo * current.invMult) / current.scale; next.qNo = current.qNo - current.unit }
@@ -447,8 +538,7 @@ export class ScryptEngine {
     }
 
     private async execResolve(b: ResolveBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
+        const current = await this.livePool(b.marketId, b.pool) // CONC-005: rebuild after a restart
         const outcomeN = b.outcome === 'yes' ? 1n : 0n
         const next = current.next()
         next.resolved = 1n
@@ -467,11 +557,10 @@ export class ScryptEngine {
      * the covenant has committed to the outpoint set.
      */
     private async execRedeem(b: RedeemBuild): Promise<BroadcastResult> {
-        const current = this.instances.get(b.marketId)
-        if (!current) throw new Error(`sCrypt engine: no live pool for market ${b.marketId}`)
-        const token = this.tokens.get(b.marketId)
+        const current = await this.livePool(b.marketId, b.pool) // CONC-005: rebuild after a restart
+        const token = await this.liveToken(b.marketId, b.token) // CONC-005: rebuild after a restart
         if (!token) {
-            throw new EngineLimitation('redeem', 'no minted position token tracked for this market in this run — buy first (CONC-003c requires co-spending the real token)')
+            throw new EngineLimitation('redeem', 'no minted position token for this market — buy first (CONC-003c requires co-spending the real token)')
         }
         const isYes = b.side === 'yes'
         if (token.isYes !== isYes) throw new Error(`sCrypt engine: tracked token is ${token.isYes ? 'YES' : 'NO'}, not ${b.side.toUpperCase()}`)
