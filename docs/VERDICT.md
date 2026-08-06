@@ -57,7 +57,24 @@ _(An earlier one-process sCrypt run proved the same loop: [`83684ab5…`](https:
 [`a3d01cd5…`](https://whatsonchain.com/tx/a3d01cd5a7c7386fd3acab0478ba63044a4dde9afe48442f6031c67c796b0a89),
 [`a3126fdc…`](https://whatsonchain.com/tx/a3126fdc641e40d990de4e7e8771f5bd100b25b69271026c96da70c825db580c).)_
 
-### 3 · Concurrency — N trades settle in ONE transaction
+### 3 · The real thing — 4 distinct wallets, 26 signed orders, one settlement (2026-08-06)
+
+The first genuinely **end-to-end** run: driven over HTTP against the real daemon, with real trader wallets and
+**no synthetic inputs** anywhere.
+
+| Step | Transaction | Detail |
+|---|---|---|
+| Deploy | [`b8473fd2…290dbb`](https://whatsonchain.com/tx/b8473fd2503d661f52d75884cd8ca4a904d698b4e10cf310314380616b290dbb) | 30,483 B — block 961087 |
+| **Settle** | [`0c90cc39…845773`](https://whatsonchain.com/tx/0c90cc39cc8a8d8c4c9713179281a3d4493bcee4e2b82b6e72802f373b845773) | **26 real signed fills → ONE tx**, 61,107 B — block 961087 |
+| Resolve | [`8782ed70…e9602b`](https://whatsonchain.com/tx/8782ed7037122419a8c0a5ac8a5df5c98a20e1b4805f1c09346f31ec7fe9602b) | Rabin oracle YES, 61,445 B — block 961088 |
+
+Independently verified against the settled data: **audit ok — 26 receipts, 0 violations, Rabin-attested**; all
+26 receipts verify; **4 distinct trader wallets**; **26/26 orders carry a trader signature + nonce** (orders are
+authenticated, so the operator cannot fabricate a trade in a user's name — LIVE-001a). Net YES 15, NO 7.
+
+**Traders hold no BSV.** They sign orders; the operator pays every fee — zero-friction onboarding.
+
+### 4 · Concurrency — N trades settle in ONE transaction
 
 | Transaction | Detail |
 |---|---|
@@ -67,7 +84,7 @@ _(An earlier one-process sCrypt run proved the same loop: [`83684ab5…`](https:
 Both confirmed, **block 960978**. Demonstrates the amortization: **N trades cost ONE settlement fee**, while
 users get instant off-chain fills.
 
-### 4 · Enforcement — a cheating operator's bond is slashable by anyone
+### 5 · Enforcement — a cheating operator's bond is slashable by anyone
 
 | Transaction | Detail |
 |---|---|
@@ -77,7 +94,7 @@ users get instant off-chain fills.
 Both confirmed, **block 960994**. The network executed the fraud proof — two conflicting sequencer attestations
 verified in Script — and paid the bond to the challenger. **Equivocation is unprofitable.**
 
-### 5 · Token-verified payout — a redeem that provably requires a real token
+### 6 · Token-verified payout — a redeem that provably requires a real token
 
 | Transaction | Detail |
 |---|---|
@@ -190,6 +207,10 @@ with instant fills; **N-trades-in-one-settlement**; settlement auditability; and
 enforcement**.
 
 **Owed before this is a product:**
+- **Receipt → on-chain payout.** Settled *off-chain* positions have no payout path: traders hold audited signed
+  receipts, not per-participant tokens, and `redeem` needs a token minted by an on-chain buy. This is the one
+  visible hole in the user journey — closing it means per-participant minting at settlement, or validity-proof
+  settlement (below). Surfaced by the first real multi-wallet run.
 - **Trustless settlement (the endgame).** The settle contract verifies the net state transition + solvency, and
   equivocation is slashable — but it does **not** prove on-chain that a batch's net equals the sum of its
   receipts. That needs a validity proof or an interactive dispute game. This is the one substantive trust

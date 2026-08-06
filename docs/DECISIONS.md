@@ -508,3 +508,35 @@ Template:
   green**, typecheck clean.
 - Honest scope: token recovery after a *cold* restart genuinely depends on the provider (`getTransaction`) —
   offline it works only via the `LocalProvider` cache. One minted token per market (the spike's shape).
+
+## ADR-027 · Trader-authenticated orders + the real multi-wallet market (LIVE-001) · Accepted · 2026-08-06
+- Context: every mechanism was proven on mainnet but always **in pieces, and three with synthetic inputs** (a
+  fabricated 5-fill batch, a hand-built mint tx, a self-dealt slash). Nothing had run as one system with real,
+  distinct users — the gap between "the mechanism works" and "you can build a UX on this".
+- **Security gap found while scoping it:** `ExecutionEngine.submit()` took `trader` as a plain pubkey string and
+  **verified nothing**, so the operator (or anyone with API access) could fabricate fills in any user's name.
+  That makes "real wallets as clients" meaningless, so it had to be fixed first.
+- Decision: **orders are authenticated by the trader.** The trader signs
+  `marketId|trader|side|action|units|nonce` with their own key (`packages/execution/src/order.ts`, mirroring
+  `receipt.ts`); the engine verifies **before filling**, so a fill can only exist if the user authorized it.
+  Migration `010_order_auth` persists the signature + nonce with `UNIQUE(market_id, trader_pubkey, nonce)`, so a
+  replay fails at the DB even if verification were bypassed. The trader's key never reaches the daemon, and
+  **traders need no BSV** — they only sign; the operator pays every on-chain fee (a real onboarding property).
+- **Measured cost of the fix:** throughput fell **1,240 → 404 fills/sec** (2.47 ms/fill) because each fill now
+  does an ECDSA *verify* (order) on top of the *sign* (receipt). Still far beyond product need; native
+  secp256k1 bindings are the lever. Recorded rather than hidden — security was worth the 3×.
+- **Proven live on BSV mainnet (2026-08-06), the first genuinely end-to-end run** — driven over HTTP against the
+  real daemon, 4 distinct trader wallets, no synthetic inputs:
+  | step | tx | detail |
+  |---|---|---|
+  | deploy | [`b8473fd2…290dbb`](https://whatsonchain.com/tx/b8473fd2503d661f52d75884cd8ca4a904d698b4e10cf310314380616b290dbb) | 30,483 B — **block 961087** |
+  | **settle** | [`0c90cc39…845773`](https://whatsonchain.com/tx/0c90cc39cc8a8d8c4c9713179281a3d4493bcee4e2b82b6e72802f373b845773) | **26 real signed fills → ONE tx**; 2-in/3-out (pool + commitment + change), 61,107 B — **block 961087** |
+  | resolve | [`8782ed70…e9602b`](https://whatsonchain.com/tx/8782ed7037122419a8c0a5ac8a5df5c98a20e1b4805f1c09346f31ec7fe9602b) | Rabin oracle YES, 61,445 B — **block 961088** |
+  Verified after the fact: **audit ok, 26 receipts, 0 violations, Rabin-attested**; all 26 receipts verify;
+  4 distinct trader wallets; **26/26 orders carry a trader signature + nonce**. Batch: net YES 15, NO 7,
+  11,021 sat net collateral. ~77k sats total.
+- **Honest gap this surfaced:** settled **off-chain** positions have **no on-chain payout path**. Traders hold
+  audited signed receipts, not per-participant tokens, and `redeem` requires a token minted by an *on-chain*
+  buy — so it does not apply to this flow. Receipt → on-chain payout (per-participant minting, or validity-proof
+  settlement) is the remaining piece of the user journey. The runner states this explicitly rather than failing
+  quietly; the redeem *mechanism* itself is separately proven on mainnet (`c6d8900f…`).

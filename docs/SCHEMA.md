@@ -77,6 +77,8 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   on-chain-verifiable attestation → slashable equivocation).
 - `009_token_script.sql` — `tokens` += `script`/`holder_pkh`/`sats` (CONC-005 restart recovery; the table is
   now actually written — on buy, and burned on redeem).
+- `010_order_auth.sql` — `exec_orders` += `order_sig`/`nonce` + UNIQUE(market_id, trader_pubkey, nonce)
+  (LIVE-001a: orders are authenticated by the trader; a replay fails at the DB too).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

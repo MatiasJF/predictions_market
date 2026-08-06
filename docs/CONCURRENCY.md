@@ -110,7 +110,8 @@ Start at (1), design toward (3). Each step reuses the same execution + settlemen
 
 ### Measured throughput (2026-08-06, `scratchpad/bench.ts` on the shipped engine)
 
-- **~1,240 fills/sec, ~0.8 ms per fill**, flat from 100 → 5,000 concurrent (1,000 simultaneous bettors are all
+- **~404 fills/sec, ~2.5 ms per fill** now that orders are trader-authenticated (LIVE-001a adds an ECDSA
+  verify per fill; it measured ~1,240 fills/sec before that), flat from 100 → 5,000 concurrent (1,000 simultaneous bettors are all
   filled in **806 ms**). No collapse under load.
 - **ECDSA receipt signing is 99.7 % of the cost** (790 µs/fill, ~1,266/sec ceiling). LMSR math is 0.3 µs and the
   SQLite insert 2.3 µs — both free by comparison. Native secp256k1 bindings are the obvious 10–20× lever.

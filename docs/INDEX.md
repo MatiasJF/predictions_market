@@ -41,6 +41,9 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Off-chain execution engine (CONC-001): instant fills + serialization** | `packages/execution/src/engine.ts` |
 | Signed off-chain receipts (sign/verify, sequencer key) | `packages/execution/src/receipt.ts` |
 | **Throughput benchmark (fills/sec + fills per settlement)** | `packages/execution/bench/bench.ts` |
+| **Trader-authenticated orders (sign/verify, LIVE-001a)** | `packages/execution/src/order.ts` |
+| **Real multi-wallet market runner (HTTP against the daemon)** | `apps/spike/src/live-market.ts` |
+| Trader wallet keygen (WIFs git-ignored) | `apps/spike/src/trader-keygen.ts` |
 | Square-and-multiply `powFixed` (consensus-critical, CONC-006) | `powFixed` in `packages/lmsr/src/fixed.ts` |
 | **Settlement auditor + attestation + batch digest (CONC-003a)** | `packages/execution/src/audit.ts` |
 | **Operator Bond contract: equivocation slash + CLTV withdraw (CONC-003b)** | `packages/contracts-scrypt/src/contracts/bond.ts` |
@@ -71,7 +74,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
 | Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |
 | Oracle Rabin-sig verification | `runar-lang/oracle#verifyRabinSig` |
-| SQLite migrations (001 init · 002 broadcasts · 003 pool-state · 004 execution · 005 settlement · 006 broadcast-kind) | `packages/persistence/migrations/` |
+| SQLite migrations (001–010: init · broadcasts · pool-state · execution · settlement · broadcast-kind · commitment · rabin-attest · token-script · order-auth) | `packages/persistence/migrations/` |
 | SQLite open/migrate helpers + default DB path | `packages/persistence/src/db.ts` |
 | Migrate CLI (`pnpm db:migrate`) | `packages/persistence/src/migrate-cli.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |

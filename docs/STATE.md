@@ -321,6 +321,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
+- ● LIVE-001 — **Trader-authenticated orders + the REAL multi-wallet market — DONE (2026-08-06, ADR-027).**
+  Found and fixed a real security gap: `submit()` verified nothing, so the operator could fabricate fills in any
+  user's name. Traders now sign `marketId|trader|side|action|units|nonce`; the engine verifies BEFORE filling
+  (migration 010 + UNIQUE replay guard). Cost: **1,240 → 404 fills/sec** (an extra ECDSA verify per fill) —
+  recorded, not hidden. New `trader-keygen` (WIFs git-ignored) + `live-market.ts`, which spawns the REAL daemon
+  and drives it over HTTP. **PROVEN LIVE on mainnet:** 4 distinct wallets, **26 real signed fills → ONE
+  settlement** (deploy `b8473fd2…` + settle `0c90cc39…`, block 961087; resolve `8782ed70…`, block 961088).
+  Verified after the fact: **audit ok, 26 receipts, 0 violations, Rabin-attested**, 26/26 orders signed.
+  **Honest gap surfaced:** settled off-chain positions have **no on-chain payout path** (traders hold receipts,
+  not per-participant tokens) — the remaining piece of the user journey.
 - ● CONC-005 — **Restart-safe engine state — DONE (2026-08-06, ADR-026).** A daemon restart used to strand a
   market (`no live pool for market N`). Now every build descriptor carries the pool UTXO (txid/vout/sats/
   lockingScript) — already persisted in `broadcasts.plan` — and `exec*` rebuilds via `LMSRMarket.fromUTXO`, which
