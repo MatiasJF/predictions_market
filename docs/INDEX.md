@@ -40,6 +40,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Broadcastable state-only buy (no token mint) | `buyYesPlain`/`buyNoPlain` in `packages/contracts/src/LMSRMarket.runar.ts` |
 | **Off-chain execution engine (CONC-001): instant fills + serialization** | `packages/execution/src/engine.ts` |
 | Signed off-chain receipts (sign/verify, sequencer key) | `packages/execution/src/receipt.ts` |
+| **Throughput benchmark (fills/sec + fills per settlement)** | `packages/execution/bench/bench.ts` |
+| Square-and-multiply `powFixed` (consensus-critical, CONC-006) | `powFixed` in `packages/lmsr/src/fixed.ts` |
 | **Settlement auditor + attestation + batch digest (CONC-003a)** | `packages/execution/src/audit.ts` |
 | **Operator Bond contract: equivocation slash + CLTV withdraw (CONC-003b)** | `packages/contracts-scrypt/src/contracts/bond.ts` |
 | Sequencer Rabin attestation (on-chain-verifiable) | `packages/contracts-scrypt/src/attestation.ts` |

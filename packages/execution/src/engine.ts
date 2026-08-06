@@ -121,6 +121,18 @@ export class ExecutionEngine {
     return signAttestation(this.signer, a);
   }
 
+  /**
+   * Adopt the on-chain settled state as authoritative (CONC-006). Fills advance the in-memory state one at a
+   * time, while the chain advances it net-from-baseline via square-and-multiply — the two agree to within
+   * rounding, but the chain is the source of truth, so resync at each settlement boundary. `q` is unaffected
+   * (it is exact integer units); only the stored exponentials move, by sub-ppm.
+   */
+  resyncState(marketId: number, state: MarketState): void {
+    const m = this.markets.get(marketId);
+    if (!m) return; // market not open in this process — it will seed from the ledger on next open
+    m.state = state;
+  }
+
   private mkt(marketId: number): MarketRuntime {
     const m = this.markets.get(marketId);
     if (!m) throw new Error(`execution: market ${marketId} not open`);

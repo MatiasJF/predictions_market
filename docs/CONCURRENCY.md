@@ -108,6 +108,18 @@ Start at (1), design toward (3). Each step reuses the same execution + settlemen
 - Because it's **one pool-version advance per batch**, the mempool-ancestor limit is a non-issue (you settle,
   wait one confirmation, settle the next batch) — and cost is amortized across the whole batch.
 
+### Measured throughput (2026-08-06, `scratchpad/bench.ts` on the shipped engine)
+
+- **~1,240 fills/sec, ~0.8 ms per fill**, flat from 100 → 5,000 concurrent (1,000 simultaneous bettors are all
+  filled in **806 ms**). No collapse under load.
+- **ECDSA receipt signing is 99.7 % of the cost** (790 µs/fill, ~1,266/sec ceiling). LMSR math is 0.3 µs and the
+  SQLite insert 2.3 µs — both free by comparison. Native secp256k1 bindings are the obvious 10–20× lever.
+- Many markets in one process does **not** raise aggregate throughput (single-threaded + signing-bound) —
+  scale-out means sharding markets across processes/cores.
+- **Fills per on-chain settlement (CONC-006):** after replacing `settle`'s linear loop with square-and-multiply
+  (`MAX_NET = 4095`), **every measured flow shape settles in ONE tx** — balanced (net 16), 55 % skew (88), 70 %
+  skew (238), and all-buys (530). Under the old linear cap of 20 those needed 1 / 5 / 12 / **27** settlements.
+
 ### Throughput / latency / cost, honestly
 
 - **Trading latency:** off-chain, milliseconds (interactive). ✓

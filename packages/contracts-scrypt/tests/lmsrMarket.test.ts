@@ -32,6 +32,8 @@ const V = JSON.parse(
 )
 const b = (s: string): bigint => BigInt(s)
 const DUMMY_ORACLE = 0xdeadbeefn // RabinPubKey placeholder (unused by buy/sell)
+// Index into the pow vectors (exps: 0,1,2,3,20,100,530,1023,4095) — CONC-006 square-and-multiply.
+const POW = { i2: 2, i3: 3, i530: 6 }
 const MARKET_TAG = toByteString('a1b2c3d4')
 const POOL_SATS = 1000
 const TOKEN_SATS = 1n
@@ -163,11 +165,10 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         await instance.connect(signer)
         await instance.deploy(POOL_SATS)
 
-        // Independently compute the expected net state the SAME way @pm/lmsr's applyUnitBuy does: e *= mult/WAD.
-        let eYes = b(V.init.eYes)
-        let eNo = b(V.init.eNo)
-        for (let i = 0; i < 3; i++) eYes = (eYes * b(V.mult)) / b(V.WAD)
-        for (let i = 0; i < 2; i++) eNo = (eNo * b(V.mult)) / b(V.WAD)
+        // Expected net state from the @pm/lmsr-generated square-and-multiply vectors (CONC-006) — the same
+        // routine the contract runs, so contract == engine == @pm/lmsr by construction.
+        const eYes = (b(V.init.eYes) * b(V.pow.mult[POW.i3]!)) / b(V.WAD)
+        const eNo = (b(V.init.eNo) * b(V.pow.mult[POW.i2]!)) / b(V.WAD)
         const collateralDelta = 1234n // batch net cash (MVP: contract bounds solvency, not exact cash)
         const digest = toByteString('ab'.repeat(32)) // 32-byte batch commitment
 
@@ -208,14 +209,62 @@ describe('LMSRMarket (sCrypt, slimmed CONC-004) — local verify matches @pm/lms
         ).to.equal(true)
     })
 
-    it('settle rejects a batch that exceeds MAX_BATCH', async () => {
+    it('settle handles a LARGE net move (530 units — the measured all-buys case) in one tx', async () => {
+        // 530 was the measured net of 1,000 all-buy fills. Under the old linear cap (20) that needed 27
+        // settlements; square-and-multiply clears it in ONE (CONC-006).
+        const instance = freshPool()
+        const signer = localSigner()
+        await instance.connect(signer)
+        await instance.deploy(POOL_SATS)
+
+        const eYes = (b(V.init.eYes) * b(V.pow.mult[POW.i530]!)) / b(V.WAD)
+        const digest = toByteString('ef'.repeat(32))
+        instance.bindTxBuilder(
+            'settle',
+            async (current: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
+                const next = current.next()
+                next.eYes = eYes
+                next.qYes = 530n * b(V.unit)
+                next.collateral = b(V.collateral) + 1n
+                const opret = bsv.Script.fromHex(Utils.buildOpreturnScript(digest))
+                const unsignedTx = new bsv.Transaction()
+                    .addInput(current.buildContractInput())
+                    .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: current.balance }))
+                    .addOutput(new bsv.Transaction.Output({ script: opret, satoshis: 0 }))
+                if (options.changeAddress) unsignedTx.change(options.changeAddress)
+                return {
+                    tx: unsignedTx, atInputIndex: 0,
+                    nexts: [{ instance: next, atOutputIndex: 0, balance: current.balance }],
+                    next: { instance: next, atOutputIndex: 0, balance: current.balance },
+                }
+            }
+        )
+        await instance.methods.settle(530n, true, 0n, true, 1n, true, digest, {
+            changeAddress: await signer.getDefaultAddress(),
+        } as MethodCallOptions<LMSRMarket>)
+    })
+
+    it('settle rejects a net move above MAX_NET (4095)', async () => {
         const instance = freshPool()
         await instance.connect(localSigner())
         await instance.deploy(POOL_SATS)
         const next = instance.next()
-        next.qYes = 999n * b(V.unit)
+        next.qYes = 4096n * b(V.unit)
         await expectReject(() =>
-            instance.methods.settle(999n, true, 0n, true, 0n, true, toByteString('cd'.repeat(32)), {
+            instance.methods.settle(4096n, true, 0n, true, 0n, true, toByteString('cd'.repeat(32)), {
+                next: { instance: next, balance: POOL_SATS },
+            } as MethodCallOptions<LMSRMarket>)
+        )
+    })
+
+    it('settle rejects a net SELL larger than the outstanding shares (no negative q)', async () => {
+        const instance = freshPool() // fresh pool holds 0 YES
+        await instance.connect(localSigner())
+        await instance.deploy(POOL_SATS)
+        const next = instance.next()
+        next.qYes = -5n * b(V.unit)
+        await expectReject(() =>
+            instance.methods.settle(5n, false, 0n, true, 0n, false, toByteString('cd'.repeat(32)), {
                 next: { instance: next, balance: POOL_SATS },
             } as MethodCallOptions<LMSRMarket>)
         )

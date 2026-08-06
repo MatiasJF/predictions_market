@@ -451,3 +451,33 @@ Template:
   backtrace)** through the engine, all against the real node Script (18 sCrypt + 83 workspace green).
 - Honest remaining scope: a **gated mainnet run** of the hardened redeem (a real spend) is not yet done;
   `runLifecycle` still covers deploy→buy→resolve (the engine path is the integrated one).
+  _[Update: the gated mainnet run was completed — mint `8328f669…` → deploy `1c1660e3…` → redeem
+  `c6d8900f…`, confirmed block 961048.]_
+
+## ADR-025 · Square-and-multiply batch cap: MAX_BATCH 20 → MAX_NET 4095 (CONC-006) · Accepted · 2026-08-06
+- Context: a **measured** benchmark of the shipped engine (`scratchpad/bench.ts`) showed the off-chain layer fills
+  **~1,240 bets/sec at ~0.8 ms each** (ECDSA receipt signing is **99.7 %** of that cost; LMSR math 0.3 µs and the
+  SQLite insert 2.3 µs are free), and that balanced flow batches beautifully. But `settle` advanced a side with a
+  **linear** loop, so `MAX_BATCH = 20` capped the **net** move — and prediction markets are directional. Measured
+  on 1,000 fills: balanced net 16 (1 settlement) but 55 % skew → 88 (5), 70 % → 238 (12), all-buys → 530 (**27**).
+  Under the exact conditions that make a market busy, throughput collapsed to ~20 trades per settlement.
+- Decision: compute `mult^n` by **square-and-multiply** over a fixed 12 bits (`MAX_NET_BITS = 12`,
+  `MAX_NET = 4095`) instead of `n` linear steps. The bit test is `e - (e/2)*2` (avoids `%`, whose sCrypt support
+  is unverified; `*` and `/` are known-good). Canonical definition: `powFixed` in `packages/lmsr/src/fixed.ts`;
+  the sCrypt contract and both engines run the identical loop.
+- **Consensus-critical detail:** repeated squaring **rounds differently** than multiplying `n` times, so the
+  operation order and truncation ARE the definition — the sequencer and the contract must run the same routine or
+  the settlement simply fails to verify (a safe failure, not a fund risk). Pinned by `pow` vectors generated from
+  `@pm/lmsr` into `tests/fixtures/vectors.json`, asserted by the sCrypt tests — the existing equivalence
+  mechanism, since `contracts-scrypt` is npm-isolated and cannot import `@pm/lmsr`.
+- **Bug found + fixed along the way:** `settle` never asserted `q ≥ 0`, so a net-sell settlement could drive net
+  shares negative (and the stored exponential below `exp(0)`). Added `assert(qYes >= 0)` / `assert(qNo >= 0)`.
+  Surfaced by a degenerate `invMult^4095 = 0` vector — the vectors earned their keep immediately.
+- Consequences: the cap rises **~200×** and the script got **smaller** — 32,889 → **29,801 B (−3,088)** — because
+  2 sides × 12 bit-steps costs less than 2 × 20 linear steps. **Every measured flow shape now settles in ONE tx**,
+  including all-buys. Also added `ExecutionEngine.resyncState`, called from the daemon's settle branch, so the
+  off-chain state adopts the chain's settled exponentials at each boundary (sub-ppm; also groundwork for CONC-005).
+- Verified: 5 new `powFixed` tests; sCrypt **net 530 settles in one tx vs real Script**, net 4096 rejected, oversell
+  rejected — **20 sCrypt + 88 workspace green**, typecheck clean. Practical note: the usable net is bounded by
+  economics, not the cap — `n/b` must stay sane (at `b = 1000`, net 4095 ⇒ `e^4.1`; a toy `b = 10` would saturate
+  long before 4095).

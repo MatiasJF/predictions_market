@@ -17,6 +17,39 @@ export function mul(a: bigint, b: bigint): bigint {
 }
 
 /**
+ * Maximum exponent `powFixed` accepts — mirrors the on-chain `MAX_NET` (12 bits) so a batch the sequencer can
+ * compute is exactly a batch the contract can verify (CONC-006 / ADR-025).
+ */
+export const MAX_POW_EXP = 4095n;
+
+/**
+ * base^exp with base and the result WAD-scaled, by SQUARE-AND-MULTIPLY (CONC-006).
+ *
+ * THE OPERATION ORDER IS CONSENSUS-CRITICAL. The on-chain `settle` runs this exact loop, so any change to the
+ * order/rounding here breaks settlement verification (safely — the contract just rejects). The bit test avoids
+ * `%` (`e - (e/2)*2`) because only `*` and `/` are known-good in the sCrypt method body. Truncating division at
+ * each step is deliberate and part of the definition.
+ *
+ * Note this does NOT equal multiplying by `base` `exp` times — repeated squaring rounds differently (and in
+ * fact more accurately, ~log₂ truncations instead of `exp` of them). The settled state is DEFINED by this
+ * routine on both sides.
+ */
+export function powFixed(base: bigint, exp: bigint): bigint {
+  if (exp < 0n) throw new Error('powFixed: exp must be ≥ 0');
+  if (exp > MAX_POW_EXP) throw new Error(`powFixed: exp must be ≤ ${MAX_POW_EXP} (on-chain MAX_NET)`);
+  let factor = WAD; // 1.0
+  let b = base;
+  let e = exp;
+  for (let i = 0; i < 12; i++) {
+    const half = e / 2n;
+    if (e - half * 2n === 1n) factor = (factor * b) / WAD; // bit set → multiply in
+    b = (b * b) / WAD; // square
+    e = half;
+  }
+  return factor;
+}
+
+/**
  * exp(x) with x and the result WAD-scaled. Supports negative x.
  * Range-reduces x = k·ln2 + f (f ∈ [0, ln2)) then Taylor-expands exp(f), and scales by 2^k.
  */

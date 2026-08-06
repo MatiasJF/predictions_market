@@ -311,6 +311,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   executed and passed on-chain. First attempt hit `txn-mempool-conflict` (BUG-003, stale WoC UTXO set) — fixed by chaining
   each stage's own change in-process. VERDICT gap #2 is closed.
 - ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
+- ● CONC-006 — **Square-and-multiply batch cap — DONE (2026-08-06, ADR-025).** Benchmarked the shipped engine:
+  **~1,240 fills/sec, ~0.8 ms each** (ECDSA signing = 99.7 % of cost; LMSR 0.3 µs, SQLite 2.3 µs). Found the real
+  constraint: `settle`'s **linear** loop capped the NET move at 20, and directional flow (which is when markets
+  get busy) blew through it — 1,000 all-buy fills net 530 ⇒ **27 settlements**. Replaced with square-and-multiply
+  over 12 bits (`MAX_NET = 4095`); canonical `powFixed` in `@pm/lmsr`, mirrored by the contract + both engines,
+  pinned by `pow` vectors in the fixtures. **Script got SMALLER: 32,889 → 29,801 B (−3,088)** while the cap rose
+  ~200×. **Every measured flow shape now settles in ONE tx.** Also fixed a real gap the vectors exposed: `settle`
+  never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
+  `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
+  green**, typecheck clean.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
 
 ## Known issues

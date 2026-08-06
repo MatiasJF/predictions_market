@@ -127,6 +127,7 @@ off-chain, settle on-chain in batches — was built and then progressively harde
 | **CONC-003b** (ADR-023) | **Enforcement**: an operator `Bond`, slashable on-chain by anyone presenting an equivocation proof (two conflicting Rabin attestations) | ✅ mainnet (§4) |
 | **CONC-003c** (ADR-024) | **Token-verified payout**: redeem co-spends the position token and backtraces it on-chain — no token-less redeem, no over-claim, no redirection | ✅ mainnet (§5) |
 | **CONC-004** (ADR-020) | Contract slimming: 45.7 KB → **21.4 KB (−53 %)** by collapsing YES/NO twins into side-parameterized methods | ✅ measured |
+| **CONC-006** (ADR-025) | Square-and-multiply batch cap (net 20 → **4,095**) — every measured order-flow shape now settles in **one** tx, and the script got *smaller* | ✅ measured |
 
 **Trust position reached:** users trade instantly off-chain; every settlement is publicly auditable and
 non-equivocable; equivocation costs the operator its bond; and payouts require a real on-chain token. The
@@ -134,11 +135,22 @@ operator can still be *wrong* within a settlement window in one specific way —
 
 ---
 
+## Measured performance
+
+Benchmarked on the shipped engine (`scratchpad/bench.ts`), not estimated:
+
+- **~1,240 fills/sec at ~0.8 ms each** — 1,000 simultaneous bettors all filled in **806 ms**, flat to 5,000.
+- **ECDSA receipt signing is 99.7 % of the cost**; the LMSR math (0.3 µs) and the DB write (2.3 µs) are free.
+  Native secp256k1 bindings are a straightforward 10–20× lever, and markets shard cleanly across processes.
+- **Every measured order-flow shape — balanced through all-buys — settles in ONE on-chain transaction**
+  (CONC-006). Under the previous linear cap the all-buys case needed 27.
+
 ## Economics and limits (measured, not estimated)
 
 - **Contract size drives everything.** OP_PUSH_TX re-carries the whole pool script each spend, so a stateful
   spend ≈ **2× the script**. Script history: 45.7 KB → 21.4 KB (slimming) → 30.2 KB (+`settle`) → 30.5 KB
-  (+commitment) → **32.9 KB** (+backtrace redeem).
+  (+commitment) → 32.9 KB (+backtrace redeem) → **29.8 KB** (square-and-multiply, CONC-006 — smaller *and* a
+  200× larger batch cap).
 - **Ancestor budget.** BSV allows ~**101 KB / 25 txs** of unconfirmed ancestors. At ~66 KB per hardened spend
   only ~1 fits unconfirmed; a 4-tx lifecycle must be split across confirmations (the §5 proof deliberately uses
   a 3-tx shape for this reason).

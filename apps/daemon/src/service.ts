@@ -404,6 +404,12 @@ export class MarketService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const t of eff.settle.trades) insTrade.run(marketId, fromVersion, toVersion, t.side, t.action, t.shares, t.costSats, result.txid);
+      // CONC-006: the chain is authoritative at settlement boundaries — adopt the settled exponentials so the
+      // off-chain engine can't drift from the pool it settles into.
+      this.exec?.resyncState(marketId, {
+        eYes: BigInt(eff.pool.eYes), eNo: BigInt(eff.pool.eNo),
+        qYes: BigInt(eff.pool.qYes), qNo: BigInt(eff.pool.qNo),
+      });
     }
     if (eff.marketState) {
       if (eff.resolution) {

@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   WAD, initState, unitMultiplier, unitInverseMultiplier, maxLossSats,
-  applyUnitBuy, applyUnitSell, buyChargeApproxSats, sellPayoutApproxSats, type MarketParams,
+  applyUnitBuy, applyUnitSell, buyChargeApproxSats, sellPayoutApproxSats, powFixed, type MarketParams,
 } from '@pm/lmsr';
 
 const bUnits = 10n;
@@ -26,7 +26,18 @@ const afterSell = applyUnitSell(stocked, 'yes', invMult, p);
 const sellProceeds = sellPayoutApproxSats(afterSell, 'yes', p.unit, p);
 
 const S = (x: bigint) => x.toString();
+
+// CONC-006: square-and-multiply pow vectors. The sCrypt contract's `settle` and the engines run the SAME
+// routine, so these pin all three implementations to @pm/lmsr's canonical `powFixed`.
+const POW_EXPS = [0n, 1n, 2n, 3n, 20n, 100n, 530n, 1023n, 4095n];
+const pow = {
+  exps: POW_EXPS.map(S),
+  mult: POW_EXPS.map((n) => S(powFixed(mult, n))),
+  invMult: POW_EXPS.map((n) => S(powFixed(invMult, n))),
+};
+
 const vectors = {
+  pow,
   bUnits: S(bUnits), WAD: S(WAD), payoutUnit: S(p.payoutUnit), unit: S(p.unit),
   mult: S(mult), invMult: S(invMult), collateral: S(collateral),
   init: { eYes: S(s0.eYes), eNo: S(s0.eNo) },

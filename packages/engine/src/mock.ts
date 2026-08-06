@@ -2,7 +2,7 @@
 // compile, no network), but overrides the chain I/O: fundingAddress/getUtxos return fixtures and
 // authorizeAndBroadcast returns a deterministic fake txid instead of touching mainnet. Lets the service's
 // full enqueue → authorize → apply-effects → advance-lineage flow be tested with zero broadcasts.
-import { WAD } from '@pm/lmsr';
+import { WAD, powFixed } from '@pm/lmsr';
 import { RunarEngine } from './runar.js';
 import type { BroadcastResult, MarketConfig, PoolRef, SettleBatch, TxEffects, TxPlan, Utxo } from './types.js';
 
@@ -31,13 +31,9 @@ export class MockEngine extends RunarEngine {
   async buildSettleBatch(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan> {
     const yBuy = batch.netYesUnits >= 0n;
     const nBuy = batch.netNoUnits >= 0n;
-    const stepE = (e0: bigint, net: bigint, isBuy: boolean): bigint => {
-      const n = net < 0n ? -net : net;
-      const m = isBuy ? cfg.mult : cfg.invMult;
-      let e = e0;
-      for (let i = 0n; i < n; i++) e = (e * m) / WAD;
-      return e;
-    };
+    // Square-and-multiply via @pm/lmsr — the identical routine the sCrypt contract runs (CONC-006).
+    const stepE = (e0: bigint, net: bigint, isBuy: boolean): bigint =>
+      (e0 * powFixed(isBuy ? cfg.mult : cfg.invMult, net < 0n ? -net : net)) / WAD;
     const eYes = stepE(pool.state.eYes, batch.netYesUnits, yBuy);
     const eNo = stepE(pool.state.eNo, batch.netNoUnits, nBuy);
     const qYes = pool.state.qYes + batch.netYesUnits * WAD; // unit = WAD

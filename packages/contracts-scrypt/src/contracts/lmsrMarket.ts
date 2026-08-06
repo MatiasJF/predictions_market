@@ -30,8 +30,12 @@ import { RabinPubKey, RabinSig, RabinVerifier } from 'scrypt-ts-lib'
  * Rabin modulus, marketTag (binds the oracle sig to this market).
  */
 export class LMSRMarket extends SmartContract {
-    // CONC-002: max unit moves per side a single batch settlement may apply (bounds the settle() loops).
-    static readonly MAX_BATCH = 20n
+    // CONC-006: `settle` advances a side by mult^netUnits via SQUARE-AND-MULTIPLY, so the bound is on the
+    // number of BITS, not the magnitude — 12 bits ⇒ a net move of up to 4095 units per settlement (was a
+    // 20-unit linear cap). Measured: directional order flow is what blows a linear cap (1000 all-buy fills
+    // net ~530), so this is the difference between ~20 and ~1000+ trades per on-chain settlement.
+    static readonly MAX_NET_BITS = 12
+    static readonly MAX_NET = 4095n
 
     @prop(true)
     eYes: bigint
@@ -184,28 +188,48 @@ export class LMSRMarket extends SmartContract {
         batchDigest: ByteString
     ) {
         assert(this.resolved == 0n, 'resolved')
-        assert(netYesUnits >= 0n && netYesUnits <= LMSRMarket.MAX_BATCH, 'yes batch out of range')
-        assert(netNoUnits >= 0n && netNoUnits <= LMSRMarket.MAX_BATCH, 'no batch out of range')
+        assert(netYesUnits >= 0n && netYesUnits <= LMSRMarket.MAX_NET, 'yes batch out of range')
+        assert(netNoUnits >= 0n && netNoUnits <= LMSRMarket.MAX_NET, 'no batch out of range')
 
-        // Net YES move: multiply eYes by mult (net buys) or invMult (net sells), |net| times. Bounded loop with
-        // early exit — path-independent end state, identical to the sequencer's net computation.
-        for (let i = 0n; i < LMSRMarket.MAX_BATCH; i++) {
-            if (i < netYesUnits) {
-                this.eYes = (this.eYes * (netYesIsBuy ? this.mult : this.invMult)) / this.scale
+        // Net YES move: eYes *= (mult|invMult)^netYesUnits, by SQUARE-AND-MULTIPLY over MAX_NET_BITS bits.
+        // The bit test is `e - (e/2)*2` (no `%`); truncating division each step is part of the definition and
+        // the sequencer runs the identical loop (@pm/lmsr `powFixed`), so the states match by construction.
+        let yFactor = this.scale
+        let yBase = netYesIsBuy ? this.mult : this.invMult
+        let yExp = netYesUnits
+        for (let i = 0; i < LMSRMarket.MAX_NET_BITS; i++) {
+            const yHalf = yExp / 2n
+            if (yExp - yHalf * 2n == 1n) {
+                yFactor = (yFactor * yBase) / this.scale
             }
+            yBase = (yBase * yBase) / this.scale
+            yExp = yHalf
         }
+        this.eYes = (this.eYes * yFactor) / this.scale
         this.qYes = netYesIsBuy
             ? this.qYes + netYesUnits * this.unit
             : this.qYes - netYesUnits * this.unit
 
-        for (let i = 0n; i < LMSRMarket.MAX_BATCH; i++) {
-            if (i < netNoUnits) {
-                this.eNo = (this.eNo * (netNoIsBuy ? this.mult : this.invMult)) / this.scale
+        let nFactor = this.scale
+        let nBase = netNoIsBuy ? this.mult : this.invMult
+        let nExp = netNoUnits
+        for (let i = 0; i < LMSRMarket.MAX_NET_BITS; i++) {
+            const nHalf = nExp / 2n
+            if (nExp - nHalf * 2n == 1n) {
+                nFactor = (nFactor * nBase) / this.scale
             }
+            nBase = (nBase * nBase) / this.scale
+            nExp = nHalf
         }
+        this.eNo = (this.eNo * nFactor) / this.scale
         this.qNo = netNoIsBuy
             ? this.qNo + netNoUnits * this.unit
             : this.qNo - netNoUnits * this.unit
+
+        // Net shares can never go negative: a batch may not sell more than is outstanding. (Without this a
+        // net-sell settlement could drive q below zero and drag the stored exponential below exp(0).)
+        assert(this.qYes >= 0n, 'yes oversold')
+        assert(this.qNo >= 0n, 'no oversold')
 
         this.collateral = collateralIsUp
             ? this.collateral + collateralDelta

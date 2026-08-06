@@ -85,6 +85,26 @@ export class EngineLimitation extends Error {
 }
 
 const ceilDiv = (a: bigint, d: bigint): bigint => (a + d - 1n) / d
+
+/**
+ * base^exp, WAD-scaled, by square-and-multiply — a MIRROR of `@pm/lmsr`'s `powFixed` and of the on-chain
+ * `settle` loop (contracts-scrypt is npm-isolated and cannot import @pm/lmsr; the equality is enforced by the
+ * shared vectors in tests/fixtures). The operation order and truncation are consensus-critical (CONC-006).
+ */
+const MAX_NET = 4095n
+function powFixed(base: bigint, exp: bigint): bigint {
+    if (exp < 0n || exp > MAX_NET) throw new Error(`powFixed: exp must be 0..${MAX_NET}`)
+    let factor = WAD
+    let b = base
+    let e = exp
+    for (let i = 0; i < 12; i++) {
+        const half = e / 2n
+        if (e - half * 2n === 1n) factor = (factor * b) / WAD
+        b = (b * b) / WAD
+        e = half
+    }
+    return factor
+}
 const marketTagHex = (marketId: number): string => marketId.toString(16).padStart(8, '0') // 4-byte tag
 const poolEffect = (s: PoolState): TxEffects['pool'] => ({
     vout: 0, satoshis: POOL_SATS,
@@ -273,18 +293,16 @@ export class ScryptEngine {
     }
 
     async buildSettleBatch(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan> {
-        // Net-state advance (CONC-002): the settled state = pool advanced by the batch's NET units, computed the
-        // SAME way the contract does (repeated mult/invMult), so it matches by construction.
+        // Net-state advance (CONC-002/006): the settled state = pool advanced by the batch's NET units, computed
+        // the SAME way the contract does (square-and-multiply), so it matches by construction.
         const WADc = WAD
-        const stepE = (e0: bigint, net: bigint, isBuy: boolean): bigint => {
+        const stepE = (e0: bigint, net: bigint): bigint => {
             const n = net < 0n ? -net : net
-            const m = isBuy ? cfg.mult : cfg.invMult
-            let e = e0
-            for (let i = 0n; i < n; i++) e = (e * m) / WADc
-            return e
+            const factor = powFixed(net >= 0n ? cfg.mult : cfg.invMult, n)
+            return (e0 * factor) / WADc
         }
-        const eYes = stepE(pool.state.eYes, batch.netYesUnits, batch.netYesUnits >= 0n)
-        const eNo = stepE(pool.state.eNo, batch.netNoUnits, batch.netNoUnits >= 0n)
+        const eYes = stepE(pool.state.eYes, batch.netYesUnits)
+        const eNo = stepE(pool.state.eNo, batch.netNoUnits)
         const s: PoolState = {
             eYes, eNo,
             qYes: pool.state.qYes + batch.netYesUnits * WADc,
@@ -344,12 +362,9 @@ export class ScryptEngine {
         // Custom builder: pool continuation + OP_RETURN(batchDigest) + change (the CONC-003a commitment output).
         current.bindTxBuilder('settle', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
             const next = cur.next()
-            let eYes = cur.eYes
-            for (let i = 0n; i < yAbs; i++) eYes = (eYes * (yBuy ? cur.mult : cur.invMult)) / cur.scale
-            next.eYes = eYes
-            let eNo = cur.eNo
-            for (let i = 0n; i < nAbs; i++) eNo = (eNo * (nBuy ? cur.mult : cur.invMult)) / cur.scale
-            next.eNo = eNo
+            // Square-and-multiply — the identical routine the contract runs (CONC-006).
+            next.eYes = (cur.eYes * powFixed(yBuy ? cur.mult : cur.invMult, yAbs)) / cur.scale
+            next.eNo = (cur.eNo * powFixed(nBuy ? cur.mult : cur.invMult, nAbs)) / cur.scale
             next.qYes = cur.qYes + netYes * cur.unit
             next.qNo = cur.qNo + netNo * cur.unit
             next.collateral = colUp ? cur.collateral + colAbs : cur.collateral - colAbs
