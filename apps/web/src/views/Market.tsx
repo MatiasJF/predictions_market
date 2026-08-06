@@ -27,7 +27,8 @@ export function Market({
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
   const myPayout = payout?.winners?.find((w: any) => w.trader === identity);
-  const canTrade = market?.pool && market?.pool?.resolved !== 1;
+  // Don't let someone build a position that could never be settled on-chain.
+  const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
 
   async function place() {
     if (!signer) return;
@@ -52,12 +53,24 @@ export function Market({
   return (
     <div>
       <button className="link" onClick={onBack}>← all markets</button>
-      <h2>{market.question}</h2>
+      <h2>#{market.id} · {market.question}</h2>
       <div className="row dim">
         <span className={`state ${market.state}`}>{market.state}</span>
         {market.resolution && <span className="pill good">resolved {market.resolution.toUpperCase()}</span>}
         <span>pool v{market.pool?.version ?? '—'}</span>
+        <span>b={market.bUnits}</span>
+        <span>{market.payoutUnit} sat per winning share</span>
       </div>
+
+      {market.pool?.spendable === false && (
+        <div className="card err">
+          <b>This market's pool was deployed by an older build of the contract.</b>
+          <p className="dim">
+            Fills would still be recorded off-chain, but they could never be settled on-chain by this build.
+            Trade a market created with the current build instead.
+          </p>
+        </div>
+      )}
 
       <div className="cols">
         <div className="card">
@@ -73,7 +86,9 @@ export function Market({
           <h3>Order ticket</h3>
           {!canTrade ? (
             <p className="dim">
-              {market.pool ? 'Market is resolved — trading is closed.' : 'Pool not deployed yet.'}
+              {!market.pool ? 'Pool not deployed yet.'
+                : market.pool.spendable === false ? 'Pool is unspendable by this build — trading disabled.'
+                : 'Market is resolved — trading is closed.'}
             </p>
           ) : (
             <>

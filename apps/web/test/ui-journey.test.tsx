@@ -76,6 +76,24 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
     // ---- OPERATOR: create + deploy the pool -------------------------------------------------------------
     fireEvent.click(screen.getByRole('button', { name: /^Operator$/ }));
     await clickWhenReady(/new market/);
+
+    // REGRESSION (reported 2026-08-06): the console used to default to markets[0] — the OLDEST market — and
+    // "new market" did not select what it had just created. Against a DB with prior markets that silently
+    // pointed every operator action at the wrong market: "deploy pool" looked broken (the old market already
+    // had a pool) and settle/resolve acted on a stale one. Creating a second market must move the selection.
+    const marketCount = async () => ((await fetch(`${API}/markets`).then((r) => r.json())) as any[]).length;
+    await waitFor(async () => expect(await marketCount()).toBe(1), WAIT); // let the first create land
+    await clickWhenReady(/new market/);
+    const newest = await waitFor(async () => {
+      const after = (await fetch(`${API}/markets`).then((r) => r.json())) as any[];
+      expect(after.length, 'second market not created yet').toBe(2);
+      return Math.max(...after.map((m) => m.id as number));
+    }, WAIT);
+    await waitFor(() => {
+      const sel = screen.getByRole('combobox') as HTMLSelectElement;
+      expect(Number(sel.value), 'console must target the market it just created').toBe(newest);
+    }, WAIT);
+
     await clickWhenReady(/deploy pool/);
     await authorizeQueue(/deploy/i);
 

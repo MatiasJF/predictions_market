@@ -9,7 +9,7 @@ const shares = (s: string) => Number(BigInt(s) / WAD);
  * chain until a human authorizes it here. That is the safety property the whole system is built around, so the
  * queue is the centrepiece rather than a footnote.
  */
-export function Operator() {
+export function Operator({ network }: { network?: string }) {
   const [markets] = usePoll<any[]>(() => api.markets(), []);
   const [queue, , refreshQueue] = usePoll<any[]>(() => api.broadcasts(), [], 2000);
   const [balance] = usePoll<any>(() => api.balance(), [], 10000);
@@ -17,18 +17,27 @@ export function Operator() {
   const [token, setToken] = useState(operatorToken.get());
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
+  const [confirming, setConfirming] = useState<number | undefined>();
 
-  const marketId = sel ?? markets?.[0]?.id;
+  // Default to the NEWEST market, not the oldest: a DB accumulates markets across runs, and silently pointing
+  // the console at a months-old one is how you end up acting on the wrong market.
+  const marketId = sel ?? markets?.[markets.length - 1]?.id;
   const [audit] = usePoll<any>(() => (marketId ? api.audit(marketId) : Promise.resolve(null)), [marketId], 5000);
   const [payout] = usePoll<any>(() => (marketId ? api.payoutPreview(marketId) : Promise.resolve(null)), [marketId], 5000);
   const market = markets?.find((m) => m.id === marketId);
   const pending = (queue ?? []).filter((b) => b.status === 'pending');
+  const failed = (queue ?? []).filter((b) => b.status === 'failed').slice(-3).reverse();
+  const isMainnet = network === 'mainnet';
+  // A pool deployed by an earlier build of the contract cannot be spent by this one. Say so, and don't offer
+  // actions that are guaranteed to fail at authorize time.
+  const stranded = market?.pool && market.pool.spendable === false;
 
   async function act(label: string, fn: () => Promise<any>) {
     setBusy(label); setMsg('');
     try {
       const r = await fn();
       setMsg(`${label}: ${r.txid ? `broadcast ${String(r.txid).slice(0, 20)}…` : `queued #${r.broadcast_id ?? ''}`}`);
+      if (r.id && r.question) setSel(r.id); // a market we just created — select it
       await refreshQueue();
     } catch (e) {
       setMsg(`✗ ${label}: ${e instanceof Error ? e.message : e}`);
@@ -60,23 +69,55 @@ export function Operator() {
             <div>
               <b>#{b.id} {b.kind}</b>
               <div className="dim">{b.summary}</div>
-              <div className="dim tiny">spends ~{b.spend_sats} sat</div>
+              <div className={isMainnet ? 'warnText tiny' : 'dim tiny'}>
+                spends ~{b.spend_sats} sat{isMainnet ? ' of REAL money on mainnet' : ' (local — nothing is broadcast)'}
+              </div>
             </div>
             <div className="row">
-              <button className="primary" disabled={!!busy}
-                onClick={() => void act(`authorize #${b.id}`, () => api.authorize(b.id))}>authorize</button>
-              <button disabled={!!busy}
-                onClick={() => void act(`reject #${b.id}`, () => api.reject(b.id))}>reject</button>
+              {confirming === b.id ? (
+                <>
+                  <button className="danger" disabled={!!busy}
+                    onClick={() => { setConfirming(undefined); void act(`authorize #${b.id}`, () => api.authorize(b.id)); }}>
+                    confirm — spend {b.spend_sats} sat
+                  </button>
+                  <button disabled={!!busy} onClick={() => setConfirming(undefined)}>cancel</button>
+                </>
+              ) : (
+                <>
+                  <button className="primary" disabled={!!busy}
+                    onClick={() => (isMainnet
+                      ? setConfirming(b.id)
+                      : void act(`authorize #${b.id}`, () => api.authorize(b.id)))}>
+                    authorize
+                  </button>
+                  <button disabled={!!busy}
+                    onClick={() => void act(`reject #${b.id}`, () => api.reject(b.id))}>reject</button>
+                </>
+              )}
             </div>
           </div>
         ))}
+        {failed.length > 0 && (
+          <div className="failed">
+            <b className="err">recently failed</b>
+            {failed.map((b) => (
+              <div key={b.id} className="tiny">
+                <span className="dim">#{b.id} {b.kind} — </span><span className="err">{b.error}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card">
         <h3>Market</h3>
         <div className="row">
           <select value={marketId ?? ''} onChange={(e) => setSel(Number(e.target.value))}>
-            {(markets ?? []).map((m) => <option key={m.id} value={m.id}>#{m.id} {m.question.slice(0, 48)}</option>)}
+            {(markets ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                #{m.id} · {m.payoutUnit} sat/share · b={m.bUnits} · {m.question.slice(0, 40)}
+              </option>
+            ))}
           </select>
           <button disabled={!!busy} onClick={() => void act('create market', () => api.createMarket({
             question: `Market ${new Date().toISOString().slice(0, 16)}`, bUnits: 1000, payoutUnit: 1000,
@@ -87,19 +128,32 @@ export function Operator() {
           <>
             <div className="row dim">
               <span className={`state ${market.state}`}>{market.state}</span>
+              <span>{market.payoutUnit} sat per winning share</span>
+              <span>b={market.bUnits}</span>
               <span>pool v{market.pool?.version ?? '—'}</span>
               {market.resolution && <span className="pill good">resolved {market.resolution.toUpperCase()}</span>}
             </div>
+
+            {stranded && (
+              <div className="card err">
+                <b>This pool cannot be spent by the current build.</b>
+                <p className="dim">
+                  Its locking script <i>is</i> the compiled contract, and the contract has changed since this pool
+                  was deployed — so every action below would fail at authorize time. Create a fresh market instead.
+                </p>
+              </div>
+            )}
+
             <div className="row wrapping">
               <button disabled={!!busy || !!market.pool}
                 onClick={() => void act('deploy', () => api.deploy(market.id))}>deploy pool</button>
-              <button disabled={!!busy || !market.pool}
+              <button disabled={!!busy || !market.pool || stranded}
                 onClick={() => void act('settle', () => api.settle(market.id))}>settle batch</button>
-              <button disabled={!!busy || !market.pool || market.pool?.resolved === 1}
+              <button disabled={!!busy || !market.pool || stranded || market.pool?.resolved === 1}
                 onClick={() => void act('resolve YES', () => api.resolve(market.id, 'yes'))}>resolve YES</button>
-              <button disabled={!!busy || !market.pool || market.pool?.resolved === 1}
+              <button disabled={!!busy || !market.pool || stranded || market.pool?.resolved === 1}
                 onClick={() => void act('resolve NO', () => api.resolve(market.id, 'no'))}>resolve NO</button>
-              <button className="primary" disabled={!!busy || !payout?.winners?.length}
+              <button className="primary" disabled={!!busy || stranded || !payout?.winners?.length}
                 onClick={() => void act('payout', () => api.payout(market.id))}>pay winners</button>
             </div>
             {msg && <p className={msg.startsWith('✗') ? 'err' : 'ok'}>{msg}</p>}

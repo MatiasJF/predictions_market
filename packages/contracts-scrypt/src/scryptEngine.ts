@@ -245,12 +245,52 @@ export class ScryptEngine {
         if (!ref || !ref.lockingScript) {
             throw new Error(`sCrypt engine: no live pool for market ${marketId} and no pool ref to rebuild from`)
         }
-        const inst = LMSRMarket.fromUTXO({
-            txId: ref.txid, outputIndex: ref.vout, script: ref.lockingScript, satoshis: ref.satoshis,
-        })
+        let inst: LMSRMarket
+        try {
+            inst = LMSRMarket.fromUTXO({
+                txId: ref.txid, outputIndex: ref.vout, script: ref.lockingScript, satoshis: ref.satoshis,
+            })
+        } catch (e) {
+            // The locking script IS the compiled contract, so a pool deployed by an older build cannot be spent
+            // by this one. sCrypt reports that as "the raw script cannot match the ASM template", which tells a
+            // human nothing. Say what actually happened and what can be done about it.
+            const why = e instanceof Error ? e.message : String(e)
+            if (/ASM template/i.test(why)) {
+                throw new Error(
+                    `market ${marketId}: this pool was deployed by a DIFFERENT build of the LMSRMarket contract ` +
+                    `(${ref.lockingScript.length / 2} B on chain vs ${LMSRMarket.getArtifact().hex.length / 2} B compiled now), ` +
+                    `so this build cannot spend it — the locking script no longer matches the compiled artifact. ` +
+                    `Deploy a fresh market with the current build; the old pool's funds are only spendable by the ` +
+                    `build that created it. (Original: ${why})`,
+                )
+            }
+            throw e
+        }
         await inst.connect(this.signer())
         this.instances.set(marketId, inst)
         return inst
+    }
+
+    /**
+     * Can this build spend that pool? Pure CPU (script-vs-template match, no network), but `/markets` is polled
+     * every couple of seconds, so the verdict is cached per UTXO.
+     */
+    private readonly spendableCache = new Map<string, boolean>()
+    poolSpendable(pool: PoolRef): boolean {
+        if (!pool.lockingScript) return false
+        const key = `${pool.txid}:${pool.vout}`
+        const hit = this.spendableCache.get(key)
+        if (hit !== undefined) return hit
+        let ok = true
+        try {
+            LMSRMarket.fromUTXO({
+                txId: pool.txid, outputIndex: pool.vout, script: pool.lockingScript, satoshis: pool.satoshis,
+            })
+        } catch {
+            ok = false
+        }
+        this.spendableCache.set(key, ok)
+        return ok
     }
 
     private poolRefOf(pool: PoolRef): PoolUtxoRef {

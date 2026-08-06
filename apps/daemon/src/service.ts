@@ -57,6 +57,9 @@ export class MarketService {
     private readonly exec?: ExecutionEngine
   ) {}
 
+  /** Which chain engine is behind this daemon (for /health). */
+  get engineName(): string { return this.engine.name; }
+
   private execOrThrow(): ExecutionEngine {
     if (!this.exec) throw new ServiceError(501, 'off-chain execution engine not configured on this daemon', 'no_exec');
     return this.exec;
@@ -123,6 +126,9 @@ export class MarketService {
             version: pool.version, txid: pool.txid, vout: pool.vout, sats: pool.sats,
             qYes: pool.q_yes, qNo: pool.q_no, eYes: pool.e_yes, eNo: pool.e_no,
             collateral: pool.collateral, resolved: pool.resolved, winner: pool.winner,
+            // Whether THIS build can still spend it. A pool deployed by an earlier build of the contract is
+            // stranded — surfaced here so a client can refuse the action instead of failing at authorize time.
+            spendable: this.engine.poolSpendable?.(poolRef(pool)) ?? true,
           }
         : null,
     };

@@ -329,6 +329,19 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
+- ● UI-002 — **Four defects the first real user hit — FIXED (2026-08-06, ADR-030).** The first human-driven
+  session broke at step 2 and step 4; the acceptance test missed all of it because it only ever ran against an
+  **empty DB**. (1) The console defaulted to the *oldest* market and "new market" didn't select what it created,
+  so every action silently targeted a stale market — now defaults to newest + selects on create, pinned by a
+  regression check. (2) **Nothing said which network the daemon was on**, and `.env` defaults to *mainnet* — one
+  authorize click from an irreversible real spend. Now `/health` reports the network, the header shows a
+  **MAINNET · real money** badge, and mainnet authorize needs a second *confirm — spend N sat* click. (3) Markets
+  were indistinguishable, so an old 100,000-sat/share market got traded at **52,497 sat/share** unnoticed — cards
+  and selectors now show id, sat/share and b. (4) A pool from an older contract build failed at authorize time
+  with sCrypt's unreadable `raw script cannot match the ASM template`; now `ChainEngine.poolSpendable()` surfaces
+  `pool.spendable` so the UI **flags and disables** it up front, and the engine's error explains the mismatch in
+  bytes. Verified against the user's **actual DB** (Rúnar-era market correctly `spendable=false`). **115 tests
+  green.** Also closed UI-001's gap: a **real BRC-100 wallet** signed an order and the daemon verified it.
 - ● UI-001 — **The face: trader app + operator console — DONE (2026-08-06, ADR-029).** `apps/web` (Vite + React
   + TS) over the daemon's existing API. **Trader:** live prices → order ticket (side/buy-sell/size + live quote)
   → sign → submit, own position/receipts/payout. **Operator:** the **sign-off queue** as the centrepiece (every

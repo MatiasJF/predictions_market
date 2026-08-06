@@ -189,6 +189,16 @@ export interface ChainEngine {
    *  contract path implement it. The contract enforces resolution, solvency and the collateral decrement. */
   buildPayout?(cfg: MarketConfig, pool: PoolRef, winners: WinnerPayoutRef[], digest: string): Promise<TxPlan>;
 
+  /**
+   * Can THIS build still spend that pool? A pool's locking script is the compiled contract, so a pool deployed
+   * by an earlier build of `LMSRMarket` cannot be spent by a later one — the script no longer matches the
+   * artifact's ASM template. That is not a corner case here: the contract's size has changed six times over the
+   * project (45,675 → 21,447 → … → 36,762 B), and the DB outlives any single build. Without this the mismatch
+   * only surfaces as an unreadable sCrypt error at authorize time, after a human has already approved a spend.
+   * Optional; an engine that doesn't implement it is assumed to be able to spend anything it stored.
+   */
+  poolSpendable?(pool: PoolRef): boolean;
+
   /** CONC-003b: Rabin-sign the sequencer's settlement attestation (on-chain-verifiable by a Bond's slash).
    *  Optional — only engines with the Rabin machinery implement it. `sig` is a JSON-serialized RabinSig. */
   rabinAttest?(marketId: number, toVersion: number, digest: string): { key: string; sig: string; pubkey: string };

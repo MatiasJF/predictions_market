@@ -47,7 +47,17 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
   const { method, segs, query } = ctx;
   const p0 = segs[0];
 
-  if (method === 'GET' && segs.length === 1 && p0 === 'health') return { ok: true, service: 'pm-daemon' };
+  // `network` matters to a UI: on mainnet every authorize spends real satoshis, and a page that doesn't say so
+  // is a footgun. `operator_auth` lets a client tell "no token needed" from "your token is wrong".
+  if (method === 'GET' && segs.length === 1 && p0 === 'health') {
+    return {
+      ok: true,
+      service: 'pm-daemon',
+      network: process.env.PM_NETWORK ?? 'mainnet',
+      engine: svc.engineName,
+      operator_auth: operatorTokenRequired().length > 0,
+    };
+  }
 
   if (p0 === 'markets') {
     if (method === 'POST' && segs.length === 1) return svc.createMarket(await ctx.body());

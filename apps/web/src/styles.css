@@ -54,3 +54,15 @@ label { display:flex; gap:8px; align-items:center; margin:8px 0; color:var(--dim
 .receipt { display:flex; gap:10px; align-items:center; justify-content:space-between;
            border-top:1px solid var(--line); padding:6px 0; font-size:.87rem; }
 .scroll { max-height:260px; overflow-y:auto; }
+
+/* --- network + danger affordances (UI-002) ------------------------------------------------------------- */
+.net { font-size:.6rem; letter-spacing:.12em; padding:3px 8px; border-radius:999px; margin-left:10px;
+       vertical-align:middle; border:1px solid currentColor; }
+.net.live { color:var(--err); }
+.net.safe { color:var(--dim); }
+.card.danger { border-color:var(--err); border-width:2px; }
+button.danger { background:var(--err); border-color:var(--err); color:#fff; }
+.warnText { color:var(--warn); }
+.pill.bad { color:var(--err); border-color:var(--err); }
+.failed { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
+.failed .err { overflow-wrap:anywhere; }

@@ -610,3 +610,45 @@ Template:
   round-trip. Claiming otherwise would be exactly the kind of "tests pass but it breaks when I try it" this
   project has been guarding against. A wallet round-trip is the first thing to do when one is available.
 - No mainnet spend for this ticket — the local network exercises the identical code path.
+
+## ADR-030 · Four defects the first real user hit in ten minutes (UI-002) · Accepted · 2026-08-06
+- Context: the first session driven by a human rather than by the acceptance test failed at step 2 and again at
+  step 4, on a DB that already held markets from earlier runs. The acceptance test never caught any of it
+  because it always ran against an **empty** database — a shape real usage never has. Recorded because the
+  pattern ("tests pass, the human hits it immediately") is the exact failure mode this project keeps guarding
+  against, and three of the four were UI defects introduced in UI-001.
+- **D1 — the console silently acted on the wrong market.** It defaulted to `markets[0]`, the *oldest*, and
+  "new market" did not select what it had just created. Against a populated DB every operator action pointed at
+  a months-old market: "deploy pool" appeared broken (that market already had a pool), and settle/resolve
+  targeted stale state. Fix: default to the **newest** market and select the one just created. Pinned by a
+  regression check in the journey test that creates a *second* market and asserts the selection moves.
+- **D2 — nothing on screen said which network the daemon was on.** `pnpm daemon` reads `PM_NETWORK` from `.env`,
+  which is **mainnet** by default, so a user following the README was one *authorize* click from an irreversible
+  real spend with no indication. Fix: `/health` now reports `network`/`engine`/`operator_auth`; the header shows
+  a **MAINNET · real money** badge, a standing banner explains how to switch to `local`, and on mainnet
+  *authorize* requires a second **confirm — spend N sat** click. The queue also labels each row as real money or
+  local. Worth noting this was the most dangerous of the four and the least visible.
+- **D3 — markets were indistinguishable, so the wrong one got traded.** Cards showed only a question and prices.
+  The user opened a market from an earlier run and was quoted **52,497 sat for one share** (that market pays
+  100,000 sat/share, `b=10`) with nothing to signal it. Fix: id, `sat/share` and `b` on every card, in the
+  detail header, and in the operator's market selector; the list is newest-first.
+- **D4 — a pool from an older contract build fails with an unreadable error, after approval.** A pool's locking
+  script *is* the compiled contract, so an earlier build's pool can never be spent by a later one — and the
+  contract's size has changed six times here (45,675 → … → 36,762 B) while the DB outlives every build. sCrypt
+  reports this as `the raw script cannot match the ASM template of contract LMSRMarket`, which says nothing, and
+  it surfaced only at authorize time — i.e. **after a human had approved a spend**. Fix, in two parts:
+  (a) `ScryptEngine.livePool` catches it and explains — *"this pool was deployed by a DIFFERENT build … (3,458 B
+  on chain vs 36,818 B compiled now) … deploy a fresh market"*; (b) a new optional `ChainEngine.poolSpendable()`
+  (cached, pure CPU, no network) surfaces `pool.spendable` on the market JSON so the UI **flags the market and
+  disables the doomed actions instead of letting them be queued**. Trading on such a market is blocked too — an
+  off-chain fill there could never be settled.
+- Verified against the **user's actual database** (restored via `sqlite3 .backup`, their file untouched): the
+  Rúnar-era market #1 now reports `spendable=false` and its settle returns the readable message; markets #2–#6
+  — five markets created by the D1 bug — correctly show no pool. Full journey re-run through the UI, green.
+  **115 workspace tests**, typecheck + build clean.
+- **Operational gotcha found while fixing D4:** `packages/contracts-scrypt` is npm-isolated and the daemon
+  imports its **compiled `dist/`**, so engine edits do nothing until `npm --prefix packages/contracts-scrypt run
+  build`. This cost a debugging cycle here; now written down.
+- **Bonus, and the good news:** the user's run also closed UI-001's honest gap — their order was signed by a
+  **real BRC-100 wallet** (the UI showed "Signed with your wallet") and the daemon verified it and filled.
+  `WalletSigner` is now proven against a live wallet, not just unit tests.

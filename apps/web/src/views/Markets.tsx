@@ -1,6 +1,11 @@
 import { api, usePoll } from '../api';
 
-/** Market list with live YES/NO prices. Prices come straight from the on-chain pool state via the daemon. */
+/**
+ * Market list with live YES/NO prices. Prices come straight from the on-chain pool state via the daemon.
+ *
+ * Each card shows the market's ECONOMICS (sats per winning share, liquidity b), because a database accumulates
+ * markets across runs and two of them can look identical by title while pricing an order 100× apart.
+ */
 export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
   const [markets, err] = usePoll<any[]>(() => api.markets(), []);
 
@@ -16,20 +21,26 @@ export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
 
   return (
     <div className="grid">
-      {markets.map((m) => (
-        <button key={m.id} className="card market" onClick={() => onOpen(m.id)}>
-          <div className="q">{m.question}</div>
-          <div className="prices">
-            <span className="yes">YES {m.prices.yes_sats}</span>
-            <span className="no">NO {m.prices.no_sats}</span>
-          </div>
-          <div className="dim row">
-            <span className={`state ${m.state}`}>{m.state}</span>
-            {m.resolution && <span className="pill good">resolved {m.resolution.toUpperCase()}</span>}
-            <span>pool v{m.pool?.version ?? '—'}</span>
-          </div>
-        </button>
-      ))}
+      {markets.slice().reverse().map((m) => {
+        const stranded = m.pool && m.pool.spendable === false;
+        return (
+          <button key={m.id} className="card market" onClick={() => onOpen(m.id)}>
+            <div className="q">#{m.id} · {m.question}</div>
+            <div className="prices">
+              <span className="yes">YES {m.prices.yes_sats}</span>
+              <span className="no">NO {m.prices.no_sats}</span>
+              <span className="dim tiny">of {m.payoutUnit} sat/share</span>
+            </div>
+            <div className="dim row tiny">
+              <span className={`state ${m.state}`}>{m.state}</span>
+              <span>b={m.bUnits}</span>
+              <span>pool v{m.pool?.version ?? '—'}</span>
+              {m.resolution && <span className="pill good">resolved {m.resolution.toUpperCase()}</span>}
+              {stranded && <span className="pill bad">stale build — unspendable</span>}
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }

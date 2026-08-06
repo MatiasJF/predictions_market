@@ -25,6 +25,7 @@ function ctx(method: string, path: string, operator: boolean, body: unknown = {}
 let db: Db;
 let svc: MarketService;
 const prev = process.env.PM_OPERATOR_TOKEN;
+const prevNet = process.env.PM_NETWORK;
 
 beforeEach(async () => {
   process.env.PM_OPERATOR_TOKEN = TOKEN;
@@ -36,6 +37,8 @@ beforeEach(async () => {
 afterEach(() => {
   if (prev === undefined) delete process.env.PM_OPERATOR_TOKEN;
   else process.env.PM_OPERATOR_TOKEN = prev;
+  if (prevNet === undefined) delete process.env.PM_NETWORK;
+  else process.env.PM_NETWORK = prevNet;
 });
 
 /** The routes that move money. Each must refuse an unauthenticated caller. */
@@ -82,6 +85,17 @@ describe('operator token gating', () => {
     delete process.env.PM_OPERATOR_TOKEN;
     const r = (await route(svc, ctx('POST', '/markets/1/deploy', false))) as any;
     expect(r.broadcast_id).toBeGreaterThan(0);
+  });
+
+  // A client that can't tell mainnet from local will happily authorize a real spend thinking it's a dry run.
+  it('/health names the network, engine and whether a token is required', async () => {
+    process.env.PM_NETWORK = 'local';
+    const h = (await route(svc, ctx('GET', '/health', false))) as any;
+    expect(h).toMatchObject({ ok: true, network: 'local', operator_auth: true });
+    expect(h.engine).toBeTypeOf('string');
+
+    delete process.env.PM_OPERATOR_TOKEN;
+    expect(((await route(svc, ctx('GET', '/health', false))) as any).operator_auth).toBe(false);
   });
 
   it('a wrong token is not a valid token', async () => {

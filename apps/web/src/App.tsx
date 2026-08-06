@@ -15,7 +15,9 @@ export function App() {
   const [walletAvailable, setWalletAvailable] = useState<boolean | undefined>();
   const [tab, setTab] = useState<Tab>('trade');
   const [marketId, setMarketId] = useState<number | undefined>();
-  const [health, healthErr] = usePoll(() => api.health(), [], 5000);
+  const [health, healthErr] = usePoll<any>(() => api.health(), [], 5000);
+  const network: string | undefined = health?.network;
+  const isMainnet = network === 'mainnet';
 
   // Prefer a REAL wallet; fall back to a dev key only if none is reachable (and say so, loudly).
   useEffect(() => {
@@ -45,12 +47,30 @@ export function App() {
   return (
     <div className="wrap">
       <header>
-        <h1>BSV Prediction Market</h1>
+        <h1>
+          BSV Prediction Market
+          {network && (
+            <span className={`net ${isMainnet ? 'live' : 'safe'}`}>
+              {isMainnet ? 'MAINNET · real money' : `${network} · nothing is broadcast`}
+            </span>
+          )}
+        </h1>
         <nav>
           <button className={tab === 'trade' ? 'on' : ''} onClick={() => setTab('trade')}>Trade</button>
           <button className={tab === 'operator' ? 'on' : ''} onClick={() => setTab('operator')}>Operator</button>
         </nav>
       </header>
+
+      {isMainnet && (
+        <div className="card danger">
+          <b>This daemon is pointed at MAINNET.</b>
+          <p className="dim">
+            Authorizing anything in the Operator tab spends <b>real satoshis</b> and cannot be undone. To
+            experiment safely, restart the daemon with <code>PM_NETWORK=local</code> — it builds and verifies the
+            same real Script but broadcasts nothing.
+          </p>
+        </div>
+      )}
 
       {walletAvailable === false && (
         <div className="card warn">
@@ -82,7 +102,7 @@ export function App() {
           <Market id={marketId} signer={signer} identity={identity} onBack={() => setMarketId(undefined)} />
         ))}
 
-      {tab === 'operator' && <Operator />}
+      {tab === 'operator' && <Operator network={network} />}
     </div>
   );
 }

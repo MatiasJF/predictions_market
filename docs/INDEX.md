@@ -68,6 +68,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | HTTP daemon: router + JSON I/O (127.0.0.1) | `apps/daemon/src/http.ts` |
 | **HTTP daemon: operator-token gate + CORS (money routes)** | `assertOperator`/`corsHeaders` in `apps/daemon/src/http.ts` |
 | HTTP daemon: operator-gating tests | `apps/daemon/test/http-auth.test.ts` |
+| `/health`: network + engine + operator_auth (so a UI can tell mainnet from local) | `apps/daemon/src/http.ts` |
+| **Stale-build pool detection** (`pool.spendable`) | `poolSpendable()` in `packages/contracts-scrypt/src/scryptEngine.ts` |
 | HTTP daemon: entrypoint (`pnpm --filter @pm/daemon dev`) | `apps/daemon/src/server.ts` |
 | HTTP daemon: service lifecycle tests (temp DB + MockEngine) | `apps/daemon/test/service.test.ts` |
 | **HTTP daemon: API reference + run/authorize guide** | `apps/daemon/README.md` |
@@ -107,6 +109,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Trader: market list with live YES/NO prices | `apps/web/src/views/Markets.tsx` |
 | Trader: market detail, order ticket, position, receipts | `apps/web/src/views/Market.tsx` |
 | **Operator: sign-off queue, lifecycle actions, audit, winners** | `apps/web/src/views/Operator.tsx` |
+| Network badge + mainnet spend confirmation (UI-002) | `App.tsx` + `Operator.tsx` (`isMainnet`) |
 | Styling (light/dark, no framework) | `apps/web/src/styles.css` |
 | **Acceptance test: the whole journey driven through the UI** | `apps/web/test/ui-journey.test.tsx` |
 | Dev servers | `pnpm daemon` (API) + `pnpm web` (UI on :5273) |
