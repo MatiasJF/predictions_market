@@ -734,3 +734,42 @@ Template:
 - **Lesson worth keeping:** the failure was loud and cost nothing because the fee check runs before signing.
   A read-shaped API (`listUnspent`) with write semantics is a genuine trap in scrypt-ts — the name gives no
   hint, and the damage only shows up on the *next* operation, far from the call that caused it.
+
+## ADR-034 · MAINNET-001 — the full journey, live; and winners got paid twice · Accepted · 2026-08-06
+- **The run.** Create → deploy → three wallet-signed orders → settle → audit → resolve YES → pay winners, driven
+  entirely **through the web UI** against mainnet, each step authorized by a human in the sign-off queue.
+  | stage | txid | size | fee | block |
+  |---|---|---|---|---|
+  | deploy | [`f7b4e8cd…7b42db`](https://whatsonchain.com/tx/f7b4e8cd110727c9c9e9406a3655a0d60c1982337d60a798b438034bec7b42db) | 36.6 KB | 18,738 sat | **961149** |
+  | settle (3 signed fills → 1 tx) | [`484b5167…ee4ce7`](https://whatsonchain.com/tx/484b5167bab5c3216422d5e313ae729ed4ab553a7f90160c9f52acc485ee4ce7) | 73.3 KB | 37,531 sat | **961149** |
+  | resolve (Rabin oracle, YES) | [`4c5bcd43…4bc570`](https://whatsonchain.com/tx/4c5bcd43e7f33883b2548550b580eeeddce0d5b21545a81ebbb1a0ba4a4bc570) | 73.6 KB | 37,699 sat | **961149** |
+  | payout | [`6dd31acc…0c4229`](https://whatsonchain.com/tx/6dd31acc365fd66b3ef57b50b8511453a11d2d3c3287b27670263f78240c4229) | 73.5 KB | 37,649 sat | mempool |
+  Payout outputs verified on chain: pool continuation (1 sat) + `OP_RETURN` payout digest + **3,000 sat P2PKH to
+  `1B2a3Pv75wx1nxYKe9X8j2KopmN1Fn1wXv`** + change. Audit reported ok — 3 receipts, 0 violations, Rabin-attested.
+- **ADR-031's ancestor-budget prediction was WRONG, and worth correcting.** It predicted deploy+settle at 109.9 KB
+  would exceed a ~101 KB unconfirmed-ancestor limit and force 3 confirmation waits of 10–60 min. In reality
+  **deploy, settle and resolve all confirmed in the same block (961149)** as a 3-deep chain totalling 183.5 KB.
+  The limit did not bind. Predicted cost was accurate (~131,570 sat predicted vs 131,617 actual, 0.04% out);
+  predicted *pacing* was not. Measure, don't infer from a stale comment.
+- **DEFECT FOUND — winners were paid TWICE (real money).** A second `payout` produced
+  [`9a1879b2…62d0f8`](https://whatsonchain.com/tx/9a1879b292652a8ff2588910bc9671ebe2bd7b547637662aed1575457762d0f8),
+  which spends `6dd31acc:0` — the pool output the *first* payout created. Not a conflicting double-spend: they
+  **chain**, so both confirm and the winner receives **6,000 sat for 3 winning shares**, plus ~37,650 sat of
+  wasted fee. Verified: the winner's address holds 6,000 unconfirmed.
+  - Cause: `winningPayouts` derives from the receipt ledger, and paying does not change that ledger, so a second
+    call recomputes the identical winner set. The `payouts` table (migration 011) already recorded the first
+    payment — **nothing consulted it**. `payoutPreview` likewise kept reporting the debt as outstanding, so the
+    UI's *pay winners* button stayed enabled and inviting.
+  - Fix (service layer, where the authority is): `enqueuePayout` refuses when `payouts` has rows for the market,
+    naming the tx that already paid; `payoutPreview` moves paid winners into a separate `paid` list so nothing
+    reads as owed; the console shows "already paid … — paying again would send REAL money twice". Four
+    regression tests pin it, including "queues no second broadcast when refused".
+  - **Remaining ON-CHAIN gap, stated plainly:** the contract still permits the replay. `payout` asserts
+    `resolved` and `collateral >= total` and decrements collateral, but `collateral` is spike state seeded at
+    1e9, so it never binds — the same winners can be paid until it runs out. The proper fix is a `paid` flag in
+    contract state (the `resolved` pattern; `MAX_PAYOUTS = 8` already caps a market at one payout tx, so a flag
+    costs no generality). Not done here because it changes the compiled contract, which **strands the live pool**
+    and needs a fresh deploy + re-measure — the user's call, not a silent change.
+- Honest read: the mechanism worked end to end with real wallets and real money, and the one thing that went
+  wrong was an *operator-facing safety* gap, not a protocol failure. The trust boundary of ADR-028 already said
+  the contract does not verify recipients; this shows that boundary has a sharper edge than it sounded.

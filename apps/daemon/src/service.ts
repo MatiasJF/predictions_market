@@ -336,6 +336,17 @@ export class MarketService {
     if (!pool) throw conflict('market not deployed');
     if (pool.resolved !== 1) throw conflict('market not resolved — nothing to pay out yet');
     if (!m.resolution) throw conflict('market has no recorded resolution');
+    // Paying twice is REAL money twice. `winningPayouts` derives from the receipt ledger, which paying does not
+    // change — so without this guard a second call happily pays every winner again, chaining off the pool output
+    // the first payout produced. Observed on mainnet 2026-08-06: 6dd31acc… then 9a1879b2…, 3,000 sat paid twice.
+    // Checked BEFORE engine capability: "already paid" is the stronger fact, and cheaper to establish.
+    const paid = this.paidRows(id);
+    const first = paid[0];
+    if (first) {
+      throw conflict(
+        `winners of market ${id} were already paid ${paid.reduce((s, p) => s + p.sats, 0)} sat in tx ${first.txid}`,
+      );
+    }
     if (!this.engine.buildPayout) {
       throw new EngineLimitation('payout', 'this engine has no payout path — run PM_ENGINE=scrypt');
     }
@@ -347,15 +358,32 @@ export class MarketService {
     return this.enqueue(id, await built(() => buildPayout(cfg, poolRef(pool), winners, digest)));
   }
 
-  /** Who is owed what, before paying (read-only view for a client/UI). */
+  /** Rows recording winners actually paid on-chain for a market (migration 011). */
+  private paidRows(id: number) {
+    return this.db
+      .prepare('SELECT trader_pubkey, pkh, shares, sats, payout_digest, txid FROM payouts WHERE market_id=?')
+      .all(id) as { trader_pubkey: string; pkh: string; shares: string; sats: number; payout_digest: string; txid: string }[];
+  }
+
+  /**
+   * Who is owed what, before paying (read-only view for a client/UI).
+   *
+   * `winners` is what remains OUTSTANDING — anyone already paid on-chain is moved to `paid`. Reporting a settled
+   * debt as still owed is what invites a second payout, so the two are kept apart here rather than in the client.
+   */
   payoutPreview(id: number) {
     this.execOrThrow();
     const m = this.marketRow(id);
-    if (!m.resolution) return { market_id: id, resolved: false, winners: [], total_sats: 0 };
-    const winners = winningPayouts(this.db, id, m.resolution, cfgOf(m).payoutUnit);
+    if (!m.resolution) return { market_id: id, resolved: false, winners: [], paid: [], total_sats: 0 };
+    const all = winningPayouts(this.db, id, m.resolution, cfgOf(m).payoutUnit);
+    const paid = this.paidRows(id);
+    const paidBy = new Set(paid.map((p) => p.trader_pubkey));
+    const winners = all.filter((w) => !paidBy.has(w.trader));
     return {
       market_id: id, resolved: true, resolution: m.resolution,
-      winners, total_sats: payoutTotal(winners), digest: computePayoutDigest(winners),
+      winners, total_sats: payoutTotal(winners), digest: computePayoutDigest(all),
+      paid: paid.map((p) => ({ trader: p.trader_pubkey, sats: p.sats, txid: p.txid })),
+      paid_sats: paid.reduce((s, p) => s + p.sats, 0),
     };
   }
 

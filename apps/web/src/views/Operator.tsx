@@ -207,19 +207,39 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
 
         <div className="card">
           <h3>Winners</h3>
-          {!payout?.resolved ? <p className="dim">market not resolved</p>
-            : payout.winners.length === 0 ? <p className="dim">no winning positions</p> : (
-              <>
-                {payout.winners.map((w: any) => (
-                  <div key={w.trader} className="receipt">
-                    <code title={w.trader}>{w.trader.slice(0, 16)}…</code>
-                    <span>{shares(w.shares)} shares</span>
-                    <b>{w.sats} sat</b>
-                  </div>
-                ))}
-                <p className="dim tiny">total {payout.total_sats} sat — paid to the key each trader signed with</p>
-              </>
-            )}
+          {!payout?.resolved ? <p className="dim">market not resolved</p> : (
+            <>
+              {payout.winners.length > 0 && (
+                <>
+                  {payout.winners.map((w: any) => (
+                    <div key={w.trader} className="receipt">
+                      <code title={w.trader}>{w.trader.slice(0, 16)}…</code>
+                      <span>{shares(w.shares)} shares</span>
+                      <b>{w.sats} sat</b>
+                    </div>
+                  ))}
+                  <p className="dim tiny">total {payout.total_sats} sat — paid to the key each trader signed with</p>
+                </>
+              )}
+              {(payout.paid ?? []).length > 0 && (
+                <>
+                  <p className="ok tiny">
+                    ✅ already paid {payout.paid_sats} sat on chain — paying again would send REAL money twice
+                  </p>
+                  {payout.paid.map((p: any) => (
+                    <div key={p.trader} className="receipt dim">
+                      <code title={p.trader}>{p.trader.slice(0, 16)}…</code>
+                      <span>{p.sats} sat</span>
+                      <code title={p.txid}>{String(p.txid).slice(0, 12)}…</code>
+                    </div>
+                  ))}
+                </>
+              )}
+              {payout.winners.length === 0 && (payout.paid ?? []).length === 0 && (
+                <p className="dim">no winning positions</p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
