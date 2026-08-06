@@ -6,6 +6,7 @@ import {
     SmartContract,
     hash256,
     int2ByteString,
+    FixedArray,
     slice,
     toByteString,
     Utils,
@@ -36,6 +37,10 @@ export class LMSRMarket extends SmartContract {
     // net ~530), so this is the difference between ~20 and ~1000+ trades per on-chain settlement.
     static readonly MAX_NET_BITS = 12
     static readonly MAX_NET = 4095n
+
+    // PAYOUT-001: winners paid per payout tx. Bounds the output-building loop; larger winner sets split across
+    // several payout txs (each is one pool-version advance).
+    static readonly MAX_PAYOUTS = 8
 
     @prop(true)
     eYes: bigint
@@ -240,6 +245,51 @@ export class LMSRMarket extends SmartContract {
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) +
             Utils.buildOutput(Utils.buildOpreturnScript(batchDigest), 0n) +
+            this.buildChangeOutput()
+        assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
+    }
+
+    /**
+     * PAYOUT (PAYOUT-001) — pay every winner of a RESOLVED market in ONE transaction, closing the
+     * receipt → on-chain payout bridge.
+     *
+     * Positions settled off-chain live as audited signed receipts, not per-participant tokens, so `redeem`
+     * (which requires a co-spent minted token) cannot pay them. Here the sequencer supplies the winner list
+     * derived from those receipts, and the CONTRACT enforces the money: the market must be resolved, the total
+     * paid may not exceed the pool's collateral, and the collateral is decremented by exactly what is paid out —
+     * so the operator can neither invent funds nor quietly drain the pool.
+     *
+     * The contract does NOT verify each recipient's receipts on-chain; that correctness is committed via
+     * `payoutDigest` (pinned in an OP_RETURN), Rabin-attested, publicly auditable, and bond-backed — the same
+     * trust level `settle` operates at. Full per-winner on-chain verification is the validity-proof endgame.
+     */
+    @method()
+    public payout(
+        winners: FixedArray<PubKeyHash, 8>,
+        amounts: FixedArray<bigint, 8>,
+        count: bigint,
+        payoutDigest: ByteString
+    ) {
+        assert(this.resolved == 1n, 'not resolved')
+        assert(count > 0n && count <= BigInt(LMSRMarket.MAX_PAYOUTS), 'payout count out of range')
+
+        // Bounded loop: build one P2PKH output per winner and sum what leaves the pool.
+        let total = 0n
+        let paid: ByteString = toByteString('')
+        for (let i = 0; i < LMSRMarket.MAX_PAYOUTS; i++) {
+            if (BigInt(i) < count) {
+                assert(amounts[i] > 0n, 'payout amount must be positive')
+                total += amounts[i]
+                paid += Utils.buildPublicKeyHashOutput(winners[i], amounts[i])
+            }
+        }
+        assert(this.collateral >= total, 'insolvent — payout exceeds collateral')
+        this.collateral -= total
+
+        const outputs: ByteString =
+            this.buildStateOutput(this.ctx.utxo.value) +
+            Utils.buildOutput(Utils.buildOpreturnScript(payoutDigest), 0n) +
+            paid +
             this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }

@@ -11,7 +11,7 @@ import {
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
-import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, type ExecutionEngine } from '@pm/execution';
+import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, type ExecutionEngine } from '@pm/execution';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -317,6 +317,41 @@ export class MarketService {
     return this.enqueue(id, plan);
   }
 
+  /**
+   * PAYOUT-001 — pay every winner of a resolved market on-chain, from the audited receipts. This is the bridge
+   * that lets a trader actually collect: settled positions are signed receipts, not tokens, so `redeem` cannot
+   * pay them. The contract enforces resolution + solvency + the collateral decrement.
+   */
+  async enqueuePayout(id: number) {
+    this.execOrThrow();
+    const m = this.marketRow(id);
+    const pool = this.currentPool(id);
+    if (!pool) throw conflict('market not deployed');
+    if (pool.resolved !== 1) throw conflict('market not resolved — nothing to pay out yet');
+    if (!m.resolution) throw conflict('market has no recorded resolution');
+    if (!this.engine.buildPayout) {
+      throw new EngineLimitation('payout', 'this engine has no payout path — run PM_ENGINE=scrypt');
+    }
+    const cfg = cfgOf(m);
+    const winners = winningPayouts(this.db, id, m.resolution, cfg.payoutUnit);
+    if (winners.length === 0) throw badReq('no winning positions to pay out');
+    const digest = computePayoutDigest(winners);
+    const buildPayout = this.engine.buildPayout.bind(this.engine);
+    return this.enqueue(id, await built(() => buildPayout(cfg, poolRef(pool), winners, digest)));
+  }
+
+  /** Who is owed what, before paying (read-only view for a client/UI). */
+  payoutPreview(id: number) {
+    this.execOrThrow();
+    const m = this.marketRow(id);
+    if (!m.resolution) return { market_id: id, resolved: false, winners: [], total_sats: 0 };
+    const winners = winningPayouts(this.db, id, m.resolution, cfgOf(m).payoutUnit);
+    return {
+      market_id: id, resolved: true, resolution: m.resolution,
+      winners, total_sats: payoutTotal(winners), digest: computePayoutDigest(winners),
+    };
+  }
+
   /** Audit every settled batch of a market against its signed receipts + on-chain lineage (CONC-003a). */
   auditMarket(id: number) {
     this.execOrThrow();
@@ -411,6 +446,14 @@ export class MarketService {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
         ).run(marketId, eff.token.side, eff.token.shares, result.txid, eff.token.vout, eff.token.script, eff.token.holderPkh, eff.token.satoshis);
       }
+    }
+    if (eff.payouts) {
+      // PAYOUT-001: record who was actually paid on-chain (the audit trail for the payout tx).
+      const ins = this.db.prepare(
+        `INSERT INTO payouts(market_id, trader_pubkey, pkh, shares, sats, payout_digest, txid)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const w of eff.payouts.winners) ins.run(marketId, w.trader, w.pkh, w.shares, w.sats, eff.payouts.digest, result.txid);
     }
     if (eff.settle) {
       // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.

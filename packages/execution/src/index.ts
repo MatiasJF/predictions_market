@@ -23,6 +23,13 @@ export {
   type SignedOrderFields,
 } from './order.js';
 export {
+  winningPayouts,
+  computePayoutDigest,
+  payoutTotal,
+  pkhOf,
+  type WinnerPayout,
+} from './payout.js';
+export {
   computeBatchDigest,
   receiptFromRow,
   signAttestation,

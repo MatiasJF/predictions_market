@@ -540,3 +540,29 @@ Template:
   buy — so it does not apply to this flow. Receipt → on-chain payout (per-participant minting, or validity-proof
   settlement) is the remaining piece of the user journey. The runner states this explicitly rather than failing
   quietly; the redeem *mechanism* itself is separately proven on mainnet (`c6d8900f…`).
+
+## ADR-028 · The receipt → on-chain payout bridge (PAYOUT-001) · Accepted · 2026-08-06
+- Context: LIVE-001 proved real users can trade and that the settlement provably matches what they signed, but
+  exposed the last hole in the user journey — **a winner could not get paid**. Settled positions are audited
+  signed receipts, not per-participant tokens, and `redeem` requires a token minted by an *on-chain* buy, so it
+  does not apply to off-chain fills. Traders could prove they won and still had no way to claim satoshis.
+- Decision: a new `payout` contract method pays **every winner in ONE tx**.
+  `payout(winners: FixedArray<PubKeyHash,8>, amounts: FixedArray<bigint,8>, count, payoutDigest)` — bounded loop
+  (`MAX_PAYOUTS = 8`, the `settle` early-skip pattern) builds one P2PKH output per winner, sums the total, and
+  asserts **resolved**, **`collateral >= total`**, and decrements collateral by exactly what leaves. Outputs are
+  `state + OP_RETURN(payoutDigest) + N winner outputs + change`. Off-chain, `winningPayouts` folds the fill
+  ledger into each trader's NET position on the winning side (losers and flat traders get nothing) and
+  `computePayoutDigest` commits to the ordered list, pinned on-chain and auditable.
+- **Nice property:** traders are identified by their public key, so the payout address is `hash160(pubkey)` —
+  *the key you trade with is the key you get paid to*. No registration, no address collection step.
+- Trust boundary (unchanged from `settle`): the contract enforces **resolution, solvency and the collateral
+  decrement** — the operator cannot invent funds or over-pay the pool. It does NOT verify each recipient's
+  receipts on-chain; that correctness is committed, auditable and bond-backed. Per-winner on-chain verification
+  is the validity-proof endgame.
+- Cost: script 29,801 → **36,762 B** (+6,961 for 8 winner slots, ~870 B each) — still below the original
+  45,675 B baseline, but note the tax applies to *every* spend, which is a further argument for slimming.
+- Verified: 4 contract tests vs real node Script (pays each winner exactly; **rejects** over-collateral,
+  unresolved market, and bad counts) + 4 off-chain tests (losers get nothing, sells net off, digest tamper-
+  sensitive). Local end-to-end: 26 real signed fills → settle → audit ok → resolve → **4 winners paid 15,000
+  sat in one tx**. 98 workspace + 28 sCrypt green. Migration 011 adds the `payout` broadcast kind + a `payouts`
+  audit table; daemon exposes `POST /markets/:id/payout` and `GET /markets/:id/payout-preview`.

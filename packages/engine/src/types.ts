@@ -42,7 +42,15 @@ export interface PoolRef {
   state: PoolState;
 }
 
-export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem' | 'settle';
+export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem' | 'settle' | 'payout';
+
+/** One winner of a resolved market, derived from the audited receipts (PAYOUT-001). */
+export interface WinnerPayoutRef {
+  trader: string; // trader public key (DER hex)
+  pkh: string;    // hash160 of that key — derived, no registration needed
+  shares: string; // WAD-scaled winning shares
+  sats: number;   // shares × payoutUnit
+}
 
 /**
  * A batch of off-chain fills (CONC-002) folded into the NET effect one settlement tx must apply. `netYesUnits`/
@@ -110,6 +118,8 @@ export interface TxEffects {
     rabinSig?: string;
     seqRabinPubkey?: string;
   };
+  /** Winners paid on-chain by this tx (PAYOUT-001) — the receipt → payout bridge. */
+  payouts?: { digest: string; winners: WinnerPayoutRef[] };
   /** Market lifecycle transition to write onto the `markets` row. */
   marketState?: 'deployed' | 'trading' | 'resolved';
   /** Resolution outcome (resolve only). */
@@ -174,6 +184,10 @@ export interface ChainEngine {
   /** Batch settlement (CONC-002): advance the pool by a whole batch's net state in one tx. Optional — only
    *  engines with a `settle` contract path implement it (ScryptEngine, MockEngine). Throws/absent otherwise. */
   buildSettleBatch?(cfg: MarketConfig, pool: PoolRef, batch: SettleBatch): Promise<TxPlan>;
+
+  /** PAYOUT-001: pay every winner of a resolved market in one tx. Optional — only engines with the `payout`
+   *  contract path implement it. The contract enforces resolution, solvency and the collateral decrement. */
+  buildPayout?(cfg: MarketConfig, pool: PoolRef, winners: WinnerPayoutRef[], digest: string): Promise<TxPlan>;
 
   /** CONC-003b: Rabin-sign the sequencer's settlement attestation (on-chain-verifiable by a Bond's slash).
    *  Optional — only engines with the Rabin machinery implement it. `sig` is a JSON-serialized RabinSig. */

@@ -228,17 +228,23 @@ async function main(): Promise<void> {
       log('\n▸ already resolved');
     }
 
-    // ── 6. payout: the honest gap ───────────────────────────────────────────────────────────────────
-    // In the batched-settlement design a trader's position IS the signed receipt — off-chain fills do not mint
-    // per-participant on-chain tokens (CONC-002 settled NET state; per-participant minting was deferred). The
-    // `redeem` path requires a token minted by an ON-CHAIN buy, so it does not apply to this flow. Converting an
-    // audited winning receipt into an on-chain payout is the one piece of the user journey still missing.
-    log('\n▸ PAYOUT — not attempted, and this is the honest gap:');
-    log('    Traders hold signed receipts (audited above), not per-participant on-chain tokens.');
-    log('    `redeem` needs a token minted by an on-chain buy, so it does not apply to settled off-chain');
-    log('    positions. Receipt → on-chain payout is the remaining work (CONC-003 validity / per-participant');
-    log('    minting). The redeem MECHANISM itself is separately proven on mainnet (tx c6d8900f…).');
-    const redeemTxid: string | undefined = undefined;
+    // ── 6. PAYOUT — winners actually collect (PAYOUT-001) ───────────────────────────────────────────
+    // Settled positions are audited signed receipts, not tokens, so `redeem` can't pay them. `payout` pays
+    // every winner in one tx, with the contract enforcing resolution + solvency + the collateral decrement.
+    let redeemTxid: string | undefined;
+    const preview = await api('GET', `/markets/${id}/payout-preview`);
+    log('\n▸ PAYOUT — who collects (derived from the audited receipts):');
+    for (const w of preview.winners) {
+      const name = traders.find((t) => t.pubkey === w.trader)?.name ?? w.trader.slice(0, 12);
+      log(`    ${name.padEnd(10)} ${String(BigInt(w.shares) / 10n ** 18n).padStart(3)} winning shares → ${w.sats} sat  →  ${w.pkh.slice(0, 12)}…`);
+    }
+    log(`    total ${preview.total_sats} sat to ${preview.winners.length} winner(s)`);
+    if (preview.winners.length > 0) {
+      if (resolveTxid) await waitForConfirmation(resolveTxid, 'resolve');
+      redeemTxid = await enqueueAndAuthorize(`/markets/${id}/payout`, undefined, 'payout');
+    } else {
+      log('    (no winning positions — nothing to pay)');
+    }
 
     // ── report ──────────────────────────────────────────────────────────────────────────────────────
     const final = await api('GET', `/markets/${id}`);
@@ -254,9 +260,9 @@ async function main(): Promise<void> {
     if (deployTxid) log(`  deploy            ${deployTxid}`);
     if (settleTxid) log(`  settle            ${settleTxid}   ← ${receipts.count} fills in ONE tx`);
     if (resolveTxid) log(`  resolve           ${resolveTxid}`);
-    if (redeemTxid) log(`  redeem            ${redeemTxid}`);
-    log('\n  proven here:  real wallets → signed orders → verified fills → ONE on-chain settlement → audit ok');
-    log('  still owed:   receipt → on-chain payout for settled positions (per-participant minting / validity)');
+    if (redeemTxid) log(`  payout            ${redeemTxid}   ← winners paid on-chain`);
+    log('\n  proven here:  real wallets → signed orders → verified fills → ONE settlement → audit ok → winners PAID');
+    log('  still owed:   on-chain verification of each winner’s receipts (validity-proof settlement)');
     if (MAINNET) log('\n  verify: https://whatsonchain.com/tx/<txid>');
     log('');
   } finally {

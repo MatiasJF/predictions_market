@@ -74,6 +74,7 @@ interface TxEffects {
     trade?: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }
     token?: { vout: number; satoshis: number; script: string; holderPkh: string; shares: string; side: Side; burned?: boolean }
     settle?: { orderIds: number[]; netYesUnits: string; netNoUnits: string; netCollateralSats: number; trades: { side: Side; action: 'buy' | 'sell'; shares: string; costSats: number }[]; batchDigest?: string; attestationSig?: string; attestationPubkey?: string }
+    payouts?: { digest: string; winners: { trader: string; pkh: string; shares: string; sats: number }[] }
     marketState?: 'deployed' | 'trading' | 'resolved'
     resolution?: Side
 }
@@ -101,6 +102,7 @@ const ceilDiv = (a: bigint, d: bigint): bigint => (a + d - 1n) / d
  * shared vectors in tests/fixtures). The operation order and truncation are consensus-critical (CONC-006).
  */
 const MAX_NET = 4095n
+const MAX_PAYOUTS = 8 // mirrors LMSRMarket.MAX_PAYOUTS (the bounded output loop)
 function powFixed(base: bigint, exp: bigint): bigint {
     if (exp < 0n || exp > MAX_NET) throw new Error(`powFixed: exp must be 0..${MAX_NET}`)
     let factor = WAD
@@ -139,6 +141,8 @@ interface SellBuild { kind: 'sell'; marketId: number; side: Side; pool: PoolUtxo
 interface ResolveBuild { kind: 'resolve'; marketId: number; outcome: Side; pool: PoolUtxoRef }
 interface RedeemBuild { kind: 'redeem'; marketId: number; side: Side; supply: string; pool: PoolUtxoRef; token?: TokenRef }
 interface SettleBuild { kind: 'settle'; marketId: number; netYesUnits: string; netNoUnits: string; netCollateralSats: number; batchDigest: string; pool: PoolUtxoRef }
+interface WinnerPayoutRef { trader: string; pkh: string; shares: string; sats: number }
+interface PayoutBuild { kind: 'payout'; marketId: number; winners: WinnerPayoutRef[]; digest: string; pool: PoolUtxoRef }
 
 /**
  * A minted position token (CONC-003c). The identity fields are small enough to persist; the three backtrace
@@ -427,6 +431,72 @@ export class ScryptEngine {
         }
     }
 
+    /**
+     * PAYOUT (PAYOUT-001) — pay every winner of a resolved market in ONE tx, closing the receipt→payout bridge.
+     * The winner list comes from the audited receipts; the contract enforces resolution, solvency and the exact
+     * collateral decrement, and the digest is pinned on-chain so the list is auditable + slashable.
+     */
+    async buildPayout(cfg: MarketConfig, pool: PoolRef, winners: WinnerPayoutRef[], digest: string): Promise<TxPlan> {
+        if (pool.state.resolved !== 1n) throw new Error('market not resolved')
+        if (winners.length === 0) throw new Error('no winners to pay')
+        if (winners.length > MAX_PAYOUTS) {
+            throw new EngineLimitation('payout', `at most ${MAX_PAYOUTS} winners per payout tx (split across several)`)
+        }
+        const total = winners.reduce((s, w) => s + w.sats, 0)
+        if (BigInt(total) > pool.state.collateral) throw new Error('payout exceeds pool collateral')
+        const s: PoolState = { ...pool.state, collateral: pool.state.collateral - BigInt(total) }
+        const build: PayoutBuild = { kind: 'payout', marketId: cfg.marketId, winners, digest, pool: this.poolRefOf(pool) }
+        return {
+            kind: 'payout',
+            summary: `pay ${winners.length} winner(s) ${total} sat total`,
+            spendSats: total + 200, build,
+            effects: {
+                pool: poolEffect(s), spendsPrevPool: true,
+                payouts: { digest, winners },
+            },
+        }
+    }
+
+    private async execPayout(b: PayoutBuild): Promise<BroadcastResult> {
+        const current = await this.livePool(b.marketId, b.pool)
+        const address = await this.signer().getDefaultAddress()
+        const total = b.winners.reduce((s, w) => s + w.sats, 0)
+        const digest = toByteString(b.digest)
+
+        // Pad the fixed-size arrays the contract expects (unused slots are skipped by `count`).
+        const winners = new Array(MAX_PAYOUTS).fill(PubKeyHash(toByteString('00'.repeat(20))))
+        const amounts = new Array(MAX_PAYOUTS).fill(0n)
+        b.winners.forEach((w, i) => {
+            winners[i] = PubKeyHash(toByteString(w.pkh))
+            amounts[i] = BigInt(w.sats)
+        })
+
+        let captured!: LMSRMarket
+        current.bindTxBuilder('payout', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
+            const next = cur.next()
+            next.collateral = cur.collateral - BigInt(total)
+            const tx = new bsv.Transaction().addInput(cur.buildContractInput())
+                .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
+                .addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromHex(Utils.buildOpreturnScript(digest)), satoshis: 0 }))
+            for (const w of b.winners) {
+                tx.addOutput(new bsv.Transaction.Output({
+                    script: bsv.Script.fromHex(Utils.buildPublicKeyHashScript(PubKeyHash(toByteString(w.pkh)))),
+                    satoshis: w.sats,
+                }))
+            }
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(FEE_PER_KB)
+            if (options.changeAddress) tx.change(options.changeAddress)
+            captured = next
+            return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
+        })
+
+        const res = await current.methods.payout(winners, amounts, BigInt(b.winners.length), digest, {
+            changeAddress: address,
+        } as MethodCallOptions<LMSRMarket>)
+        this.instances.set(b.marketId, captured)
+        return { txid: res.tx.id, poolLockingScript: captured.lockingScript.toHex() }
+    }
+
     // ── authorizeAndBroadcast (the only key use / broadcast) ──────────────────────────────────────────────
     async authorizeAndBroadcast(plan: TxPlan): Promise<BroadcastResult> {
         await this.ready()
@@ -437,6 +507,7 @@ export class ScryptEngine {
         if (kind === 'resolve') return this.execResolve(plan.build as ResolveBuild)
         if (kind === 'redeem') return this.execRedeem(plan.build as RedeemBuild)
         if (kind === 'settle') return this.execSettle(plan.build as SettleBuild)
+        if (kind === 'payout') return this.execPayout(plan.build as PayoutBuild)
         throw new Error(`sCrypt engine: unknown plan kind '${kind}'`)
     }
 
