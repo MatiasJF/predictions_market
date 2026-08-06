@@ -56,6 +56,16 @@ export class LMSRMarket extends SmartContract {
     resolved: bigint
     @prop(true)
     winner: bigint
+    /**
+     * Has this market's payout already been made? Without it, `payout` is REPLAYABLE: the only economic brake is
+     * `collateral >= total`, and collateral is seeded far above any real liability, so the same winners could be
+     * paid again and again — each replay simply spending the pool output the previous payout produced. That is
+     * not theoretical: it happened on mainnet (6dd31acc… then 9a1879b2…, 3,000 sat delivered twice) before this
+     * flag existed. `MAX_PAYOUTS` already caps a market at one payout transaction, so a single flag costs no
+     * generality.
+     */
+    @prop(true)
+    paid: bigint
 
     @prop()
     readonly mult: bigint
@@ -96,6 +106,7 @@ export class LMSRMarket extends SmartContract {
         this.collateral = collateral
         this.resolved = resolved
         this.winner = winner
+        this.paid = 0n // a fresh market has paid nobody; only `payout` ever sets it
         this.mult = mult
         this.invMult = invMult
         this.payoutUnit = payoutUnit
@@ -271,25 +282,29 @@ export class LMSRMarket extends SmartContract {
         payoutDigest: ByteString
     ) {
         assert(this.resolved == 1n, 'not resolved')
+        // Pay ONCE. `collateral` is seeded far above any real liability, so solvency alone does not stop a
+        // replay — this flag does, and it is enforced by consensus rather than by whoever runs the daemon.
+        assert(this.paid == 0n, 'already paid')
         assert(count > 0n && count <= BigInt(LMSRMarket.MAX_PAYOUTS), 'payout count out of range')
 
         // Bounded loop: build one P2PKH output per winner and sum what leaves the pool.
         let total = 0n
-        let paid: ByteString = toByteString('')
+        let winnerOuts: ByteString = toByteString('')
         for (let i = 0; i < LMSRMarket.MAX_PAYOUTS; i++) {
             if (BigInt(i) < count) {
                 assert(amounts[i] > 0n, 'payout amount must be positive')
                 total += amounts[i]
-                paid += Utils.buildPublicKeyHashOutput(winners[i], amounts[i])
+                winnerOuts += Utils.buildPublicKeyHashOutput(winners[i], amounts[i])
             }
         }
         assert(this.collateral >= total, 'insolvent — payout exceeds collateral')
         this.collateral -= total
+        this.paid = 1n
 
         const outputs: ByteString =
             this.buildStateOutput(this.ctx.utxo.value) +
             Utils.buildOutput(Utils.buildOpreturnScript(payoutDigest), 0n) +
-            paid +
+            winnerOuts +
             this.buildChangeOutput()
         assert(this.ctx.hashOutputs == hash256(outputs), 'bad outputs')
     }

@@ -538,6 +538,7 @@ export class ScryptEngine {
         current.bindTxBuilder('payout', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
             const next = cur.next()
             next.collateral = cur.collateral - BigInt(total)
+            next.paid = 1n // must mirror the contract's own state change, or hashOutputs won't match
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromHex(Utils.buildOpreturnScript(digest)), satoshis: 0 }))

@@ -83,18 +83,22 @@ async function main() {
   console.log(`\n  audit:  ${audit.ok ? 'ok — settlement matches the signed receipts' : 'MISMATCH'} (${audit.reports[0]?.receiptCount} receipts)`);
   console.log(`  payout: ${pay.winners.length} winner(s), ${pay.total_sats} sat`);
 
-  // The ~101 KB unconfirmed-ancestor budget decides how many of these can go in one window.
-  console.log('\n  unconfirmed-ancestor budget (~101 KB):');
-  let win = 0; let n = 0;
+  // Chain shape. Each stage spends the pool output the previous one produced, so the whole journey is one
+  // unconfirmed ancestor chain until a block lands.
+  //
+  // MEASURED, not assumed: on 2026-08-06 deploy+settle+resolve (183.5 KB, 3 deep) all confirmed in block
+  // 961149. The ~101 KB unconfirmed-ancestor figure this tool used to warn about did NOT bind. It is miner
+  // policy, not consensus, so treat the number below as information rather than a limit — and if a stage does
+  // stall unconfirmed, waiting for a block before the next one is the remedy.
+  const depth = rows.length;
+  console.log('\n  unconfirmed ancestor chain (each stage spends the previous pool output):');
+  let cum = 0;
   for (const r of rows) {
-    if (win + r.size > 101_000) {
-      console.log(`    ── block boundary: must wait for a confirmation before '${r.stage}' ──`);
-      win = 0; n++;
-    }
-    win += r.size;
-    console.log(`    ${r.stage.padEnd(9)} cumulative ${(win / 1024).toFixed(1)} KB`);
+    cum += r.size;
+    console.log(`    ${r.stage.padEnd(9)} depth ${rows.indexOf(r) + 1}, cumulative ${(cum / 1024).toFixed(1)} KB`);
   }
-  console.log(`\n  → ${n} confirmation wait(s) required mid-run.`);
+  console.log(`\n  → ${depth} deep, ${(cum / 1024).toFixed(1)} KB total if none confirm in between.`);
+  console.log('    Observed 2026-08-06: a 3-deep 183.5 KB chain confirmed in ONE block (961149).');
 }
 
 main().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

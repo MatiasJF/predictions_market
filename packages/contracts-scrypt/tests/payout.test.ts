@@ -57,10 +57,14 @@ const padded = (): { winners: FixedArray<PubKeyHash, 8>; amounts: FixedArray<big
 }
 
 /** Build the payout tx: pool continuation + OP_RETURN(digest) + one output per winner + change. */
-function bindPayoutBuilder(pool: LMSRMarket, amounts: bigint[], winners: PubKeyHash[], total: bigint): void {
+function bindPayoutBuilder(
+    pool: LMSRMarket, amounts: bigint[], winners: PubKeyHash[], total: bigint,
+    capture?: { next?: LMSRMarket },
+): void {
     pool.bindTxBuilder('payout', async (cur: LMSRMarket, options: MethodCallOptions<LMSRMarket>): Promise<ContractTransaction> => {
         const next = cur.next()
         next.collateral = cur.collateral - total
+        next.paid = 1n // mirrors the contract; without it hashOutputs will not match
         const tx: any = new bsv.Transaction()
             .addInput(cur.buildContractInput())
             .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
@@ -72,6 +76,7 @@ function bindPayoutBuilder(pool: LMSRMarket, amounts: bigint[], winners: PubKeyH
             }))
         })
         if (options.changeAddress) tx.change(options.changeAddress)
+        if (capture) capture.next = next
         return {
             tx, atInputIndex: 0,
             nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }],
@@ -102,6 +107,36 @@ describe('LMSRMarket.payout — receipt → on-chain payout (PAYOUT-001)', () =>
         for (const amt of AMOUNTS) {
             expect(tx.outputs.some((o) => o.satoshis === Number(amt)), `winner paid ${amt}`).to.equal(true)
         }
+    })
+
+    // MAINNET-004. This is the on-chain half of the fix; the daemon guard is the other half. Before the `paid`
+    // flag existed this replay SUCCEEDED on mainnet — 9a1879b2… spent the pool output 6dd31acc… had just
+    // produced and paid the same winner a second 3,000 sat. Solvency alone never stopped it: `collateral` is
+    // seeded far above the real liability, so it simply decremented again.
+    it('REJECTS a SECOND payout — winners cannot be paid twice', async () => {
+        const pool = resolvedPool()
+        const signer = localSigner()
+        await pool.connect(signer)
+        await pool.deploy(POOL_SATS)
+
+        const { winners, amounts } = padded()
+        const total = AMOUNTS.reduce((a, x) => a + x, 0n)
+        const cap: { next?: LMSRMarket } = {}
+        bindPayoutBuilder(pool, AMOUNTS, WINNERS, total, cap)
+        await pool.methods.payout(winners, amounts, 3n, DIGEST, {
+            changeAddress: await signer.getDefaultAddress(),
+        } as MethodCallOptions<LMSRMarket>)
+
+        // The pool the first payout produced — exactly what a replay would spend.
+        const paidPool = cap.next!
+        expect(paidPool.paid, 'state must record that payment happened').to.equal(1n)
+        await paidPool.connect(signer)
+        bindPayoutBuilder(paidPool, AMOUNTS, WINNERS, total)
+        await expectReject(() =>
+            paidPool.methods.payout(winners, amounts, 3n, DIGEST, {
+                changeAddress: signer.getDefaultAddress(),
+            } as unknown as MethodCallOptions<LMSRMarket>)
+        )
     })
 
     it('REJECTS a payout larger than the pool collateral (cannot drain the pool)', async () => {

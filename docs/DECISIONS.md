@@ -773,3 +773,34 @@ Template:
 - Honest read: the mechanism worked end to end with real wallets and real money, and the one thing that went
   wrong was an *operator-facing safety* gap, not a protocol failure. The trust boundary of ADR-028 already said
   the contract does not verify recipients; this shows that boundary has a sharper edge than it sounded.
+
+## ADR-035 · `payout` is idempotent on-chain: the `paid` flag (MAINNET-005) · Accepted · 2026-08-06
+- Context: ADR-034 stopped the double-payment at the daemon, and left the on-chain gap open and named. Closing it
+  was chosen deliberately over leaving "the daemon prevents it" as the answer — an operator double-click draining
+  the pool is the first thing a reviewer asks about, and consensus is a better guarantee than a service check.
+- Decision: a new stateful prop `paid: bigint` on `LMSRMarket`, following the `resolved` pattern. `payout`
+  asserts `this.paid == 0n` and sets `this.paid = 1n`. Initialized to `0n` in the constructor body rather than
+  as a constructor parameter, so **no call site changed** — the compiler bakes the initial value into the
+  deployed script. `MAX_PAYOUTS = 8` already caps a market at a single payout transaction, so one flag costs no
+  generality. The off-chain tx builders (engine + tests) mirror `next.paid = 1n`; without that mirror the
+  contract's `hashOutputs` check fails, which is exactly the coupling that makes the state real.
+- Why solvency was never enough: `payout` already asserted `collateral >= total`, but `collateral` is spike state
+  seeded at 1e9 — far above any real liability — so a replay simply decremented it again. The guard has to be a
+  flag, not a balance.
+- Cost: script **36,762 → 40,073 B** (+3,311 B, +9%), and a full journey **131,570 → 142,969 sat** (+8.7%).
+  Per-stage: deploy 39.7 KB / 20,350 sat · settle 79.6 KB / 40,772 · resolve 80.0 KB / 40,939 ·
+  payout 79.9 KB / 40,907. Paid knowingly: 11.4k sat to make a double-payment impossible rather than merely
+  discouraged.
+- Verified: **29 sCrypt tests** green including a new `REJECTS a SECOND payout` case that replays against the
+  pool output the first payout produced — the exact shape of the mainnet incident — and is refused by the real
+  Script interpreter. 120 workspace tests green, typecheck + build clean. End-to-end on `local`: the journey
+  completes, the payout preview then reports **0 winners owed**, and a second `POST /payout` returns
+  `409 winners of market 1 were already paid 5000 sat in tx 00f10c4b…`.
+- **Correction shipped with it:** `measure:journey` no longer warns about a ~101 KB unconfirmed-ancestor limit
+  forcing confirmation waits. ADR-034 measured a 3-deep 183.5 KB chain confirming in one block; the figure is
+  miner policy, not consensus. The tool now reports chain depth and cumulative size as information, and states
+  what was actually observed.
+- **This strands every pool deployed by an earlier build**, including the live mainnet one — by design: the
+  locking script *is* the contract. `poolSpendable` (ADR-030) already flags those markets in the UI, so the old
+  pool shows as unspendable rather than failing at authorize time. A fresh deploy is required to demonstrate the
+  new build on mainnet.
