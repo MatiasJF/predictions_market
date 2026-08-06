@@ -115,7 +115,20 @@ output → mint txid → bind via `hashPrevouts`), so supply/holder/side come fr
 over-claim, or redirection. Proven in `tests/redeemBacktrace.test.ts` (a real co-spend redeem passes the node
 Script; over-claim / redirection / wrong-vout rejected) and integrated end-to-end in `tests/engineRedeem.test.ts`
 (**deploy → buy(mint) → resolve → redeem(co-spend + backtrace)** driven through the `ScryptEngine`, which tracks
-the minted token and refuses a token-less redeem). A gated mainnet run of the hardened redeem is still to do.
+the minted token and refuses a token-less redeem).
+
+**Proven live on BSV mainnet (2026-08-06)** — a 3-tx proof (the hardened pool is ~33 KB, so a 4-tx chain would
+exceed the ~101 KB ancestor budget): mint the token
+[`8328f669…444337`](https://whatsonchain.com/tx/8328f66986b55930a14436bf41a919d22f46eb1825d3a4824d4feea5e9444337)
+→ deploy an already-resolved pool
+[`1c1660e3…a5c1f2`](https://whatsonchain.com/tx/1c1660e36ac4188216e92385161366f5455cbb9aeb20fbeaa9188fd3f3a5c1f2)
+→ **redeem** [`c6d8900f…e469e5`](https://whatsonchain.com/tx/c6d8900fbfc71c49c5ad4001a3b4fa2dccbc3888f222159be37f5d71b3e469e5)
+(67,749 B; **in[0] = the pool, in[1] = the real token, in[2] = funding**; out[1] = the 100-sat payout to the
+token's holder). The network accepted it, so the redeem covenant — rebuilding the token output, deriving the mint
+txid, and binding it via `hashPrevouts` — **executed and passed on-chain**: a payout now provably requires a
+genuine token. (Funding was chained in-process; WhatsOnChain's stale UTXO set caused a first-attempt
+`txn-mempool-conflict` — BUG-003 — fixed by spending each stage's own change.)
+
 Remaining: full net-vs-receipts enforcement via a validity proof / dispute game (the endgame).
 
 ## The six unknowns

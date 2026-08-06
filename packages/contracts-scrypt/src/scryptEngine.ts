@@ -120,7 +120,7 @@ interface TokenRef {
  * `redeem` recomputes on-chain. Throws if the reconstruction doesn't match (defensive: never hand the contract
  * pieces that cannot verify).
  */
-function splitMintTx(tx: bsv.Transaction, tokenVout: number): { prevHeader: string; poolOut: string; prevTail: string } {
+export function splitMintTx(tx: bsv.Transaction, tokenVout: number): { prevHeader: string; poolOut: string; prevTail: string } {
     const t = tx as unknown as { version: number; inputs: { toBufferWriter: (w: unknown) => void }[]; outputs: { toBufferWriter: (w: unknown) => void }[]; nLockTime: number; toBuffer: () => Buffer }
     const ser = (o: { toBufferWriter: (w: unknown) => void }): string => {
         const w = new bsv.encoding.BufferWriter()
