@@ -8,6 +8,7 @@ import {
   computeBatchDigest,
   receiptFromRow,
   signAttestation,
+  signOrder,
   verifyAttestation,
   verifyReceipt,
   type Attestation,
@@ -15,7 +16,14 @@ import {
 
 const P: MarketParams = { b: 10n * WAD, payoutUnit: 100_000n, unit: WAD };
 const MARKET = 1;
-const TRADER = 'aa'.repeat(33);
+const TRADER_PRIV = PrivateKey.fromRandom();
+const TRADER = TRADER_PRIV.toPublicKey().toDER('hex') as string;
+let nonceSeq = 0;
+function order(o: { side: 'yes' | 'no'; action: 'buy' | 'sell'; units: bigint; ts?: number }) {
+  const nonce = ++nonceSeq;
+  const f = { marketId: MARKET, trader: TRADER, side: o.side, action: o.action, units: o.units, nonce };
+  return { ...f, sig: signOrder(TRADER_PRIV.toWif(), f), ...(o.ts !== undefined ? { ts: o.ts } : {}) };
+}
 
 function fresh(): { db: Db; eng: ExecutionEngine } {
   const db = openDb(':memory:');
@@ -27,7 +35,7 @@ function fresh(): { db: Db; eng: ExecutionEngine } {
 
 async function seedFills(db: Db, eng: ExecutionEngine, n: number): Promise<ExecOrderRow[]> {
   for (let i = 0; i < n; i++) {
-    await eng.submit({ marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 1n, ts: i + 1 });
+    await eng.submit(order({ side: 'yes', action: 'buy', units: 1n, ts: i + 1 }));
   }
   return db.prepare('SELECT * FROM exec_orders WHERE market_id=? ORDER BY seq').all(MARKET) as ExecOrderRow[];
 }
@@ -35,7 +43,7 @@ async function seedFills(db: Db, eng: ExecutionEngine, n: number): Promise<ExecO
 describe('CONC-003a — receipts, batch digest, attestations', () => {
   it('persists ts so a stored receipt reconstructs and re-verifies from the DB (and tampering fails)', async () => {
     const { db, eng } = fresh();
-    const sr = await eng.submit({ marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 1n, ts: 42 });
+    const sr = await eng.submit(order({ side: 'yes', action: 'buy', units: 1n, ts: 42 }));
     const row = db.prepare('SELECT * FROM exec_orders WHERE seq=1').get() as ExecOrderRow;
 
     const rebuilt = receiptFromRow(row);

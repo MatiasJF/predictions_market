@@ -26,6 +26,7 @@ import {
   type ReceiptSigner,
 } from './receipt.js';
 import { signAttestation, type Attestation } from './audit.js';
+import { verifyOrder } from './order.js';
 
 export interface OrderInput {
   marketId: number;
@@ -34,6 +35,13 @@ export interface OrderInput {
   action: OrderAction;
   units: bigint; // number of trade UNITS to fill (each unit = params.unit shares)
   ts?: number; // optional timestamp (ms); pass in tests for determinism
+  /**
+   * The trader's signature over the order + a per-trader nonce (LIVE-001a). Required unless the engine was
+   * constructed with `requireSignedOrders: false` (tests/back-compat). Without these an order cannot be
+   * attributed to a user — the operator could mint fills in anyone's name.
+   */
+  sig?: string;
+  nonce?: number;
 }
 
 export interface SignedReceipt {
@@ -89,7 +97,9 @@ export class ExecutionEngine {
 
   constructor(
     private readonly db: Db,
-    private readonly signer: ReceiptSigner
+    private readonly signer: ReceiptSigner,
+    /** Require trader-signed orders (LIVE-001a). Default ON — only disable for legacy/unit tests. */
+    private readonly requireSignedOrders: boolean = true
   ) {}
 
   /** Register a market's authoritative state (fresh unless a `seed` state + `seq` is supplied to resume). */
@@ -156,6 +166,13 @@ export class ExecutionEngine {
 
   private fill(m: MarketRuntime, o: OrderInput): SignedReceipt {
     if (o.units <= 0n) throw new Error('execution: units must be > 0');
+    // LIVE-001a: authenticate BEFORE filling — a fill may only exist if the trader authorized it. The signature
+    // is checked against `o.trader`, so a valid signature from A submitted under B's pubkey also fails.
+    if (this.requireSignedOrders) {
+      if (!o.sig || o.nonce === undefined) throw new Error('execution: order must carry a trader signature and nonce');
+      const fields = { marketId: o.marketId, trader: o.trader, side: o.side, action: o.action, units: o.units, nonce: o.nonce };
+      if (!verifyOrder(fields, o.sig)) throw new Error('execution: bad trader signature — order not authorized');
+    }
     const p = m.params;
     let state = m.state;
     let costSats = 0n;
@@ -189,21 +206,23 @@ export class ExecutionEngine {
       ts: o.ts ?? Date.now(),
     };
     const sig = this.signer.sign(receiptPayload(receipt));
-    this.persist(receipt, sig);
+    this.persist(receipt, sig, o.sig ?? null, o.nonce ?? null);
     return { receipt, sig, signerPubkey: this.signer.publicKeyHex };
   }
 
-  private persist(r: Receipt, sig: string): void {
+  private persist(r: Receipt, sig: string, orderSig: string | null, nonce: number | null): void {
+    // The UNIQUE(market_id, trader_pubkey, nonce) index makes a replayed order fail here even if it somehow
+    // passed signature verification — belt and braces on the replay guard.
     this.db
       .prepare(
         `INSERT INTO exec_orders
          (market_id, seq, trader_pubkey, side, action, shares, price_sats, cost_sats,
-          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts, order_sig, nonce)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         r.marketId, r.seq, r.trader, r.side, r.action, r.shares, r.priceSats, r.costSats,
-        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts
+        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts, orderSig, nonce
       );
   }
 

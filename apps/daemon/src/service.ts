@@ -226,7 +226,7 @@ export class MarketService {
 
   // ── off-chain execution (CONC-001/002) — instant fills; settlement enqueues into the same sign-off queue ──
   /** Fill one order off-chain INSTANTLY over @pm/lmsr (no broadcast). Returns the signed receipt. */
-  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number }) {
+  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number; sig?: string; nonce?: number }) {
     const exec = this.execOrThrow();
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
@@ -240,7 +240,11 @@ export class MarketService {
     if (!Number.isInteger(units) || units < 1 || units > MAX_UNITS) throw badReq(`units must be an integer in 1..${MAX_UNITS}`);
     this.ensureExecOpen(m);
     try {
-      const sr = await exec.submit({ marketId: id, trader, side, action, units: BigInt(units) });
+      const sr = await exec.submit({
+        marketId: id, trader, side, action, units: BigInt(units),
+        ...(input.sig !== undefined ? { sig: input.sig } : {}),
+        ...(input.nonce !== undefined ? { nonce: input.nonce } : {}),
+      });
       return { market_id: id, receipt: sr.receipt, sig: sr.sig, signer_pubkey: sr.signerPubkey };
     } catch (e) {
       throw badReq(e instanceof Error ? e.message : String(e));

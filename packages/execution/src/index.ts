@@ -16,6 +16,13 @@ export {
   type OrderAction,
 } from './receipt.js';
 export {
+  orderPayload,
+  makeTraderWallet,
+  signOrder,
+  verifyOrder,
+  type SignedOrderFields,
+} from './order.js';
+export {
   computeBatchDigest,
   receiptFromRow,
   signAttestation,

@@ -10,11 +10,20 @@ import {
   type MarketParams,
   type MarketState,
 } from '@pm/lmsr';
-import { ExecutionEngine, WifReceiptSigner, verifyReceipt } from '../src/index.js';
+import { ExecutionEngine, WifReceiptSigner, verifyReceipt, signOrder } from '../src/index.js';
 
 const P: MarketParams = { b: 10n * WAD, payoutUnit: 100_000n, unit: WAD };
 const MARKET = 1;
-const TRADER = 'aa'.repeat(33); // placeholder trader pubkey hex
+// LIVE-001a: orders must be signed by a REAL trader key — the engine verifies before filling.
+const TRADER_PRIV = PrivateKey.fromRandom();
+const TRADER = TRADER_PRIV.toPublicKey().toDER('hex') as string;
+let nonceSeq = 0;
+/** Build a trader-signed order (what a client wallet does before calling the API). */
+function order(o: { side: 'yes' | 'no'; action: 'buy' | 'sell'; units: bigint; ts?: number }) {
+  const nonce = ++nonceSeq;
+  const f = { marketId: MARKET, trader: TRADER, side: o.side, action: o.action, units: o.units, nonce };
+  return { ...f, sig: signOrder(TRADER_PRIV.toWif(), f), ...(o.ts !== undefined ? { ts: o.ts } : {}) };
+}
 
 function fresh(): { db: Db; eng: ExecutionEngine } {
   const db = openDb(':memory:');
@@ -35,9 +44,8 @@ function refAfterYesBuys(n: number): MarketState {
 describe('ExecutionEngine (CONC-001) — instant fills over @pm/lmsr with signed receipts', () => {
   it('a single buy fill matches the @pm/lmsr reference and persists one row', async () => {
     const { db, eng } = fresh();
-    const { receipt } = await eng.submit({
-      marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 1n, ts: 1,
-    });
+    const { receipt } = await eng.submit(order({ side: 'yes', action: 'buy', units: 1n, ts: 1,
+     }));
 
     const ref = refAfterYesBuys(1);
     const refCharge = buyChargeApproxSats(ref, 'yes', P.unit, P);
@@ -55,9 +63,8 @@ describe('ExecutionEngine (CONC-001) — instant fills over @pm/lmsr with signed
 
   it('a receipt verifies against the signer, and any tampering fails verification', async () => {
     const { eng } = fresh();
-    const sr = await eng.submit({
-      marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 1n, ts: 1,
-    });
+    const sr = await eng.submit(order({ side: 'yes', action: 'buy', units: 1n, ts: 1,
+     }));
     expect(verifyReceipt(sr.receipt, sr.sig, sr.signerPubkey)).toBe(true);
 
     const tampered = { ...sr.receipt, costSats: sr.receipt.costSats + 1 };
@@ -67,7 +74,7 @@ describe('ExecutionEngine (CONC-001) — instant fills over @pm/lmsr with signed
   it('selling with no inventory is rejected (MM-safe) and leaves the ledger untouched', async () => {
     const { db, eng } = fresh();
     await expect(
-      eng.submit({ marketId: MARKET, trader: TRADER, side: 'yes', action: 'sell', units: 1n, ts: 1 })
+      eng.submit(order({ side: 'yes', action: 'sell', units: 1n, ts: 1 }))
     ).rejects.toThrow();
 
     const count = db.prepare('SELECT COUNT(*) AS c FROM exec_orders').get() as { c: number };
@@ -82,7 +89,7 @@ describe('ExecutionEngine (CONC-001) — instant fills over @pm/lmsr with signed
 
     const results = await Promise.all(
       Array.from({ length: N }, (_, i) =>
-        eng.submit({ marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 1n, ts: i + 1 })
+        eng.submit(order({ side: 'yes', action: 'buy', units: 1n, ts: i + 1 }))
       )
     );
 
@@ -104,8 +111,8 @@ describe('ExecutionEngine (CONC-001) — instant fills over @pm/lmsr with signed
 
   it('pendingBatch folds unsettled fills into net per-side units and net cash', async () => {
     const { eng } = fresh();
-    await eng.submit({ marketId: MARKET, trader: TRADER, side: 'yes', action: 'buy', units: 2n, ts: 1 });
-    await eng.submit({ marketId: MARKET, trader: TRADER, side: 'no', action: 'buy', units: 1n, ts: 2 });
+    await eng.submit(order({ side: 'yes', action: 'buy', units: 2n, ts: 1 }));
+    await eng.submit(order({ side: 'no', action: 'buy', units: 1n, ts: 2 }));
 
     const batch = eng.pendingBatch(MARKET);
     expect(batch.netYesUnits).toBe(2n);

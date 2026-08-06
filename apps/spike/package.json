@@ -7,7 +7,9 @@
     "dry-run": "tsx src/dry-run.ts",
     "keygen": "tsx src/keygen.ts",
     "keygen:sequencer": "tsx src/sequencer-keygen.ts",
-    "mainnet": "tsx src/mainnet.ts"
+    "mainnet": "tsx src/mainnet.ts",
+    "keygen:traders": "tsx src/trader-keygen.ts",
+    "live": "tsx src/live-market.ts"
   },
   "dependencies": {
     "@bsv/sdk": "^2.1.9",
@@ -15,7 +17,9 @@
     "@pm/lmsr": "workspace:*",
     "runar-compiler": "^0.4.6",
     "runar-lang": "^0.4.6",
-    "runar-sdk": "^0.4.6"
+    "runar-sdk": "^0.4.6",
+    "@pm/execution": "workspace:*",
+    "@pm/persistence": "workspace:*"
   },
   "devDependencies": {
     "runar-testing": "^0.4.6",

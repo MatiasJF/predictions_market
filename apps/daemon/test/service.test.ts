@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { openDb, migrate, type Db } from '@pm/persistence';
 import { MockEngine, EngineLimitation } from '@pm/engine';
-import { ExecutionEngine, makeReceiptSigner, verifyReceipt } from '@pm/execution';
+import { ExecutionEngine, makeReceiptSigner, verifyReceipt, signOrder, makeTraderWallet } from '@pm/execution';
 import { WAD } from '@pm/lmsr';
 import { MarketService, ServiceError } from '../src/service.js';
 
@@ -170,7 +170,15 @@ describe('MarketService — market lifecycle + sign-off queue', () => {
 });
 
 describe('MarketService — off-chain execution + batch settlement (CONC-001/002)', () => {
-  const TRADER = 'aa'.repeat(33);
+  // LIVE-001a: real trader wallet — the engine verifies the signature before filling.
+  const TRADER_WALLET = makeTraderWallet();
+  const TRADER = TRADER_WALLET.pubkey;
+  let nonceSeq = 0;
+  const order = (id: number, side: 'yes' | 'no', action: 'buy' | 'sell', units = 1) => {
+    const nonce = ++nonceSeq;
+    const f = { marketId: id, trader: TRADER, side, action, units: BigInt(units), nonce };
+    return { trader: TRADER, side, action, units, nonce, sig: signOrder(TRADER_WALLET.wif, f) };
+  };
 
   it('fills orders off-chain instantly, then settles the whole batch in ONE authorized pool-version advance', async () => {
     const { db, svc } = freshExecService();
@@ -178,13 +186,13 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id); // pool v0
 
     // Five INSTANT off-chain fills (3 YES buys, 2 NO buys) — no broadcasts, signed receipts returned.
-    const r1 = await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
+    const r1 = await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
     expect(r1.receipt.seq).toBe(1);
     expect(verifyReceipt(r1.receipt, r1.sig, r1.signer_pubkey)).toBe(true);
-    await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
-    await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
-    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
-    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
+    await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
+    await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
+    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
+    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
 
     // Fills are off-chain: the pool is still at v0 and no NEW broadcast was queued by the fills
     // (the only broadcast so far is the already-authorized deploy; nothing is pending).
@@ -225,8 +233,8 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     const { db, svc } = freshExecService();
     const m = await svc.createMarket({ question: 'audit', bUnits: 1000 });
     await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
-    for (let i = 0; i < 3; i++) await svc.submitOrder(m.id, { trader: TRADER, side: 'yes', action: 'buy', units: 1 });
-    await svc.submitOrder(m.id, { trader: TRADER, side: 'no', action: 'buy', units: 1 });
+    for (let i = 0; i < 3; i++) await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
+    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
     await svc.authorize((await svc.enqueueSettle(m.id)).broadcast_id);
 
     // An honest settlement audits clean.

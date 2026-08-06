@@ -48,9 +48,15 @@ importers:
       '@pm/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@pm/execution':
+        specifier: workspace:*
+        version: link:../../packages/execution
       '@pm/lmsr':
         specifier: workspace:*
         version: link:../../packages/lmsr
+      '@pm/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       runar-compiler:
         specifier: ^0.4.6
         version: 0.4.6

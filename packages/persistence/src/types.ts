@@ -126,6 +126,9 @@ export interface ExecOrderRow {
   batch_id: number | null; // set at settlement (CONC-002); NULL = unsettled
   created_at: string;
   ts: number | null;     // receipt's signed timestamp (007); NULL for pre-007 rows
+  // Added in 010_order_auth (LIVE-001a) — the trader's own authorization; NULL for pre-010 rows:
+  order_sig: string | null; // trader signature over marketId|trader|side|action|units|nonce (DER hex)
+  nonce: number | null;     // per-trader-per-market; UNIQUE, so a signed order is single-use
 }
 
 /** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */

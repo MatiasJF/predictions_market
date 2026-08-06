@@ -3,7 +3,7 @@
 import { PrivateKey } from '@bsv/sdk';
 import { openDb, migrate, type Db } from '@pm/persistence';
 import { WAD, unitMultiplier, applyUnitBuy, buyChargeApproxSats, initState, type MarketParams } from '@pm/lmsr';
-import { ExecutionEngine, WifReceiptSigner } from '@pm/execution';
+import { ExecutionEngine, WifReceiptSigner, signOrder, makeTraderWallet } from '../src/index.js';
 
 const P: MarketParams = { b: 1000n * WAD, payoutUnit: 100_000n, unit: WAD };
 const WIF = PrivateKey.fromRandom().toWif();
@@ -16,7 +16,17 @@ function fresh(markets: number): { db: Db; eng: ExecutionEngine } {
   return { db, eng };
 }
 const ms = (t: bigint) => Number(t) / 1e6;
-const traders = (n: number) => Array.from({ length: n }, (_, i) => `t${String(i).padStart(4, '0')}` + 'a'.repeat(60));
+// LIVE-001a: real trader wallets — orders are signed client-side and VERIFIED server-side on every fill.
+const WALLETS = Array.from({ length: 200 }, () => makeTraderWallet());
+const traders = (n: number) => WALLETS.slice(0, Math.max(1, Math.min(n, WALLETS.length))).map((w) => w.pubkey);
+let nonceSeq = 0;
+/** Pre-sign an order (client work) so the measured submit covers the SERVER cost incl. verification. */
+function order(marketId: number, pubkey: string, side: 'yes' | 'no', action: 'buy' | 'sell', units: bigint, ts: number) {
+  const w = WALLETS.find((x) => x.pubkey === pubkey)!;
+  const nonce = ++nonceSeq;
+  const f = { marketId, trader: pubkey, side, action, units, nonce };
+  return { ...f, sig: signOrder(w.wif, f), ts };
+}
 
 // ── 1. component cost: where does a fill actually spend its time? ────────────────────────────────────
 function components(n: number) {
@@ -51,7 +61,7 @@ async function oneMarket(n: number) {
   const tr = traders(Math.min(n, 500));
   const t0 = process.hrtime.bigint();
   await Promise.all(Array.from({ length: n }, (_, i) =>
-    eng.submit({ marketId: 1, trader: tr[i % tr.length]!, side: i % 3 === 0 ? 'no' : 'yes', action: 'buy', units: 1n, ts: i })
+    eng.submit(order(1, tr[i % tr.length]!, i % 3 === 0 ? 'no' : 'yes', 'buy', 1n, i))
   ));
   const el = ms(process.hrtime.bigint() - t0);
   console.log(`  ${String(n).padStart(5)} simultaneous  ${el.toFixed(0).padStart(6)} ms   ${Math.round(n / (el / 1000)).toLocaleString().padStart(7)} fills/sec   ${(el / n).toFixed(2)} ms latency/fill`);
@@ -66,7 +76,7 @@ async function manyMarkets(markets: number, perMarket: number) {
   const t0 = process.hrtime.bigint();
   for (let m = 1; m <= markets; m++)
     for (let i = 0; i < perMarket; i++)
-      jobs.push(eng.submit({ marketId: m, trader: tr[i % tr.length]!, side: i % 3 === 0 ? 'no' : 'yes', action: 'buy', units: 1n, ts: i }));
+      jobs.push(eng.submit(order(m, tr[i % tr.length]!, i % 3 === 0 ? 'no' : 'yes', 'buy', 1n, i)));
   await Promise.all(jobs);
   const el = ms(process.hrtime.bigint() - t0);
   const total = markets * perMarket;
@@ -78,10 +88,10 @@ async function batching(n: number, buyBias: number, label: string) {
   const { eng } = fresh(1);
   const tr = traders(200);
   // seed inventory so sells are possible
-  for (let i = 0; i < 60; i++) await eng.submit({ marketId: 1, trader: tr[0]!, side: i % 2 ? 'no' : 'yes', action: 'buy', units: 1n, ts: i });
+  for (let i = 0; i < 60; i++) await eng.submit(order(1, tr[0]!, i % 2 ? 'no' : 'yes', 'buy', 1n, i));
   for (let i = 0; i < n; i++) {
     const buy = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1 < buyBias;
-    await eng.submit({ marketId: 1, trader: tr[i % tr.length]!, side: i % 2 ? 'no' : 'yes', action: buy ? 'buy' : 'sell', units: 1n, ts: 1000 + i });
+    await eng.submit(order(1, tr[i % tr.length]!, i % 2 ? 'no' : 'yes', buy ? 'buy' : 'sell', 1n, 1000 + i));
   }
   const b = eng.pendingBatch(1);
   const netMax = Math.max(Number(b.netYesUnits < 0n ? -b.netYesUnits : b.netYesUnits), Number(b.netNoUnits < 0n ? -b.netNoUnits : b.netNoUnits));
