@@ -307,8 +307,8 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   **PROVEN LIVE on mainnet (2026-08-06)** via `mainnet-redeem.ts --broadcast` — a 3-tx proof (the hardened pool is
   ~33 KB so a 4-tx chain exceeds the ~101 KB ancestor budget): mint `8328f669…444337` → deploy already-resolved
   pool `1c1660e3…a5c1f2` → **redeem `c6d8900f…e469e5`** (67,749 B; in[0]=pool, **in[1]=the real token**,
-  in[2]=funding; out[1]=100-sat payout to the holder). Network-accepted ⇒ the backtrace covenant executed and
-  passed on-chain. First attempt hit `txn-mempool-conflict` (BUG-003, stale WoC UTXO set) — fixed by chaining
+  in[2]=funding; out[1]=100-sat payout to the holder) — **CONFIRMED, block 961048** ⇒ the backtrace covenant
+  executed and passed on-chain. First attempt hit `txn-mempool-conflict` (BUG-003, stale WoC UTXO set) — fixed by chaining
   each stage's own change in-process. VERDICT gap #2 is closed.
 - ○ Endgame — validity-proof settlement: the contract re-checks the batch on-chain (trustless). Planned.
 - ○ CONC-005 — Ops: restart-safe pool state (reconstruct from chain), automated fee/UTXO-pool management. Planned.
