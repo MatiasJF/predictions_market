@@ -20,7 +20,10 @@ export {
   makeTraderWallet,
   signOrder,
   verifyOrder,
+  ORDER_PROTOCOL_ID,
+  orderKeyID,
   type SignedOrderFields,
+  type SigScheme,
 } from './order.js';
 export {
   winningPayouts,

@@ -26,7 +26,7 @@ import {
   type ReceiptSigner,
 } from './receipt.js';
 import { signAttestation, type Attestation } from './audit.js';
-import { verifyOrder } from './order.js';
+import { verifyOrder, type SigScheme } from './order.js';
 
 export interface OrderInput {
   marketId: number;
@@ -42,6 +42,8 @@ export interface OrderInput {
    */
   sig?: string;
   nonce?: number;
+  /** How the trader signed — `ecdsa` (CLI/runner) or `brc100` (a real wallet, from the browser). */
+  sigScheme?: SigScheme;
 }
 
 export interface SignedReceipt {
@@ -164,14 +166,17 @@ export class ExecutionEngine {
     return run;
   }
 
-  private fill(m: MarketRuntime, o: OrderInput): SignedReceipt {
+  private async fill(m: MarketRuntime, o: OrderInput): Promise<SignedReceipt> {
     if (o.units <= 0n) throw new Error('execution: units must be > 0');
     // LIVE-001a: authenticate BEFORE filling — a fill may only exist if the trader authorized it. The signature
-    // is checked against `o.trader`, so a valid signature from A submitted under B's pubkey also fails.
+    // is checked against `o.trader`, so a valid signature from A submitted under B's key also fails, under
+    // either scheme (raw ECDSA from the CLI, or BRC-100 from a real wallet in the browser).
     if (this.requireSignedOrders) {
       if (!o.sig || o.nonce === undefined) throw new Error('execution: order must carry a trader signature and nonce');
       const fields = { marketId: o.marketId, trader: o.trader, side: o.side, action: o.action, units: o.units, nonce: o.nonce };
-      if (!verifyOrder(fields, o.sig)) throw new Error('execution: bad trader signature — order not authorized');
+      if (!(await verifyOrder(fields, o.sig, o.sigScheme ?? 'ecdsa'))) {
+        throw new Error('execution: bad trader signature — order not authorized');
+      }
     }
     const p = m.params;
     let state = m.state;
@@ -206,23 +211,23 @@ export class ExecutionEngine {
       ts: o.ts ?? Date.now(),
     };
     const sig = this.signer.sign(receiptPayload(receipt));
-    this.persist(receipt, sig, o.sig ?? null, o.nonce ?? null);
+    this.persist(receipt, sig, o.sig ?? null, o.nonce ?? null, o.sigScheme ?? 'ecdsa');
     return { receipt, sig, signerPubkey: this.signer.publicKeyHex };
   }
 
-  private persist(r: Receipt, sig: string, orderSig: string | null, nonce: number | null): void {
+  private persist(r: Receipt, sig: string, orderSig: string | null, nonce: number | null, sigScheme: SigScheme): void {
     // The UNIQUE(market_id, trader_pubkey, nonce) index makes a replayed order fail here even if it somehow
     // passed signature verification — belt and braces on the replay guard.
     this.db
       .prepare(
         `INSERT INTO exec_orders
          (market_id, seq, trader_pubkey, side, action, shares, price_sats, cost_sats,
-          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts, order_sig, nonce)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts, order_sig, nonce, sig_scheme)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         r.marketId, r.seq, r.trader, r.side, r.action, r.shares, r.priceSats, r.costSats,
-        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts, orderSig, nonce
+        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts, orderSig, nonce, sigScheme
       );
   }
 

@@ -226,7 +226,7 @@ export class MarketService {
 
   // ── off-chain execution (CONC-001/002) — instant fills; settlement enqueues into the same sign-off queue ──
   /** Fill one order off-chain INSTANTLY over @pm/lmsr (no broadcast). Returns the signed receipt. */
-  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number; sig?: string; nonce?: number }) {
+  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number; sig?: string; nonce?: number; sigScheme?: 'ecdsa' | 'brc100' }) {
     const exec = this.execOrThrow();
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
@@ -244,6 +244,7 @@ export class MarketService {
         marketId: id, trader, side, action, units: BigInt(units),
         ...(input.sig !== undefined ? { sig: input.sig } : {}),
         ...(input.nonce !== undefined ? { nonce: input.nonce } : {}),
+        ...(input.sigScheme !== undefined ? { sigScheme: input.sigScheme } : {}),
       });
       return { market_id: id, receipt: sr.receipt, sig: sr.sig, signer_pubkey: sr.signerPubkey };
     } catch (e) {

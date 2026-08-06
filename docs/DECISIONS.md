@@ -566,3 +566,47 @@ Template:
   sensitive). Local end-to-end: 26 real signed fills → settle → audit ok → resolve → **4 winners paid 15,000
   sat in one tx**. 98 workspace + 28 sCrypt green. Migration 011 adds the `payout` broadcast kind + a `payouts`
   audit table; daemon exposes `POST /markets/:id/payout` and `GET /markets/:id/payout-preview`.
+
+## ADR-029 · A face on the system: trader app + operator console, and the daemon gets auth (UI-001) · Accepted · 2026-08-06
+- Context: after PAYOUT-001 the whole journey worked on mainnet — real wallets trade, batches settle in one tx,
+  settlements are auditable, winners get paid — but it had only ever been driven by a CLI runner. Nothing a
+  stakeholder could look at, and nothing a team could build on. `CLAUDE.md` listed "Web UI" as **out of scope**
+  for the spike; this is a deliberate step past spike into platform work, recorded here rather than left as a
+  silent contradiction. `CLAUDE.md` is updated to match.
+- Decision: **`apps/web`** — Vite + React + TypeScript, talking only to the daemon's existing HTTP API.
+  - **Trader**: market list with live prices → market detail with an order ticket (side / buy-sell / size, live
+    quote) → sign → submit; own position, own receipts, own payout.
+  - **Operator**: the **sign-off queue** as the centrepiece (every state change parks there with a
+    human-readable summary and a sat cost until a human authorizes it), plus deploy / settle / resolve / pay
+    winners, the audit report, the payout preview, and wallet balance.
+  - Polling (2–5 s), no websockets. The daemon is local; a socket layer would be complexity without a need.
+- **Signing stays with the user.** A `Signer` seam (`src/signer/`) has two implementations:
+  - `WalletSigner` — a **real BRC-100 wallet** via `@bsv/sdk` `WalletClient.createSignature`
+    (`protocolID [0,'pm order']`, `keyID = nonce`, `counterparty 'anyone'`); the private key never leaves the
+    wallet. The daemon verifies with `new ProtoWallet('anyone').verifySignature({..., counterparty: trader})` —
+    **no wallet needed server-side**, which is what makes browser signing viable at all.
+  - `LocalSigner` — a dev key in the browser, used only when no wallet is reachable, and the UI says so in a
+    warning banner. Stated plainly rather than implied to be wallet-custody.
+  Both schemes coexist: migration `012_sig_scheme` records `ecdsa` (the mainnet-proven path, unchanged) or
+  `brc100` per order, and `verifyOrder` dispatches. Payload is identical, so nothing about settlement changes.
+- **Security change forced by the UI — the daemon had no auth at all.** Any caller reaching 127.0.0.1:8787 could
+  `POST /broadcasts/:id/authorize` and spend the funding wallet; acceptable when the only client was a local
+  CLI, not once a browser page can call it. Money-spending routes (deploy/buy/sell/resolve/redeem/settle/payout/
+  authorize/reject) now require `x-pm-operator-token` = `PM_OPERATOR_TOKEN`; trader routes stay open because an
+  order already carries the trader's own signature. CORS is restricted to localhost origins, never a wildcard.
+  **Honest limit:** a shared secret over plain HTTP on loopback. Adequate for local operation; *not* a reason to
+  expose the daemon to a network — it still binds 127.0.0.1 only.
+- Verified: 11 BRC-100/ECDSA order tests (genuine accepted; tampered payload, impersonation and cross-scheme
+  confusion all rejected), 11 operator-gating tests (each money route 401s unauthenticated, nothing is queued by
+  a refused call, reads/trader routes stay open, unset token keeps the dev default), **114 workspace tests
+  green**, typecheck clean including `apps/web`, production build clean.
+- **Acceptance: the whole journey driven through the UI** (`apps/web/test/ui-journey.test.tsx`, `PM_UI_E2E=1`
+  against a live daemon on `PM_NETWORK=local`): create → deploy → **sign an order in the browser layer** →
+  settle → audit ok → resolve YES → pay winners; all 4 broadcasts authorized through the queue and broadcast,
+  audit `ok: true` / 1 receipt / 0 violations / Rabin-attested, 1 winner paid 5,000 sat.
+- **Honest gap:** the components are driven in **jsdom**, not a real browser — the harness available here blocks
+  a headless browser's subresource requests, so there is no layout/paint coverage. And **no BRC-100 wallet was
+  installed**, so `WalletSigner` is covered by unit tests and the verification contract, *not* by a live wallet
+  round-trip. Claiming otherwise would be exactly the kind of "tests pass but it breaks when I try it" this
+  project has been guarding against. A wallet round-trip is the first thing to do when one is available.
+- No mainnet spend for this ticket — the local network exercises the identical code path.

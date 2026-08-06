@@ -66,6 +66,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Market compile + setup (shared by CLI + daemon) | `packages/engine/src/market.ts` |
 | **HTTP daemon: service (orchestration)** | `apps/daemon/src/service.ts` |
 | HTTP daemon: router + JSON I/O (127.0.0.1) | `apps/daemon/src/http.ts` |
+| **HTTP daemon: operator-token gate + CORS (money routes)** | `assertOperator`/`corsHeaders` in `apps/daemon/src/http.ts` |
+| HTTP daemon: operator-gating tests | `apps/daemon/test/http-auth.test.ts` |
 | HTTP daemon: entrypoint (`pnpm --filter @pm/daemon dev`) | `apps/daemon/src/server.ts` |
 | HTTP daemon: service lifecycle tests (temp DB + MockEngine) | `apps/daemon/test/service.test.ts` |
 | **HTTP daemon: API reference + run/authorize guide** | `apps/daemon/README.md` |
@@ -76,7 +78,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | Rúnar toolchain: compiler / test-VM / SDK / contract lib | `runar-compiler`, `runar-testing`, `runar-sdk`, `runar-lang` (npm 0.4.6) |
 | Token base contracts (YES/NO) | `runar-lang/tokens` (FungibleToken / NonFungibleToken) |
 | Oracle Rabin-sig verification | `runar-lang/oracle#verifyRabinSig` |
-| SQLite migrations (001–010: init · broadcasts · pool-state · execution · settlement · broadcast-kind · commitment · rabin-attest · token-script · order-auth) | `packages/persistence/migrations/` |
+| SQLite migrations (001–012: init · broadcasts · pool-state · execution · settlement · broadcast-kind · commitment · rabin-attest · token-script · order-auth · payout-kind · sig-scheme) | `packages/persistence/migrations/` |
 | SQLite open/migrate helpers + default DB path | `packages/persistence/src/db.ts` |
 | Migrate CLI (`pnpm db:migrate`) | `packages/persistence/src/migrate-cli.ts` |
 | DB row types + BigInt boundary helpers | `packages/persistence/src/types.ts` |
@@ -92,6 +94,22 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | .env loader | `apps/spike/src/env.ts` |
 | Rúnar toolchain bugs + workarounds (internal log) | `docs/Runar-bugs.md` |
 | Rúnar bug report for the maintainers (standalone, shareable) | `docs/RUNAR-BUG-REPORT.md` |
+
+## Web UI (`apps/web` — trader app + operator console, UI-001)
+| Topic | Path |
+|---|---|
+| **App shell: wallet detection, Trade/Operator tabs, identity** | `apps/web/src/App.tsx` |
+| Browser entrypoint (mounts App) | `apps/web/src/main.tsx` |
+| HTTP client + `usePoll` + operator-token storage | `apps/web/src/api.ts` |
+| **Signer seam** (interface + canonical order payload) | `apps/web/src/signer/index.ts` |
+| Real BRC-100 wallet signer (key never leaves the wallet) | `apps/web/src/signer/walletSigner.ts` |
+| Dev-key signer (used only when no wallet; banner-flagged) | `apps/web/src/signer/localSigner.ts` |
+| Trader: market list with live YES/NO prices | `apps/web/src/views/Markets.tsx` |
+| Trader: market detail, order ticket, position, receipts | `apps/web/src/views/Market.tsx` |
+| **Operator: sign-off queue, lifecycle actions, audit, winners** | `apps/web/src/views/Operator.tsx` |
+| Styling (light/dark, no framework) | `apps/web/src/styles.css` |
+| **Acceptance test: the whole journey driven through the UI** | `apps/web/test/ui-journey.test.tsx` |
+| Dev servers | `pnpm daemon` (API) + `pnpm web` (UI on :5273) |
 
 ## Config / ops
 | Topic | Path |

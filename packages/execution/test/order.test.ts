@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { PrivateKey } from '@bsv/sdk';
+import { PrivateKey, ProtoWallet, Utils } from '@bsv/sdk';
 import { openDb, migrate, type Db } from '@pm/persistence';
 import { WAD, type MarketParams } from '@pm/lmsr';
-import { ExecutionEngine, WifReceiptSigner, signOrder, verifyOrder, type SignedOrderFields } from '../src/index.js';
+import { ExecutionEngine, WifReceiptSigner, signOrder, verifyOrder, orderPayload, ORDER_PROTOCOL_ID, orderKeyID, type SignedOrderFields } from '../src/index.js';
 
 // LIVE-001a — orders must be authenticated by the trader. Before this the engine accepted any trader pubkey as
 // a plain string, so the OPERATOR could fabricate fills in a user's name. These tests are the security
@@ -73,13 +73,78 @@ describe('trader-authenticated orders (LIVE-001a)', () => {
     expect((db.prepare('SELECT COUNT(*) c FROM exec_orders').get() as { c: number }).c).toBe(1);
   });
 
-  it('detects any tampering with the signed order fields', () => {
+  it('detects any tampering with the signed order fields', async () => {
     const f = fields(alicePub, 3);
     const sig = signOrder(alice.toWif(), f);
-    expect(verifyOrder(f, sig)).toBe(true);
-    expect(verifyOrder({ ...f, units: 100n }, sig), 'size tampered').toBe(false);
-    expect(verifyOrder({ ...f, side: 'no' }, sig), 'side tampered').toBe(false);
-    expect(verifyOrder({ ...f, action: 'sell' }, sig), 'action tampered').toBe(false);
-    expect(verifyOrder({ ...f, nonce: 4 }, sig), 'nonce tampered').toBe(false);
+    expect(await verifyOrder(f, sig)).toBe(true);
+    expect(await verifyOrder({ ...f, units: 100n }, sig), 'size tampered').toBe(false);
+    expect(await verifyOrder({ ...f, side: 'no' }, sig), 'side tampered').toBe(false);
+    expect(await verifyOrder({ ...f, action: 'sell' }, sig), 'action tampered').toBe(false);
+    expect(await verifyOrder({ ...f, nonce: 4 }, sig), 'nonce tampered').toBe(false);
+  });
+});
+
+// UI-001 — BRC-100 wallet signing. This is what lets a trader use a REAL wallet: they sign in their own wallet
+// with counterparty:'anyone', and the daemon verifies from their public identity key alone — no wallet, no
+// private key, no callback. The security properties must hold identically to the ECDSA path.
+describe('BRC-100 wallet-signed orders (UI-001)', () => {
+  const walletOf = (priv: PrivateKey) => new ProtoWallet(priv);
+  const traderPriv = PrivateKey.fromRandom();
+
+  async function identityOf(priv: PrivateKey): Promise<string> {
+    const { publicKey } = await walletOf(priv).getPublicKey({ identityKey: true });
+    return publicKey;
+  }
+  /** Exactly what the browser does: sign the order payload in the wallet. */
+  async function walletSign(priv: PrivateKey, f: SignedOrderFields): Promise<string> {
+    const { signature } = await walletOf(priv).createSignature({
+      data: Utils.toArray(orderPayload(f), 'utf8'),
+      protocolID: ORDER_PROTOCOL_ID,
+      keyID: orderKeyID(f.nonce),
+      counterparty: 'anyone',
+    });
+    return Utils.toHex(signature);
+  }
+
+  it('a wallet-signed order verifies server-side WITHOUT the wallet', async () => {
+    const trader = await identityOf(traderPriv);
+    const f: SignedOrderFields = { marketId: MARKET, trader, side: 'yes', action: 'buy', units: 1n, nonce: 1 };
+    expect(await verifyOrder(f, await walletSign(traderPriv, f), 'brc100')).toBe(true);
+  });
+
+  it('fills through the engine and records the scheme', async () => {
+    const { db, eng } = fresh();
+    const trader = await identityOf(traderPriv);
+    const f: SignedOrderFields = { marketId: MARKET, trader, side: 'yes', action: 'buy', units: 1n, nonce: 5 };
+    const sr = await eng.submit({ ...f, sig: await walletSign(traderPriv, f), sigScheme: 'brc100', ts: 1 });
+    expect(sr.receipt.trader).toBe(trader);
+    const row = db.prepare('SELECT sig_scheme FROM exec_orders WHERE seq=1').get() as { sig_scheme: string };
+    expect(row.sig_scheme).toBe('brc100');
+  });
+
+  it('REJECTS tampering with any signed field', async () => {
+    const trader = await identityOf(traderPriv);
+    const f: SignedOrderFields = { marketId: MARKET, trader, side: 'yes', action: 'buy', units: 1n, nonce: 2 };
+    const sig = await walletSign(traderPriv, f);
+    expect(await verifyOrder({ ...f, units: 50n }, sig, 'brc100'), 'size').toBe(false);
+    expect(await verifyOrder({ ...f, side: 'no' }, sig, 'brc100'), 'side').toBe(false);
+    expect(await verifyOrder({ ...f, action: 'sell' }, sig, 'brc100'), 'action').toBe(false);
+  });
+
+  it('REJECTS impersonation (another identity key cannot claim the signature)', async () => {
+    const trader = await identityOf(traderPriv);
+    const f: SignedOrderFields = { marketId: MARKET, trader, side: 'yes', action: 'buy', units: 1n, nonce: 3 };
+    const sig = await walletSign(traderPriv, f);
+    const other = await identityOf(PrivateKey.fromRandom());
+    expect(await verifyOrder({ ...f, trader: other }, sig, 'brc100')).toBe(false);
+  });
+
+  it('REJECTS an ECDSA signature presented as brc100 (and vice versa)', async () => {
+    const trader = await identityOf(traderPriv);
+    const f: SignedOrderFields = { marketId: MARKET, trader, side: 'yes', action: 'buy', units: 1n, nonce: 4 };
+    const walletSig = await walletSign(traderPriv, f);
+    expect(await verifyOrder(f, walletSig, 'ecdsa'), 'wallet sig under ecdsa').toBe(false);
+    const rawSig = signOrder(traderPriv.toWif(), { ...f, trader: traderPriv.toPublicKey().toDER('hex') as string });
+    expect(await verifyOrder(f, rawSig, 'brc100'), 'ecdsa sig under brc100').toBe(false);
   });
 });

@@ -55,9 +55,14 @@ Native on-chain LMSR contract (buy, sell, resolve, redeem); multiplicative-state
 serialization + throughput/fee measurement; token mint/redeem; oracle settlement; pure integer LMSR
 reference + invariant tests; a CLI spike harness; a written feasibility verdict on the six unknowns.
 
+Since the verdict, the spike has been extended deliberately into platform work: off-chain execution + batched
+settlement (ADR-019), the receipt→payout bridge (ADR-028), and a **web UI** — `apps/web`, a trader app plus an
+operator sign-off console with real BRC-100 wallet signing (ADR-029). Web UI *was* out of scope for the spike;
+that change is logged, not silent.
+
 ## Out of scope (this is a spike)
-Web UI, real Kalshi API, market catalogue/curation, the 4-week team/product plan, the off-chain custodial
-ledger design, multi-outcome/categorical markets, order books, leverage, mobile apps, production ops.
+Real Kalshi API, market catalogue/curation, the 4-week team/product plan, the off-chain custodial ledger design,
+multi-outcome/categorical markets, order books, leverage, mobile apps, production ops.
 
 ## Doc map (the KB)
 - `docs/VERDICT.md` — **THE DELIVERABLE.** Feasibility verdict on all six unknowns + mainnet evidence.

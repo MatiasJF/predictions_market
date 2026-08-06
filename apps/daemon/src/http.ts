@@ -3,7 +3,25 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { MarketService, ServiceError, EngineLimitation } from './service.js';
 
-interface Ctx { method: string; segs: string[]; query: URLSearchParams; body: () => Promise<any> }
+interface Ctx { method: string; segs: string[]; query: URLSearchParams; body: () => Promise<any>; operator?: boolean }
+
+/**
+ * Operator routes SPEND REAL MONEY (they authorize broadcasts). Before the web UI, the only client was a local
+ * CLI, so the daemon had no auth at all. Now that a browser page can reach it, these routes require
+ * `x-pm-operator-token` to match `PM_OPERATOR_TOKEN`. Trader routes (placing a signed order, reads) stay open —
+ * an order is already authenticated by the trader's own signature.
+ *
+ * Honest limit: a shared secret over plain HTTP on loopback. Adequate for local operation; NOT a reason to
+ * expose the daemon to a network (it still binds 127.0.0.1 only).
+ */
+const OPERATOR_ACTIONS = new Set(['deploy', 'buy', 'sell', 'resolve', 'redeem', 'settle', 'payout']);
+const operatorTokenRequired = (): string => process.env.PM_OPERATOR_TOKEN ?? '';
+
+function assertOperator(ctx: Ctx): void {
+  const want = operatorTokenRequired();
+  if (!want) return; // unset → open (dev default, matches previous behaviour)
+  if (!ctx.operator) throw new ServiceError(401, 'operator token required for this action', 'unauthorized');
+}
 
 function mapError(e: unknown): { status: number; body: object } {
   if (e instanceof EngineLimitation) return { status: 501, body: { error: 'engine_limitation', kind: e.kind, message: e.message, pointer: e.pointer } };
@@ -46,6 +64,7 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'payout-preview') return svc.payoutPreview(id);
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
+      if (OPERATOR_ACTIONS.has(segs[2] ?? '')) assertOperator(ctx);
       switch (segs[2]) {
         case 'deploy': return svc.enqueueDeploy(id);
         case 'buy': return svc.enqueueBuy(id, body.side, Number(body.shares ?? 1));
@@ -63,8 +82,8 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 1) return svc.listBroadcasts(query.get('status') ?? undefined);
     const id = intParam(segs[1], 'broadcast id');
     if (method === 'GET' && segs.length === 2) return svc.getBroadcast(id);
-    if (method === 'POST' && segs.length === 3 && segs[2] === 'authorize') return svc.authorize(id);
-    if (method === 'POST' && segs.length === 3 && segs[2] === 'reject') return svc.reject(id);
+    if (method === 'POST' && segs.length === 3 && segs[2] === 'authorize') { assertOperator(ctx); return svc.authorize(id); }
+    if (method === 'POST' && segs.length === 3 && segs[2] === 'reject') { assertOperator(ctx); return svc.reject(id); }
   }
 
   if (p0 === 'wallet' && method === 'GET' && segs[1] === 'balance') return svc.walletBalance();
@@ -72,19 +91,45 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
   throw new ServiceError(404, `no route for ${method} /${segs.join('/')}`);
 }
 
+/** CORS for the local web UI only (the Vite dev server / a local preview). Never a wildcard. */
+function corsHeaders(origin: string | undefined): Record<string, string> {
+  const ok = !!origin && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  return ok
+    ? {
+        'access-control-allow-origin': origin!,
+        'access-control-allow-headers': 'content-type, x-pm-operator-token',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-max-age': '600',
+      }
+    : {};
+}
+
 export function createHandler(svc: MarketService) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const segs = url.pathname.split('/').filter(Boolean);
-    const ctx: Ctx = { method: req.method ?? 'GET', segs, query: url.searchParams, body: () => readJson(req) };
+    const cors = corsHeaders(req.headers.origin);
+
+    if ((req.method ?? '') === 'OPTIONS') {
+      res.writeHead(204, cors);
+      res.end();
+      return;
+    }
+
+    const want = process.env.PM_OPERATOR_TOKEN ?? '';
+    const got = String(req.headers['x-pm-operator-token'] ?? '');
+    const ctx: Ctx = {
+      method: req.method ?? 'GET', segs, query: url.searchParams, body: () => readJson(req),
+      operator: want.length > 0 && got === want,
+    };
     try {
       const result = await route(svc, ctx);
       const json = JSON.stringify(result ?? null, null, 2);
-      res.writeHead(200, { 'content-type': 'application/json' });
+      res.writeHead(200, { 'content-type': 'application/json', ...cors });
       res.end(json);
     } catch (e) {
       const { status, body } = mapError(e);
-      res.writeHead(status, { 'content-type': 'application/json' });
+      res.writeHead(status, { 'content-type': 'application/json', ...cors });
       res.end(JSON.stringify(body, null, 2));
     }
   };

@@ -129,6 +129,7 @@ export interface ExecOrderRow {
   // Added in 010_order_auth (LIVE-001a) — the trader's own authorization; NULL for pre-010 rows:
   order_sig: string | null; // trader signature over marketId|trader|side|action|units|nonce (DER hex)
   nonce: number | null;     // per-trader-per-market; UNIQUE, so a signed order is single-use
+  sig_scheme: 'ecdsa' | 'brc100'; // 012: how the trader signed (CLI raw ECDSA vs a real BRC-100 wallet)
 }
 
 /** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */

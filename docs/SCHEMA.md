@@ -81,6 +81,10 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   (LIVE-001a: orders are authenticated by the trader; a replay fails at the DB too).
 - `011_payout_kind.sql` — allows `kind='payout'` in `broadcasts` + a `payouts` table (PAYOUT-001 audit
   trail: who was paid, how much, and the digest pinned on-chain).
+- `012_sig_scheme.sql` — `exec_orders` += `sig_scheme` (`'ecdsa'`|`'brc100'`, default `'ecdsa'`) (UI-001:
+  records HOW the order was signed. `ecdsa` is the CLI/mainnet-proven path; `brc100` is a real wallet signing
+  in the browser, verified server-side with `ProtoWallet('anyone')` — no server-side wallet involved. Both
+  prove the same thing and both reject tampering and impersonation; the default keeps every pre-012 row correct).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

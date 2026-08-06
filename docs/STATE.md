@@ -1,6 +1,14 @@
 # STATE — living
 
-_Last updated: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — which motivated Phase 2 (sCrypt). **PHASE 2 COMPLETE: the FULL lifecycle (deploy→buy+mint→resolve→redeem) is now LIVE on BSV mainnet under sCrypt** (txids in SCRYPT-004 / VERDICT.md) — every Rúnar blocker fixed. Funds ~1,996,947 sat (lifecycle cost ≈ fees only)._
+_Last updated: 2026-08-06 — PLATFORM (Phase P5). The system now has a **face**: `apps/web` gives traders a market
+list → order ticket → sign → position/receipts, and gives the operator a **sign-off queue** where every on-chain
+action waits for a human. Signing stays with the user (real BRC-100 wallet, dev-key fallback clearly labelled),
+and the daemon — which until now had **no auth at all** — gates money-spending routes behind an operator token
+(UI-001, ADR-029). The full journey was driven **through the UI** end to end. Everything below the P5 board is the
+earlier history; the mainnet evidence chain runs deploy → settle (26 real signed fills → 1 tx) → resolve → **payout,
+block 961094, 4 winners paid**. 114 workspace tests green._
+
+_Previously: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — which motivated Phase 2 (sCrypt). **PHASE 2 COMPLETE: the FULL lifecycle (deploy→buy+mint→resolve→redeem) is now LIVE on BSV mainnet under sCrypt** (txids in SCRYPT-004 / VERDICT.md) — every Rúnar blocker fixed. Funds ~1,996,947 sat (lifecycle cost ≈ fees only)._
 
 ## Current phase
 **FEASIBILITY PROVEN — all six unknowns resolved.** The native on-chain UTXO LMSR prediction market is
@@ -321,6 +329,21 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
+- ● UI-001 — **The face: trader app + operator console — DONE (2026-08-06, ADR-029).** `apps/web` (Vite + React
+  + TS) over the daemon's existing API. **Trader:** live prices → order ticket (side/buy-sell/size + live quote)
+  → sign → submit, own position/receipts/payout. **Operator:** the **sign-off queue** as the centrepiece (every
+  state change parks there with a plain-English summary and a sat cost until a human authorizes), plus deploy /
+  settle / resolve / pay-winners, the audit report, payout preview, wallet balance. Signing stays with the user
+  behind a `Signer` seam: `WalletSigner` (**real BRC-100 wallet**, key never leaves it; the daemon verifies with
+  `ProtoWallet('anyone')` so **no server-side wallet is needed**) and `LocalSigner` (dev key, with a visible
+  warning banner). Migration 012 records `ecdsa`|`brc100` per order; the mainnet-proven ECDSA path is untouched.
+  **Security fix forced by this:** the daemon had **no auth at all** — any local caller could authorize a
+  broadcast and spend the wallet. Money routes now require `x-pm-operator-token`; CORS is localhost-only.
+  **Acceptance met — the whole journey driven through the UI** (`apps/web/test/ui-journey.test.tsx`, live daemon
+  on `PM_NETWORK=local`): create → deploy → signed order → settle → **audit ok** → resolve → **1 winner paid
+  5,000 sat**, all 4 broadcasts authorized through the queue. **114 workspace tests green**, typecheck + build
+  clean. **Honest gaps:** components are driven in **jsdom, not a real browser** (no layout/paint coverage), and
+  **no BRC-100 wallet was installed**, so `WalletSigner` is unit-tested, not proven against a live wallet.
 - ● PAYOUT-001 — **Receipt → on-chain payout bridge — DONE + PROVEN LIVE (2026-08-06, ADR-028).** Closed the
   last hole in the user journey: winners could not collect. New `payout` contract method pays every winner in
   ONE tx (bounded loop, MAX_PAYOUTS=8) while the contract asserts resolved + `collateral >= total` and
