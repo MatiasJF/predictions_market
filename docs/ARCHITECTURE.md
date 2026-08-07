@@ -45,8 +45,18 @@ The chain is the real ledger; everything local is either ground-truth math or an
 - **On-chain (BSV, via Rúnar + @bsv/sdk):** the Market Pool stateful UTXO (holds reserve sats + `q`/`e`
   state), YES/NO token UTXOs, oracle-signed resolution, winner redemption.
 - **Off-chain (local):** `@pm/lmsr` exact reference math; SQLite tracking of market/UTXO-version/token/trade
-  lineage; the CLI that builds and broadcasts txs. No custodial user balances — this is NOT the off-chain
-  ledger design from the roadmap PDF (ADR-004).
+  lineage; the CLI that builds and broadcasts txs; and (ADR-019) the **off-chain execution engine** — instant
+  fills against signed receipts, batched into one on-chain settlement.
+
+> **Corrected 2026-08-07 (FUND-001 / ADR-040).** This section used to end "No custodial user balances", and the
+> buy flow below described "spending pool v_n + buyer funding". Both drifted out of date when off-chain
+> execution landed, and the gap was worse than stale prose: for a period **no trader money entered the system at
+> all** — a trader signed a message, `cost_sats` was recorded, nothing collected it, and winners were paid from
+> the operator's wallet. Today a buy IS funded: the trader pays a BRC-29 destination and the daemon verifies
+> that payment before a fill exists. The stake is then **custodied by the operator** between bet and payout,
+> which is ADR-019's first trust rung, chosen deliberately. The pool UTXO still holds only dust
+> (`POOL_SATS = 1`) and `collateral` remains contract state — moving real satoshis into the pool is the next
+> step, and until then the contract's `insolvent` asserts are bookkeeping, not backing.
 
 ## Data flow — a buy (target design under test)
 1. CLI reads current unspent pool UTXO (v_n) for the market from SQLite (+ confirms against chain).

@@ -162,6 +162,25 @@ via `hashPrevouts` — so **a payout cannot happen without a genuine on-chain to
 
 ---
 
+## What was NOT a market until 2026-08-07 (FUND-001)
+
+Stated plainly because every number above predates it: for the whole period covered by the mainnet evidence,
+**traders never paid for their bets**. A trader signed a message, the engine recorded a `cost_sats` figure, and
+nothing ever collected it; winners were paid real satoshis out of the operator's wallet. Every trader held a
+free option — unlimited upside, no stake — and the operator carried all the downside. The on-chain `buy` did not
+close this either: its `paymentSats` is a method argument, `assert(paymentSats >= charge)` compares a number to
+a number, and nothing ties it to any input or output value.
+
+So the mainnet runs proved the *mechanism* — LMSR pricing, signature-authenticated orders, N fills settled in
+one transaction, an audit that matches settlement to signed receipts, oracle resolution, and a consensus-enforced
+pay-once guarantee — but they did not prove a market, because the money leg on the buy side did not exist.
+
+**It exists now.** A buy requires a real payment to a BRC-29 destination, verified against the chain before a
+fill is created, enforced independently at the daemon and in the execution engine. Two consequences are worth
+carrying forward: traders need funded wallets (the "no BSV required" onboarding property was never free, it was
+unpaid for), and the operator custodies stakes between bet and payout — ADR-019's first trust rung. Putting the
+money into the pool UTXO itself, so the contract's solvency checks bind real satoshis, is the next step.
+
 ## The six unknowns
 
 1. **LMSR math on-chain — RESOLVED.** Script has no `exp`/`ln` and no unbounded loops. Two techniques make LMSR

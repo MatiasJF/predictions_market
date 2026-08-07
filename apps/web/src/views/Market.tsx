@@ -22,6 +22,8 @@ export function Market({
   const [units, setUnits] = useState(1);
   const [action, setAction] = useState<'buy' | 'sell'>('buy');
   const [busy, setBusy] = useState(false);
+  // What the user is waiting on. A wallet approval can sit for a while, so say which stage it is.
+  const [step, setStep] = useState<'idle' | 'quoting' | 'approving' | 'filling'>('idle');
   const [msg, setMsg] = useState<string>('');
   const [quote] = usePoll<any>(() => api.quote(id, side, units), [id, side, units], 4000);
 
@@ -30,6 +32,14 @@ export function Market({
   // Don't let someone build a position that could never be settled on-chain.
   const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
 
+  /**
+   * Place an order.
+   *
+   * A BUY is now a real payment (FUND-001): quote a one-time destination, ask the wallet to pay it — the user
+   * approves the amount in their own wallet — then submit the order with the payment. The daemon verifies the
+   * transaction pays what was quoted and is actually on the network before it fills, so a fill cannot exist
+   * without money having moved. A SELL is money owed to the trader, so it needs no payment.
+   */
   async function place() {
     if (!signer) return;
     setBusy(true);
@@ -38,11 +48,33 @@ export function Market({
       const trader = await signer.identityKey();
       const nonce = Date.now();
       const { sig, sigScheme } = await signer.signOrder({ marketId: id, trader, side, action, units, nonce });
-      const r = await api.submitOrder(id, { trader, side, action, units, nonce, sig, sigScheme });
-      setMsg(`filled ${action} ${units} ${side.toUpperCase()} @ ${r.receipt.priceSats} sat — receipt #${r.receipt.seq}`);
+
+      let payment: { intentId: number; paymentTx: string } | undefined;
+      if (action === 'buy') {
+        setStep('quoting');
+        const intent = await api.paymentIntent(id, { trader, side, action, units });
+        setStep('approving');
+        const paid = await signer.pay({
+          lockingScript: intent.locking_script,
+          satoshis: intent.satoshis,
+          description: `${units} ${side.toUpperCase()} @ market #${id}`,
+        });
+        payment = { intentId: intent.intent_id, paymentTx: paid.rawTx };
+      }
+
+      setStep('filling');
+      const r = await api.submitOrder(id, {
+        trader, side, action, units, nonce, sig, sigScheme,
+        ...(payment ? payment : {}),
+      });
+      setMsg(
+        `filled ${action} ${units} ${side.toUpperCase()} @ ${r.receipt.priceSats} sat — receipt #${r.receipt.seq}` +
+        (action === 'buy' ? ` · paid ${r.receipt.costSats} sat` : ''),
+      );
     } catch (e) {
       setMsg(`✗ ${e instanceof Error ? e.message : e}`);
     } finally {
+      setStep('idle');
       setBusy(false);
     }
   }
@@ -113,12 +145,26 @@ export function Market({
                 </p>
               )}
               <button className="primary" disabled={busy || !signer} onClick={() => void place()}>
-                {busy ? 'signing…' : `sign & ${action} ${units} ${side.toUpperCase()}`}
+                {step === 'quoting' ? 'getting a price…'
+                  : step === 'approving' ? 'approve the payment in your wallet…'
+                  : step === 'filling' ? 'filling…'
+                  : action === 'buy' ? `pay & buy ${units} ${side.toUpperCase()}`
+                  : `sign & sell ${units} ${side.toUpperCase()}`}
               </button>
               {msg && <p className={msg.startsWith('✗') ? 'err' : 'ok'}>{msg}</p>}
-              <p className="dim tiny">
-                Signed with your {signer?.kind === 'wallet' ? 'wallet' : 'dev key'}; the key never leaves your browser.
-              </p>
+              {action === 'buy' && signer?.kind === 'local' ? (
+                <p className="warnText tiny">
+                  A buy is a real payment now, and the development key holds no funds. Connect a BSV wallet
+                  (e.g. MetaNet Desktop) and reload to trade.
+                </p>
+              ) : (
+                <p className="dim tiny">
+                  {action === 'buy'
+                    ? 'Your wallet will ask you to approve the stake. It leaves your balance and is paid to this market.'
+                    : 'Selling returns your position to the pool; proceeds are owed to you at settlement.'}{' '}
+                  Signed with your {signer?.kind === 'wallet' ? 'wallet' : 'dev key'}; the key never leaves your browser.
+                </p>
+              )}
             </>
           )}
         </div>

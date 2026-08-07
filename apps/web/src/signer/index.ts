@@ -22,6 +22,22 @@ export interface Signer {
   /** Public identity the daemon will verify against. */
   identityKey(): Promise<string>;
   signOrder(o: OrderFields): Promise<{ sig: string; sigScheme: SigScheme }>;
+  /**
+   * FUND-001: actually pay for a buy. Returns the raw payment transaction so the daemon can verify it pays the
+   * quoted destination — and so a fill only exists if money really moved.
+   *
+   * This is the capability that separates a real wallet from the dev key: `LocalSigner` cannot implement it
+   * (it holds no funds), which is exactly why an unfunded browser cannot place a buy any more.
+   */
+  pay(p: PaymentRequest): Promise<{ txid: string; rawTx: string }>;
+}
+
+export interface PaymentRequest {
+  /** Hex locking script the daemon derived for this order. Pay THIS, not an address of your choosing. */
+  lockingScript: string;
+  satoshis: number;
+  /** Shown to the user in their wallet's approval prompt — keep it recognisable. */
+  description: string;
 }
 
 /** Canonical payload — must match `orderPayload` in @pm/execution exactly, or signatures won't verify. */

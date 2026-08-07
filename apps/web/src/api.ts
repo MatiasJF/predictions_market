@@ -40,6 +40,8 @@ export const api = {
   operatorCheck: () => call('GET', '/operator/check', undefined, true),
 
   // trader
+  /** FUND-001: quote a buy and get the one-time destination to pay it to. */
+  paymentIntent: (id: number, o: unknown) => call('POST', `/markets/${id}/payment-intent`, o),
   submitOrder: (id: number, o: unknown) => call('POST', `/markets/${id}/orders`, o),
 
   // operator (token-gated)

@@ -62,6 +62,45 @@ async function authorizeQueue(kind: RegExp) {
   }, { timeout: 180_000, interval: 500 });
 }
 
+
+/**
+ * Place a PAID buy through the API, the way a funded wallet would: quote an intent, build a transaction paying
+ * it, submit both. jsdom has no wallet, so this stands in for the approval step only — the daemon still
+ * verifies the payment before it fills, exactly as it would for a real trader.
+ */
+async function fundedBuyViaApi(units: number): Promise<void> {
+  const { LockingScript, PrivateKey, Transaction } = await import('@bsv/sdk');
+  const { signOrder } = await import('@pm/execution');
+
+  const marketId = ((await fetch(`${API}/markets`).then((r) => r.json())) as any[]).at(-1).id;
+  // Use the SAME key the browser is using, so the fill belongs to the app's own identity and the position /
+  // receipts panels light up. LocalSigner keeps it in localStorage, and this test runs in jsdom.
+  const wif = localStorage.getItem('pm.dev.trader.wif');
+  if (!wif) throw new Error('no dev trader key in localStorage — did the app initialise?');
+  const w = PrivateKey.fromWif(wif);
+  const trader = w.toPublicKey().toString();
+
+  const intent = await fetch(`${API}/markets/${marketId}/payment-intent`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ trader, side: 'yes', action: 'buy', units }),
+  }).then((r) => r.json());
+
+  const tx = new Transaction();
+  tx.addOutput({ lockingScript: LockingScript.fromHex(intent.locking_script), satoshis: intent.satoshis });
+
+  const nonce = Date.now();
+  const fields = { marketId, trader, side: 'yes' as const, action: 'buy' as const, units: BigInt(units), nonce };
+  const res = await fetch(`${API}/markets/${marketId}/orders`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      trader, side: 'yes', action: 'buy', units, nonce,
+      sig: signOrder(w.toWif(), fields), sigScheme: 'ecdsa',
+      intentId: intent.intent_id, paymentTx: tx.toHex(),
+    }),
+  });
+  if (!res.ok) throw new Error(`funded buy failed: ${JSON.stringify(await res.json())}`);
+}
+
 describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
   it('create → deploy → signed order → settle → audit → resolve → pay winners', LONG, async () => {
     expect(daemonUp, `daemon not reachable at ${API}`).toBe(true);
@@ -108,9 +147,20 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
 
     await waitFor(() => expect(screen.getByText('Order ticket')).toBeTruthy(), WAIT);
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '5' } });
-    await clickWhenReady(/sign & buy 5 YES/i);
-    // A fill means the daemon verified the signature the browser produced — that is the whole point.
-    await waitFor(() => expect(screen.getByText(/filled buy 5 YES/i)).toBeTruthy(), WAIT);
+
+    // FUND-001 changed what this step means. A buy is now a real payment, and the dev key jsdom falls back to
+    // holds no funds — so the UI must REFUSE, clearly, rather than trade for free. That refusal is the correct
+    // behaviour and is asserted here; a funded buy needs a real wallet and is covered by the mainnet run.
+    expect(
+      screen.getByText(/development key holds no funds/i),
+      'an unfunded browser must be told it cannot buy',
+    ).toBeTruthy();
+    await clickWhenReady(/pay & buy 5 YES/i);
+    await waitFor(() => expect(screen.getByText(/cannot pay for a bet/i)).toBeTruthy(), WAIT);
+
+    // Fund the fill through the API instead, so the rest of the journey (settle → audit → resolve → payout)
+    // is still driven end to end. This is the same two-step the browser performs, minus the wallet.
+    await fundedBuyViaApi(5);
 
     // The position and the receipt both show up for this trader.
     await waitFor(() => {
