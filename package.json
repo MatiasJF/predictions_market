@@ -2,11 +2,11 @@
   "name": "bsv-prediction-market",
   "version": "0.0.0",
   "private": true,
-  "description": "Feasibility spike: native on-chain UTXO LMSR prediction market on BSV via Rúnar",
+  "description": "Feasibility spike: native on-chain UTXO LMSR prediction market on BSV via R\u00fanar",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json && tsc --noEmit -p packages/engine/tsconfig.json && tsc --noEmit -p packages/execution/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p apps/spike/tsconfig.json && tsc --noEmit -p apps/daemon/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",

@@ -41,7 +41,10 @@ truth and a local SQLite store (`@pm/persistence`) tracking market/UTXO/token li
    directly then run an adversarial verification fan-out; fan out workers only for genuinely parallel work.
 
 ## Stack
-- **Language/runtime:** TypeScript, Node ≥20 (currently v20.19.5), pnpm workspaces monorepo.
+- **Language/runtime:** TypeScript, **Node ≥22** (currently v22.23.0; see `.nvmrc`), pnpm workspaces monorepo.
+  Node 22 is a hard floor, not a preference: `@bsv/wallet-toolbox` (FUND-001) ships `better-sqlite3@13`,
+  whose native binary **segfaults the process (exit 139) on Node 20**. After switching Node you MUST run
+  `pnpm rebuild -r` — native modules are built per ABI and the test suite fails 45 tests without it.
 - **On-chain contract:** **Rúnar** (`runar-lang` + `runar-compiler` + `runar-cli`, SDK `runar-sdk`) →
   compiles to Bitcoin Script; stateful via OP_PUSH_TX.
 - **Tx assembly / chain I/O:** `@bsv/sdk`; chain queries via WhatsOnChain.

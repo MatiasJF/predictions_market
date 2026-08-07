@@ -881,3 +881,29 @@ Template:
   figure and the ancestor claim were assumptions that survived because nobody measured them against the network.
 - Verified: 120 tests green, typecheck + build clean; a full local journey at the new default reports
   **28,596 sat**; the daemon banner shows `fee 100 sat/KB`.
+
+## ADR-039 · Node 22 is now a hard floor (FUND-001 prerequisite) · Accepted · 2026-08-07
+- Context: FUND-001 (the trader funding leg) adopts `@bsv/wallet-toolbox` server-side for BRC-29 payment
+  handling and `internalizeAction`. The toolbox declares `engines: { node: ">=22" }`; this repo declared `>=20`
+  and was running v20.19.5.
+- **The engine field is not advisory here — measured before deciding.** Installing the toolbox on Node 20 and
+  loading its storage driver **segfaults the process: exit code 139**. `better-sqlite3@13` ships a native binary
+  built for the Node 22 ABI, and the failure is a hard crash, not a catchable error. There is no working around
+  it on Node 20 short of abandoning SQLite storage.
+- Decision: **Node ≥22** (`.nvmrc` pins 22.23.0, root `engines.node` = `>=22`, `CLAUDE.md` §Stack records why).
+  Taken as its own change, before any funding code, so that a toolchain bump and a feature change never land
+  entangled.
+- **Verified green on 22.23.0 across the whole toolchain**, not just the tests: 120 workspace tests, typecheck
+  (8 projects incl. `apps/web`), **42 sCrypt contract tests against the real Script interpreter**, `scrypt-cli
+  compile`, and the production web build. Then the toolbox itself: `better-sqlite3` loads and runs,
+  `Setup.createWalletSQLite`, `Wallet.internalizeAction`, `Wallet.createAction`, `Monitor` and `Services` all
+  resolve.
+- **Operational trap, recorded because it cost a full red test run:** native modules are compiled per ABI, so
+  switching Node silently leaves stale binaries — the suite failed **45 tests** until `pnpm rebuild -r`. That
+  command is now part of the documented Node-switch procedure.
+- Also established while de-risking, and worth keeping: **BRC-29 derivation needs none of this.** A full
+  round-trip (payer derives the recipient's one-time public key with `protocolID [2,'3241645161d8']`,
+  `keyID = "<prefix> <suffix>"`, counterparty = recipient identity key; recipient derives the matching private
+  key) verified on Node **20** using only the repo's pinned `@bsv/sdk@2.1.9`. The toolbox is being adopted for
+  UTXO/change management, the action lifecycle state machine and `Monitor` — not because the cryptography
+  requires it. If the Node floor ever becomes a problem, that is the escape route.
