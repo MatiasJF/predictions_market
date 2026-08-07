@@ -8,10 +8,12 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@bsv/sdk": "^2.1.9",
     "@pm/engine": "workspace:*",
     "@pm/execution": "workspace:*",
     "@pm/lmsr": "workspace:*",
-    "@pm/persistence": "workspace:*"
+    "@pm/persistence": "workspace:*",
+    "@pm/wallet": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

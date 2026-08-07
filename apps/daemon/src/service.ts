@@ -12,6 +12,9 @@ import {
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, type ExecutionEngine } from '@pm/execution';
+import { deriveDestination, verifyPayment, assertIdentityKey, type ChainCheck } from '@pm/wallet';
+import type { PrivateKey } from '@bsv/sdk';
+import type { PaymentIntentRow } from '@pm/persistence';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -54,8 +57,26 @@ export class MarketService {
   constructor(
     private readonly db: Db,
     private readonly engine: ChainEngine,
-    private readonly exec?: ExecutionEngine
+    private readonly exec?: ExecutionEngine,
+    /**
+     * FUND-001. The key trader stakes are paid TO — BRC-29 destinations are derived from it, and it is the only
+     * thing that can later spend them. Supplied separately from the covenant funding key so stakes and fee
+     * money are not commingled, and so market solvency is measurable.
+     */
+    private readonly paymentKey?: PrivateKey,
+    /** Confirms a trader's payment reached the network. Offline for `local`, WhatsOnChain for mainnet. */
+    private readonly chainCheck?: ChainCheck
   ) {}
+
+  /** How long a quoted price is honoured. Short: the LMSR price moves with every other fill. */
+  private static readonly INTENT_TTL_MS = 120_000;
+
+  private payKey(): PrivateKey {
+    if (!this.paymentKey) {
+      throw new ServiceError(501, 'this daemon has no payment key — trader funding is unavailable', 'no_payment_key');
+    }
+    return this.paymentKey;
+  }
 
   /** Which chain engine is behind this daemon (for /health). */
   get engineName(): string { return this.engine.name; }
@@ -232,7 +253,128 @@ export class MarketService {
 
   // ── off-chain execution (CONC-001/002) — instant fills; settlement enqueues into the same sign-off queue ──
   /** Fill one order off-chain INSTANTLY over @pm/lmsr (no broadcast). Returns the signed receipt. */
-  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number; sig?: string; nonce?: number; sigScheme?: 'ecdsa' | 'brc100' }) {
+  // ── FUND-001: trader funding ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Quote a buy and issue a one-time destination to pay it to.
+   *
+   * The price is pinned here and honoured for a short window. It has to be short: the LMSR price moves with
+   * every other fill, so a long-lived quote is a free option on the market's direction — the exact defect this
+   * whole ticket exists to remove, reintroduced through the back door.
+   */
+  createPaymentIntent(id: number, input: { trader: string; side: string; action: string; units?: number }) {
+    this.execOrThrow();
+    const m = this.marketRow(id);
+    const pool = this.currentPool(id);
+    if (!pool) throw conflict('market not deployed — deploy the pool before trading');
+    if (pool.resolved === 1) throw conflict('market is resolved — trading is closed');
+
+    const side = asSide(input.side);
+    const action = asAction(input.action);
+    if (action !== 'buy') throw badReq('only buys are paid for; a sell is owed proceeds, not charged');
+    const trader = assertIdentityKey((input.trader ?? '').trim());
+    const units = input.units ?? 1;
+    if (!Number.isInteger(units) || units < 1 || units > MAX_UNITS) {
+      throw badReq(`units must be an integer in 1..${MAX_UNITS}`);
+    }
+
+    // Price against the EXECUTION engine's live state, not the pool's.
+    //
+    // Fills are off-chain and settle only periodically, so the on-chain pool lags behind by a whole batch.
+    // Quoting from the pool therefore under-prices every buy after the first one in a batch, and the fill then
+    // fails as underfunded — caught by the settlement tests, which buy five times in a row.
+    this.ensureExecOpen(m);
+    const p = paramsOf(cfgOf(m));
+    const live = this.execOrThrow().stateOf(id);
+    const mult = unitMultiplier(p);
+    let sBuy = live;
+    let charge = 0n;
+    for (let i = 0; i < units; i++) {
+      sBuy = applyUnitBuy(sBuy, side, mult, p);
+      charge += buyChargeApproxSats(sBuy, side, p.unit, p);
+    }
+    const quoted = Number(charge);
+    const dest = deriveDestination(this.payKey(), trader);
+    const expiresAt = new Date(Date.now() + MarketService.INTENT_TTL_MS).toISOString();
+
+    const info = this.db.prepare(
+      `INSERT INTO payment_intents
+       (market_id, trader_pubkey, side, action, units, quoted_cost_sats,
+        derivation_prefix, derivation_suffix, locking_script, address, expires_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      id, trader, side, action, units, quoted,
+      dest.remittance.derivationPrefix, dest.remittance.derivationSuffix,
+      dest.lockingScript, dest.address, expiresAt,
+    );
+
+    return {
+      intent_id: Number(info.lastInsertRowid),
+      market_id: id, side, action, units,
+      /** Pay AT LEAST this. The true cost is recomputed at fill time; the surplus is yours back. */
+      satoshis: quoted,
+      locking_script: dest.lockingScript,
+      address: dest.address,
+      expires_at: expiresAt,
+      network: m.network,
+    };
+  }
+
+  private intentRow(intentId: number): PaymentIntentRow {
+    const row = this.db.prepare('SELECT * FROM payment_intents WHERE id=?').get(intentId) as PaymentIntentRow | undefined;
+    if (!row) throw notFound(`payment intent ${intentId} not found`);
+    return row;
+  }
+
+  /**
+   * Turn a submitted payment into funding proof, or refuse.
+   *
+   * Everything here is a way for the free option to come back, so each is checked explicitly rather than
+   * assumed: an intent belonging to someone else, an expired quote, an intent already spent on another fill, a
+   * transaction that pays a different script, one that pays too little, and — the subtle one — a perfectly
+   * valid transaction that was never broadcast.
+   */
+  private async acceptPayment(
+    intent: PaymentIntentRow,
+    order: { trader: string; side: Side; action: 'buy' | 'sell'; units: number },
+    rawTxHex: string,
+  ): Promise<{ intentId: number; paidSats: number; txid: string }> {
+    if (intent.status !== 'pending') {
+      throw conflict(`payment intent ${intent.id} is already '${intent.status}'`);
+    }
+    if (intent.trader_pubkey !== order.trader) throw badReq('payment intent belongs to a different trader');
+    if (intent.side !== order.side || intent.action !== order.action || intent.units !== order.units) {
+      throw badReq('order does not match the quoted intent (side/action/units)');
+    }
+    if (Date.parse(intent.expires_at) < Date.now()) {
+      this.db.prepare("UPDATE payment_intents SET status='expired', decided_at=datetime('now') WHERE id=?").run(intent.id);
+      throw conflict('quote expired — request a new one; the price moves with every fill');
+    }
+
+    let paid: { txid: string; outputIndex: number; satoshis: number };
+    try {
+      paid = await verifyPayment(rawTxHex, intent.locking_script, intent.quoted_cost_sats, this.chainCheck ?? { exists: async () => true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.db.prepare("UPDATE payment_intents SET status='rejected', error=?, decided_at=datetime('now') WHERE id=?")
+        .run(msg, intent.id);
+      throw badReq(msg);
+    }
+
+    // The unique index on (txid, output_index) is the real guard against one payment funding two fills; this
+    // update is where it fires, before any fill exists.
+    try {
+      this.db.prepare("UPDATE payment_intents SET status='paid', paid_sats=?, txid=?, output_index=?, decided_at=datetime('now') WHERE id=?")
+        .run(paid.satoshis, paid.txid, paid.outputIndex, intent.id);
+    } catch {
+      throw conflict('that payment output has already funded another order');
+    }
+    return { intentId: intent.id, paidSats: paid.satoshis, txid: paid.txid };
+  }
+
+  async submitOrder(id: number, input: { trader: string; side: string; action: string; units?: number; sig?: string; nonce?: number; sigScheme?: 'ecdsa' | 'brc100';
+    /** FUND-001: the intent this order pays, and the trader's payment transaction (raw hex). */
+    intentId?: number; paymentTx?: string }) {
     const exec = this.execOrThrow();
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
@@ -245,15 +387,36 @@ export class MarketService {
     const units = input.units ?? 1;
     if (!Number.isInteger(units) || units < 1 || units > MAX_UNITS) throw badReq(`units must be an integer in 1..${MAX_UNITS}`);
     this.ensureExecOpen(m);
+
+    // FUND-001 — collect the money BEFORE the fill exists. A buy without an accepted payment must not reach the
+    // execution engine at all; the engine has its own gate as a backstop, but the authority is here, where the
+    // payment can actually be verified against the chain.
+    let funding: { intentId: number; paidSats: number } | undefined;
+    if (action === 'buy') {
+      if (input.intentId === undefined || !input.paymentTx) {
+        throw badReq('a buy must reference a payment intent and include the payment transaction');
+      }
+      const accepted = await this.acceptPayment(this.intentRow(input.intentId), { trader, side, action, units }, input.paymentTx);
+      funding = { intentId: accepted.intentId, paidSats: accepted.paidSats };
+    }
+
     try {
       const sr = await exec.submit({
         marketId: id, trader, side, action, units: BigInt(units),
         ...(input.sig !== undefined ? { sig: input.sig } : {}),
         ...(input.nonce !== undefined ? { nonce: input.nonce } : {}),
         ...(input.sigScheme !== undefined ? { sigScheme: input.sigScheme } : {}),
+        ...(funding !== undefined ? { funding } : {}),
       });
       return { market_id: id, receipt: sr.receipt, sig: sr.sig, signer_pubkey: sr.signerPubkey };
     } catch (e) {
+      // The payment was accepted but the fill failed (bad signature, oversell, price moved past what was paid).
+      // Mark the intent so the money is visibly owed back rather than quietly kept — refunding it is the
+      // operator's job and is tracked by `refund_txid`.
+      if (funding) {
+        this.db.prepare("UPDATE payment_intents SET status='rejected', error=?, decided_at=datetime('now') WHERE id=?")
+          .run(`fill failed after payment: ${e instanceof Error ? e.message : String(e)}`, funding.intentId);
+      }
       throw badReq(e instanceof Error ? e.message : String(e));
     }
   }

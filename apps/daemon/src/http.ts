@@ -81,7 +81,10 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
         case 'sell': return svc.enqueueSell(id, body.side, Number(body.shares ?? 1));
         case 'resolve': return svc.enqueueResolve(id, body.outcome);
         case 'redeem': return svc.enqueueRedeem(id, body.side, Number(body.shares ?? 1));
-        case 'orders': return svc.submitOrder(id, body); // off-chain instant fill (CONC-001)
+        // FUND-001: quote a buy and get a one-time destination to pay it to. Trader-facing, so it is NOT
+        // operator-gated — but it spends nothing, it only prices and derives.
+        case 'payment-intent': return svc.createPaymentIntent(id, body);
+        case 'orders': return svc.submitOrder(id, body); // off-chain instant fill (CONC-001), now paid for
         case 'settle': return svc.enqueueSettle(id); // batch settlement → sign-off queue (CONC-002)
         case 'payout': return svc.enqueuePayout(id); // pay winners on-chain (PAYOUT-001)
       }

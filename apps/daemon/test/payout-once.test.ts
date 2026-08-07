@@ -13,17 +13,18 @@ import { openDb, migrate, type Db } from '@pm/persistence';
 import { MockEngine } from '@pm/engine';
 import { ExecutionEngine, makeReceiptSigner, signOrder, makeTraderWallet } from '@pm/execution';
 import { MarketService, ServiceError } from '../src/service.js';
+import { paidBuy } from './helpers/pay.js';
+import { OfflineChainCheck } from '@pm/wallet';
+import { PrivateKey } from '@bsv/sdk';
 
 const PAYOUT_UNIT = 1000;
 
 async function marketWithAWinner() {
   const db: Db = openDb(':memory:');
   migrate(db);
-  // FUND-001: funding is verified by the DAEMON (payment intent → chain check) before it reaches the
-  // engine; these tests drive the engine directly, so the engine-level gate is opted out here and the
-  // real path is covered by the daemon's own funding tests.
-  const exec = new ExecutionEngine(db, makeReceiptSigner(), true, false);
-  const svc = new MarketService(db, new MockEngine(), exec);
+  const exec = new ExecutionEngine(db, makeReceiptSigner());
+  // FUND-001: buys are paid for now, so the service needs a payment key; offline chain check for in-memory tests.
+  const svc = new MarketService(db, new MockEngine(), exec, PrivateKey.fromRandom(), new OfflineChainCheck());
 
   const m = await svc.createMarket({ question: 'Will X happen?', bUnits: 1000, payoutUnit: PAYOUT_UNIT });
   await svc.enqueueDeploy(m.id);
@@ -33,7 +34,7 @@ async function marketWithAWinner() {
   // one trader buys YES, and YES wins
   const w = makeTraderWallet();
   const fields = { marketId: m.id, trader: w.pubkey, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 1 };
-  await svc.submitOrder(m.id, { ...fields, units: 3, sig: signOrder(w.wif, fields) } as never);
+  await paidBuy(svc, m.id, { trader: w.pubkey, side: 'yes', units: 3, sig: signOrder(w.wif, fields), nonce: 1 });
 
   db.prepare("UPDATE markets SET resolution='yes', state='resolved' WHERE id=?").run(m.id);
   db.prepare('UPDATE pool_utxos SET resolved=1, winner=1 WHERE market_id=?').run(m.id);

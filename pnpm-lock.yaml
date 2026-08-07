@@ -23,6 +23,9 @@ importers:
 
   apps/daemon:
     dependencies:
+      '@bsv/sdk':
+        specifier: ^2.1.9
+        version: 2.1.9
       '@pm/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -35,6 +38,9 @@ importers:
       '@pm/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@pm/wallet':
+        specifier: workspace:*
+        version: link:../../packages/wallet
     devDependencies:
       '@types/node':
         specifier: ^26.1.1

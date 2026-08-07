@@ -10,6 +10,8 @@ import { RunarEngine, type ChainEngine } from '@pm/engine';
 import { ExecutionEngine, makeReceiptSigner } from '@pm/execution';
 import { MarketService } from './service.js';
 import { startServer } from './http.js';
+import { PrivateKey } from '@bsv/sdk';
+import { WocChainCheck, OfflineChainCheck } from '@pm/wallet';
 
 /** Read a WIF from the repo-root .env (used at runtime only — never stored/echoed; Golden Rule 6). */
 function envWif(name: string): string {
@@ -23,6 +25,12 @@ function envWif(name: string): string {
 const fundingWif = (): string => envWif('PM_FUNDING_WIF');
 /** Sequencer WIF for signing off-chain receipts — falls back to the funding key, then a random dev key. */
 const sequencerWif = (): string => envWif('PM_SEQUENCER_WIF') || fundingWif();
+/**
+ * FUND-001. The key trader STAKES are paid to. Separate from the covenant funding key by default so stake
+ * money and fee money are not commingled and a market's solvency is measurable — but it falls back, because a
+ * daemon with no payment key cannot accept trades at all.
+ */
+const paymentWif = (): string => envWif('PM_PAYMENT_WIF') || fundingWif();
 
 async function makeEngine(): Promise<{ engine: ChainEngine; label: string }> {
   const kind = process.env.PM_ENGINE ?? 'runar';
@@ -45,13 +53,16 @@ const db = openDb(dbPath);
 const applied = migrate(db);
 
 const { engine, label } = await makeEngine();
-// FUND-001, IN PROGRESS. The engine-level payment gate is built and proven (`funding.test.ts`), but the daemon
-// does not yet issue payment intents or verify payments, so switching it on here would reject every order and
-// break a working, demoed system mid-feature. It is therefore explicitly OFF for now — meaning the free option
-// documented in ADR-040 is still open on this path — and gets flipped to `true` in the same commit that wires
-// `createPaymentIntent` + payment verification into `submitOrder`. Loud rather than silent, deliberately.
-const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()), true, false);
-const service = new MarketService(db, engine, exec);
+// FUND-001: the payment gate is ON. A buy is only a fill if the trader actually paid for it.
+const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()));
+// Trader payments: derive destinations from the payment key, and confirm the payment actually reached the
+// network. `local` accepts anything (there is no chain to ask); mainnet asks WhatsOnChain, which is what stops
+// a trader submitting a valid-but-never-broadcast payment and getting a fill for free.
+const payKey = paymentWif() ? PrivateKey.fromWif(paymentWif()) : undefined;
+const chainCheck = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
+  ? new WocChainCheck('main')
+  : new OfflineChainCheck();
+const service = new MarketService(db, engine, exec, payKey, chainCheck);
 const port = Number(process.env.PM_PORT ?? 8787);
 
 startServer(service, port);

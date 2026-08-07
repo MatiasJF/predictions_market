@@ -907,3 +907,42 @@ Template:
   key) verified on Node **20** using only the repo's pinned `@bsv/sdk@2.1.9`. The toolbox is being adopted for
   UTXO/change management, the action lifecycle state machine and `Monitor` — not because the cryptography
   requires it. If the Node floor ever becomes a problem, that is the escape route.
+
+## ADR-040 · A bet is now an actual bet — the trader funding leg (FUND-001) · Accepted · 2026-08-07
+- **The defect.** No satoshi belonging to a trader had ever entered this system. A trader signed a *message*,
+  the engine recorded `costSats` into a receipt, and **nothing collected it**; at resolution the winner was paid
+  real money from the operator's wallet. Every trader held a **free option** — unlimited upside, no stake — with
+  the operator carrying 100% of the downside. Found by the user in one question: *"if no money leaves my balance
+  at any time then I am not betting, I am just winning or not."*
+- **It was worse than "the off-chain path dropped the payment".** The on-chain `buy` does not take money either:
+  `paymentSats` is a free method argument, `assert(paymentSats >= charge)` compares a number to a number, and
+  nothing relates it to any input or output value. `execBuy` hardcodes `buyer = selfPkh()`, so the operator is
+  always the buyer; `redeem` is the operator paying itself with a token it minted to itself. There was no funded
+  path anywhere, and I had told the user otherwise before tracing it — corrected in the plan and here.
+- Decision (user's, from two explicit choices): stakes go to the **operator's payment key now, the pool later**,
+  and **every buy is a real payment the trader approves**. This completes ADR-019's own trust ladder, whose
+  first rung was *custodial + receipts* — what shipped sat **below** it: not custodial, just unfunded.
+- **The gate, in two independent layers.** The daemon quotes a `payment_intent` (BRC-29 one-time destination
+  derived to the operator's payment key, priced, short TTL), verifies the trader's payment transaction against
+  it, and only then fills. The execution engine refuses a buy carrying no `FundingProof` or one that does not
+  cover the computed cost. Either alone would do; both means a bug in one is not a free option.
+- **Placement of the engine check is load-bearing:** it sits after the cost is computed but *before* `m.state`
+  and `m.seq` mutate, so a refused buy leaves the market untouched. Below that line, a rejected order would
+  still move the price for everyone else — a free way to shift a market without ever paying. Tested directly.
+- **The side door that mattered most: a payment that was never broadcast.** A trader could build a perfectly
+  valid payment, not broadcast it, get a fill, and spend the inputs elsewhere. `ChainCheck` closes it —
+  WhatsOnChain on mainnet, offline for `local` (where there is deliberately no chain), selected by the network
+  setting rather than a flag someone could flip.
+- **A real bug the tests caught, worth recording:** the first implementation priced intents from the *on-chain
+  pool* state. Fills are off-chain and settle only periodically, so the pool lags a whole batch behind and every
+  buy after the first was under-priced, then rejected as underfunded. Intents now price against the **execution
+  engine's live state**. The settlement tests, which buy five times in a row, are what surfaced it.
+- Verified: **21 new tests** (8 engine-level, 13 daemon-level) covering no payment, wrong destination, wrong
+  trader, mismatched order, expired quote, reused intent, unknown intent, underpayment, never-broadcast, a
+  daemon with no payment key, and the happy path — each asserting **no `exec_orders` row survives a rejection**.
+  154 workspace tests, typecheck and web build clean.
+- **Honest scope.** Between stake and payout the operator custodies the money — ADR-019 rung 1, chosen
+  deliberately. Traders now need funded wallets; the "no BSV required" onboarding property was never free, it
+  was simply unpaid for. Sells are still owed rather than paid (the payout side lands next), the UI does not yet
+  ask a wallet to pay, and `ARCHITECTURE.md`'s boundary section is stale in both directions and is corrected
+  separately. The misleading `paymentSats` assert in `buy` stays until the pool holds real collateral.

@@ -7,6 +7,9 @@ import { MockEngine, EngineLimitation } from '@pm/engine';
 import { ExecutionEngine, makeReceiptSigner, verifyReceipt, signOrder, makeTraderWallet } from '@pm/execution';
 import { WAD } from '@pm/lmsr';
 import { MarketService, ServiceError } from '../src/service.js';
+import { PrivateKey } from '@bsv/sdk';
+import { paidBuy } from './helpers/pay.js';
+import { OfflineChainCheck } from '@pm/wallet';
 
 function freshService() {
   const db: Db = openDb(':memory:');
@@ -17,11 +20,10 @@ function freshService() {
 function freshExecService() {
   const db: Db = openDb(':memory:');
   migrate(db);
-  // FUND-001: funding is verified by the DAEMON (payment intent → chain check) before it reaches the
-  // engine; these tests drive the engine directly, so the engine-level gate is opted out here and the
-  // real path is covered by the daemon's own funding tests.
-  const exec = new ExecutionEngine(db, makeReceiptSigner(), true, false);
-  return { db, svc: new MarketService(db, new MockEngine(), exec) };
+  const exec = new ExecutionEngine(db, makeReceiptSigner());
+  // FUND-001: buys must be paid for, so the service needs a payment key and a chain check. `OfflineChainCheck`
+  // is correct here — these are in-memory tests with no chain to ask.
+  return { db, svc: new MarketService(db, new MockEngine(), exec, PrivateKey.fromRandom(), new OfflineChainCheck()) };
 }
 
 describe('MarketService — market lifecycle + sign-off queue', () => {
@@ -189,13 +191,13 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id); // pool v0
 
     // Five INSTANT off-chain fills (3 YES buys, 2 NO buys) — no broadcasts, signed receipts returned.
-    const r1 = await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
+    const r1 = await paidBuy(svc, m.id, order(m.id, 'yes', 'buy', 1) as never);
     expect(r1.receipt.seq).toBe(1);
     expect(verifyReceipt(r1.receipt, r1.sig, r1.signer_pubkey)).toBe(true);
-    await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
-    await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
-    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
-    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
+    await paidBuy(svc, m.id, order(m.id, 'yes', 'buy', 1) as never);
+    await paidBuy(svc, m.id, order(m.id, 'yes', 'buy', 1) as never);
+    await paidBuy(svc, m.id, order(m.id, 'no', 'buy', 1) as never);
+    await paidBuy(svc, m.id, order(m.id, 'no', 'buy', 1) as never);
 
     // Fills are off-chain: the pool is still at v0 and no NEW broadcast was queued by the fills
     // (the only broadcast so far is the already-authorized deploy; nothing is pending).
@@ -236,8 +238,8 @@ describe('MarketService — off-chain execution + batch settlement (CONC-001/002
     const { db, svc } = freshExecService();
     const m = await svc.createMarket({ question: 'audit', bUnits: 1000 });
     await svc.authorize((await svc.enqueueDeploy(m.id)).broadcast_id);
-    for (let i = 0; i < 3; i++) await svc.submitOrder(m.id, order(m.id, 'yes', 'buy', 1));
-    await svc.submitOrder(m.id, order(m.id, 'no', 'buy', 1));
+    for (let i = 0; i < 3; i++) await paidBuy(svc, m.id, order(m.id, 'yes', 'buy', 1) as never);
+    await paidBuy(svc, m.id, order(m.id, 'no', 'buy', 1) as never);
     await svc.authorize((await svc.enqueueSettle(m.id)).broadcast_id);
 
     // An honest settlement audits clean.
