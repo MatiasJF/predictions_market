@@ -53,7 +53,7 @@ startServer(service, port);
 
 console.log(`pm-daemon listening on http://127.0.0.1:${port}`);
 console.log(`  db:        ${dbPath} (migrations applied this start: ${applied})`);
-console.log(`  engine:    ${label}`);
+console.log(`  engine:    ${label}, fee ${process.env.PM_FEE_PER_KB ?? 100} sat/KB`);
 console.log(`  exec:      off-chain fills (POST /markets/:id/orders) → settle (POST /markets/:id/settle) into the sign-off queue`);
 console.log(`  sign-off:  state-changing ops park in the broadcasts queue; POST /broadcasts/:id/authorize to send`);
 engine.fundingAddress()

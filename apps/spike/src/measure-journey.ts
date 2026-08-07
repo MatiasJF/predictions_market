@@ -28,7 +28,10 @@ async function call(method: string, path: string, body?: unknown): Promise<any> 
   return j;
 }
 
-const MAINNET_FEE_PER_KB = 500; // FeeProvider's forced rate — the local provider's rate is NOT representative
+// Must match the engine's PM_FEE_PER_KB (default 100 = the published miner minimum; TAAL/GorillaPool ARC
+// /v1/policy, verified 2026-08-07). The LOCAL provider charges its own token rate, so a local run's recorded fee
+// is not representative — this is what the same bytes would cost on mainnet.
+const MAINNET_FEE_PER_KB = Number(process.env.PM_FEE_PER_KB ?? 100);
 const mainnetFee = (bytes: number) => Math.ceil((bytes / 1000) * MAINNET_FEE_PER_KB);
 const rows: { stage: string; size: number; fee: number }[] = [];
 
@@ -47,7 +50,7 @@ async function authorize(stage: string) {
 async function main() {
   const m = await call('POST', '/markets', { question: 'Mainnet demo', bUnits: 1000, payoutUnit: 1000 });
   console.log(`market #${m.id} — b=${m.bUnits}, ${m.payoutUnit} sat/share\n`);
-  console.log('  stage        size            fee @ 500 sat/KB');
+  console.log(`  stage        size            fee @ ${MAINNET_FEE_PER_KB} sat/KB`);
   console.log('  ------------------------------------------------');
 
   await call('POST', `/markets/${m.id}/deploy`, {});

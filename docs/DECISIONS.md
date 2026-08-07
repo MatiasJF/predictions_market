@@ -850,3 +850,34 @@ Template:
   returns them from `GET /broadcasts`, and the console prints full txids. 120 tests green, typecheck + build clean.
 - Existing rows from the 2026-08-07 mainnet run predate the migration, so they show `—` for size/fee; their
   txids and explorer links work.
+
+## ADR-038 · We were paying 5× the miner minimum (MAINNET-007) · Accepted · 2026-08-07
+- Context: the engine's fee rate was hardcoded at **500 sat/KB**. The user flagged it should be 100. They were
+  right, and it is the largest single cost error in the project.
+- **Evidence.** Both TAAL and GorillaPool publish the same policy at ARC `/v1/policy` (verified 2026-08-07):
+  `miningFee: { bytes: 1000, satoshis: 100 }` — **100 sat/KB**. Nothing required 500.
+- **How the mistake happened, because the shape is worth remembering.** The original symptom was real: sCrypt
+  takes its fee from `provider.getFeePerKb()`, and WhatsOnChain's default (~50 sat/KB) sits *below* the miner
+  minimum, so those transactions were deprioritised and sat unconfirmed 40+ minutes. The diagnosis was right and
+  the remedy overshot — the fix for "below policy" is "at policy", not "5× policy". No measurement was taken
+  against what miners actually publish; a round number was picked that made the symptom go away. It then went
+  unquestioned through two mainnet runs.
+- Decision: default **100 sat/KB**, overridable with `PM_FEE_PER_KB` (validated: positive finite number, or the
+  daemon refuses to start). It is miner policy, not consensus, so it belongs in configuration — if miners raise
+  their minimum or a transaction sits, raise the number instead of editing code. The daemon prints the active
+  rate at startup and `measure:journey` reads the same variable, so the projection cannot drift from the engine.
+- **Measured effect — same bytes, same journey:**
+  | stage | size | at 500 sat/KB | at 100 sat/KB |
+  |---|---|---|---|
+  | deploy | 39.7 KB | 20,350 sat | **4,071 sat** |
+  | settle | 79.6 KB | 40,772 sat | **8,155 sat** |
+  | resolve | 80.0 KB | 40,940 sat | **8,188 sat** |
+  | payout | 79.9 KB | 40,908 sat | **8,182 sat** |
+  | **total** | 279.2 KB | 142,969 sat | **28,596 sat** |
+  **An 80% reduction — 114,373 sat saved per market lifecycle.** The two mainnet runs (ADR-034/036) were billed
+  at the old rate; their transaction *sizes* remain the durable measurement, their fees were 5× necessary.
+- Related correction in the same pass: `VERDICT.md`'s "ancestor budget" bullet claimed a 4-tx lifecycle must be
+  split across confirmations. ADR-036 measured a 3-deep 183.5 KB chain confirming in one block. Both the fee
+  figure and the ancestor claim were assumptions that survived because nobody measured them against the network.
+- Verified: 120 tests green, typecheck + build clean; a full local journey at the new default reports
+  **28,596 sat**; the daemon banner shows `fee 100 sat/KB`.

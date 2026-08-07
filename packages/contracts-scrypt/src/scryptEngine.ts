@@ -30,12 +30,30 @@ const WAD = 10n ** 18n
 const COLLATERAL = 1_000_000_000n // pool collateral is STATE (spike); large enough to cover any redeem
 const POOL_SATS = 1 // dust — collateral is state, not locked sats
 const TOKEN_SATS = 1
-const FEE_PER_KB = 500 // 0.5 sat/byte — the rate sCrypt's builders actually use (via provider.getFeePerKb)
+/**
+ * Fee rate in satoshis per 1000 bytes — the single biggest lever on this system's running cost, because the
+ * covenant republishes the whole compiled contract on every spend.
+ *
+ * 100 sat/KB is what miners actually publish. Verified 2026-08-07 against both TAAL and GorillaPool ARC
+ * `/v1/policy`: `miningFee: { bytes: 1000, satoshis: 100 }`. This was 500 for a while, which was an
+ * over-correction: the original problem was that WhatsOnChain's provider default (~50 sat/KB) sits BELOW the
+ * miner minimum, so those transactions were deprioritised and sat unconfirmed for 40+ minutes. The fix for
+ * "below policy" is "at policy", not "5× policy" — that mistake cost ~4× the fee on two mainnet runs.
+ *
+ * Overridable with `PM_FEE_PER_KB` because it is policy, not consensus: if miners raise their minimum, or a
+ * transaction sits unconfirmed longer than you like, raise this rather than editing code.
+ */
+const FEE_PER_KB = (() => {
+    const raw = process.env.PM_FEE_PER_KB
+    const n = raw === undefined ? 100 : Number(raw)
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`PM_FEE_PER_KB must be a positive number, got '${raw}'`)
+    return n
+})()
 
 /**
- * Forces an explicit fee rate. sCrypt derives tx fees from the provider's getFeePerKb(); WhatsOnChain returns
- * ~50 sat/KB (0.05 sat/byte), which is too low for the pool txs (~44 KB/spend after CONC-004 slimming) to confirm
- * promptly (they sat unconfirmed for 40+ min). Overriding it to 500 sat/KB is the real fee-control fix.
+ * Forces an explicit fee rate. sCrypt derives every transaction's fee from the provider's `getFeePerKb()`, and
+ * WhatsOnChain's default (~50 sat/KB) is BELOW the published miner minimum, so those transactions were
+ * deprioritised and sat unconfirmed for 40+ minutes. This is the one place the rate is decided — see FEE_PER_KB.
  */
 class FeeProvider extends DefaultProvider {
     override async getFeePerKb(): Promise<number> {

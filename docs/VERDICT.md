@@ -223,12 +223,17 @@ Benchmarked on the shipped engine (`scratchpad/bench.ts`), not estimated:
   spend ≈ **2× the script**. Script history: 45.7 KB → 21.4 KB (slimming) → 30.2 KB (+`settle`) → 30.5 KB
   (+commitment) → 32.9 KB (+backtrace redeem) → **29.8 KB** (square-and-multiply, CONC-006 — smaller *and* a
   200× larger batch cap).
-- **Ancestor budget.** BSV allows ~**101 KB / 25 txs** of unconfirmed ancestors. At ~66 KB per hardened spend
-  only ~1 fits unconfirmed; a 4-tx lifecycle must be split across confirmations (the §5 proof deliberately uses
-  a 3-tx shape for this reason).
+- **Ancestor budget — not the wall it was assumed to be.** The oft-quoted ~101 KB / 25-tx unconfirmed-ancestor
+  figure is *miner policy*, not consensus. Measured 2026-08-06: deploy + settle + resolve, a **3-deep 183.5 KB**
+  unconfirmed chain, all confirmed in **one block (961149)**. Plan for it, don't design around it.
 - **Cost.** Full lifecycle **70,241 sat (~US$0.04)**; a batch settlement amortizes **N trades over one fee**.
-- **Fee control.** The real knob is `provider.getFeePerKb()` (a `FeeProvider` override) — not
-  `bsv.Transaction.FEE_PER_KB`. WhatsOnChain's default (~50 sat/KB) is too low for these txs to confirm.
+- **Fee control, and a 5× overpayment corrected.** The real knob is `provider.getFeePerKb()` (a `FeeProvider`
+  override) — not `bsv.Transaction.FEE_PER_KB`. WhatsOnChain's default (~50 sat/KB) sits *below* the miner
+  minimum, so those transactions are deprioritised. The fix was set to **500 sat/KB**, which overshot: miners
+  publish **100 sat/KB** (TAAL and GorillaPool ARC `/v1/policy`: `miningFee { bytes: 1000, satoshis: 100 }`,
+  verified 2026-08-07). Now 100 by default and tunable via `PM_FEE_PER_KB`. **A full journey costs 28,596 sat
+  instead of 142,969 — an 80% reduction** for the identical bytes. The two mainnet runs above were billed at the
+  old rate; their *sizes* are the durable numbers, their fees were 5× what they needed to be.
 - **Confirmation latency** is BSV block timing, not our code — droughts of 30–60 min were observed and waited out.
 
 ---

@@ -33,7 +33,7 @@ function fundingWif(): string {
     return m[1]!.trim().replace(/^["']|["']$/g, '')
 }
 
-const FEE_PER_KB = 500
+const FEE_PER_KB = Number(process.env.PM_FEE_PER_KB ?? 100) // miner-published minimum; see scryptEngine.ts
 class FeeProvider extends DefaultProvider {
     override async getFeePerKb(): Promise<number> {
         return FEE_PER_KB
