@@ -66,3 +66,13 @@ button.danger { background:var(--err); border-color:var(--err); color:#fff; }
 .pill.bad { color:var(--err); border-color:var(--err); }
 .failed { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
 .failed .err { overflow-wrap:anywhere; }
+
+/* --- on-chain transaction log (MAINNET-006) ------------------------------------------------------------ */
+.txlog { display:flex; flex-direction:column; gap:10px; }
+.txrow { border-top:1px solid var(--line); padding-top:8px; }
+.txhead { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:baseline; }
+.txid { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+.txid code { font-size:.78rem; overflow-wrap:anywhere; background:var(--bg); border:1px solid var(--line);
+              padding:3px 6px; border-radius:6px; }
+.txid a { color:var(--accent); font-size:.8rem; text-decoration:none; }
+.txid a:hover { text-decoration:underline; }

@@ -828,3 +828,25 @@ Template:
 - What this establishes, plainly: a person with a browser wallet can trade a native on-chain LMSR market on BSV,
   have their fills settle in one transaction, see the settlement audited against what they signed, and be paid
   to the key they traded with — with an operator who cannot pay them twice even by mistake.
+
+## ADR-037 · A transaction log you can actually verify with (MAINNET-006) · Accepted · 2026-08-07
+- Context: after the first live run the operator console reported `broadcast b3fc3b49dc369fbfe67b…` — truncated,
+  unselectable, unlinked. The very first thing anyone does after spending real money is look the transaction up,
+  and that string cannot be pasted into a block explorer. Reconstructing the run's txids afterwards meant
+  querying the funding address's history. The evidence existed; it just was not reachable.
+- Decision: make every broadcast independently verifiable from the UI and the terminal.
+  - **`TxLog`** — a panel listing every broadcast transaction with the **full txid**, a one-click **copy**, a
+    direct **WhatsOnChain link**, plus size, fee, summary and time, and a running total of bytes and fees. On a
+    `local` run it says the transactions were built and Script-verified but never broadcast, and offers no link,
+    rather than pointing at a 404 and implying they went to chain.
+  - **Daemon console** prints the full txid and explorer URL on every successful broadcast, so a terminal-only
+    operator has the same reach.
+  - **Migration 013** persists `size_bytes`/`fee_sats` on `broadcasts`. They were previously only in the
+    authorize *response*, so a page reload lost them and a completed run could not be costed after the fact.
+- Note the honest asymmetry kept in the UI: on `local` the recorded fee is the local provider's rate (~1 sat/KB),
+  not mainnet's 500 sat/KB. The log records what the transaction actually paid; `measure:journey` is the tool
+  that projects mainnet cost.
+- Verified: migration applies (13 at startup), a full local journey records size/fee for all four stages and
+  returns them from `GET /broadcasts`, and the console prints full txids. 120 tests green, typecheck + build clean.
+- Existing rows from the 2026-08-07 mainnet run predate the migration, so they show `—` for size/fee; their
+  txids and explorer links work.

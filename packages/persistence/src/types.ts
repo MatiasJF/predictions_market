@@ -101,6 +101,9 @@ export interface BroadcastRow {
   status: BroadcastStatus;
   txid: string | null;
   error: string | null;
+  /** What it cost on chain (013). NULL for rows predating the migration, or anything never broadcast. */
+  size_bytes: number | null;
+  fee_sats: number | null;
   created_at: string;
   decided_at: string | null;
 }

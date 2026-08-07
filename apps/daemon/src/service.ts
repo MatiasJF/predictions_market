@@ -518,7 +518,20 @@ export class MarketService {
         this.db.prepare('UPDATE markets SET state=? WHERE id=?').run(eff.marketState, marketId);
       }
     }
-    this.db.prepare("UPDATE broadcasts SET status='broadcast', txid=?, decided_at=datetime('now') WHERE id=?").run(result.txid, row.id);
+    this.db
+      .prepare("UPDATE broadcasts SET status='broadcast', txid=?, size_bytes=?, fee_sats=?, decided_at=datetime('now') WHERE id=?")
+      .run(result.txid, result.sizeBytes ?? null, result.feeSats ?? null, row.id);
+
+    // Print the FULL txid and an explorer URL. A truncated id in a UI cannot be pasted into a block explorer,
+    // which is the one thing anyone wants to do after spending real money.
+    const kb = result.sizeBytes ? `${(result.sizeBytes / 1024).toFixed(1)} KB` : '—';
+    const fee = result.feeSats ? `${result.feeSats.toLocaleString()} sat` : '—';
+    console.log(
+      `\n  ✔ ${row.kind} broadcast — ${kb}, fee ${fee}\n` +
+      `    txid ${result.txid}\n` +
+      `    ${explorerTxUrl(result.txid)}\n`,
+    );
+
     // size/fee are what this actually cost on chain — the number that matters on mainnet, and the one that
     // decides whether the next tx still fits the ~101 KB unconfirmed-ancestor budget.
     return {
@@ -574,7 +587,17 @@ const paramsOf = (cfg: MarketConfig): MarketParams => ({ b: cfg.bUnits * WAD, pa
 const poolStateToMarketState = (r: PoolUtxoRow): MarketState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no) });
 const poolFullState = (r: PoolUtxoRow): PoolState => ({ eYes: BigInt(r.e_yes), eNo: BigInt(r.e_no), qYes: BigInt(r.q_yes), qNo: BigInt(r.q_no), collateral: BigInt(r.collateral), resolved: BigInt(r.resolved), winner: BigInt(r.winner) });
 const poolRef = (r: PoolUtxoRow): PoolRef => ({ txid: r.txid, vout: r.vout, satoshis: r.sats, lockingScript: r.locking_script ?? '', state: poolFullState(r) });
-const broadcastView = (r: BroadcastRow) => ({ id: r.id, market_id: r.market_id, kind: r.kind, summary: r.summary, spend_sats: r.spend_sats, status: r.status, txid: r.txid, error: r.error, created_at: r.created_at, decided_at: r.decided_at });
+/**
+ * WhatsOnChain URL for a txid. Only mainnet transactions exist on an explorer — a `local` run builds and
+ * Script-verifies the identical transaction but never broadcasts it, so linking one would send the user to a
+ * 404 and quietly imply it went to chain.
+ */
+export const explorerTxUrl = (txid: string): string =>
+  (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
+    ? `https://whatsonchain.com/tx/${txid}`
+    : `(local — not broadcast; no explorer entry)`;
+
+const broadcastView = (r: BroadcastRow) => ({ id: r.id, market_id: r.market_id, kind: r.kind, summary: r.summary, spend_sats: r.spend_sats, status: r.status, txid: r.txid, error: r.error, size_bytes: r.size_bytes, fee_sats: r.fee_sats, created_at: r.created_at, decided_at: r.decided_at });
 const execOrderView = (r: ExecOrderRow) => ({
   seq: r.seq, trader: r.trader_pubkey, side: r.side, action: r.action, shares: r.shares,
   price_sats: r.price_sats, cost_sats: r.cost_sats, state_hash: r.state_hash,

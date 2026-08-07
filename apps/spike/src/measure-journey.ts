@@ -5,16 +5,16 @@
 // mainnet numbers — the pool covenant carries the whole compiled contract in every spend, so size dominates the
 // fee and economic value is irrelevant to it.
 //
-// It also answers the question that actually bites: BSV allows ~101 KB of unconfirmed ancestors, and pool spends
-// are tens of KB each, so a journey does NOT necessarily fit in one block window. Every boundary this prints is
-// a 10–60 minute wait for a confirmation in the middle of a live demo.
+// It also reports the shape of the ancestor chain — each stage spends the pool output the last one produced.
+// Measured 2026-08-06: a 3-deep 183.5 KB chain confirmed in ONE block, so the ~101 KB unconfirmed-ancestor
+// figure often quoted is miner policy, not a wall. Treat the depth/size as information, not a limit.
 //
 //   PM_NETWORK=local PM_ENGINE=scrypt PM_OPERATOR_TOKEN=m pnpm --filter @pm/daemon dev
-//   pnpm --filter @pm/spike measure:journey
+//   pnpm --filter @pm/spike measure:journey        # PM_API=… to point at another port
 import { PrivateKey } from '@bsv/sdk';
 import { signOrder } from '@pm/execution';
 
-const API = 'http://127.0.0.1:8787';
+const API = process.env.PM_API ?? 'http://127.0.0.1:8787';
 const TOKEN = 'm';
 
 async function call(method: string, path: string, body?: unknown): Promise<any> {

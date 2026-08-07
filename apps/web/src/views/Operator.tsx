@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, operatorToken, usePoll } from '../api';
+import { TxLog } from './TxLog';
 
 const WAD = 10n ** 18n;
 const shares = (s: string) => Number(BigInt(s) / WAD);
@@ -46,7 +47,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
       const cost = r.size_bytes
         ? ` · ${(r.size_bytes / 1024).toFixed(1)} KB, fee ${Number(r.fee_sats ?? 0).toLocaleString()} sat`
         : '';
-      setMsg(`${label}: ${r.txid ? `broadcast ${String(r.txid).slice(0, 20)}…${cost}` : `queued #${r.broadcast_id ?? ''}`}`);
+      setMsg(`${label}: ${r.txid ? `broadcast${cost} — see the transaction log below` : `queued #${r.broadcast_id ?? ''}`}`);
       if (r.id && r.question) setSel(r.id); // a market we just created — select it
       await refreshQueue();
     } catch (e) {
@@ -132,6 +133,8 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
           </div>
         )}
       </div>
+
+      <TxLog broadcasts={queue ?? []} isMainnet={isMainnet} />
 
       <div className="card">
         <h3>Market</h3>

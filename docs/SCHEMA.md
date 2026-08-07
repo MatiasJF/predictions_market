@@ -85,6 +85,9 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   records HOW the order was signed. `ecdsa` is the CLI/mainnet-proven path; `brc100` is a real wallet signing
   in the browser, verified server-side with `ProtoWallet('anyone')` — no server-side wallet involved. Both
   prove the same thing and both reject tampering and impersonation; the default keeps every pre-012 row correct).
+- `013_broadcast_cost.sql` — `broadcasts` += `size_bytes`/`fee_sats` (MAINNET-006: what each broadcast actually
+  cost, so the on-chain transaction log survives a reload and a run stays auditable after the fact. NULL for
+  rows predating the migration and for anything never broadcast).
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit
