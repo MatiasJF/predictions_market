@@ -804,3 +804,27 @@ Template:
   locking script *is* the contract. `poolSpendable` (ADR-030) already flags those markets in the UI, so the old
   pool shows as unspendable rather than failing at authorize time. A fresh deploy is required to demonstrate the
   new build on mainnet.
+
+## ADR-036 · MAINNET-005 proven live: the whole journey clicked, and the replay refused by consensus · Accepted · 2026-08-07
+- The second mainnet run, on the `paid`-flag build (ADR-035), driven **entirely by a human through the web UI** —
+  market created, pool deployed, orders signed in a **real BRC-100 wallet**, settled, audited, resolved, paid,
+  every step authorized in the sign-off queue.
+  | stage | tx | size | fee |
+  |---|---|---|---|
+  | deploy | `e7f46a7b…eaee6c` | 39.7 KB | 20,367 sat |
+  | settle (2 signed fills → 1 tx) | `35da80d1…d1bd9b` | 79.6 KB | 40,788 sat |
+  | resolve | `9a9e4130…10aa6f` | 80.0 KB | 40,956 sat |
+  | payout | `b3fc3b49…0b700a` | 79.9 KB | 40,906 sat |
+  Audit ok — 2 receipts, 0 violations, Rabin-attested. Payout outputs verified: pool continuation + OP_RETURN
+  digest + **3,000 sat to `1B2a3Pv75wx1nxYKe9X8j2KopmN1Fn1wXv`** (the winner's own signing key) + change.
+- **Cost prediction held: 143,017 sat actual vs 142,968 predicted — 0.03% out.** `measure:journey` is trustworthy
+  for budgeting a mainnet run before spending anything.
+- **The on-chain guard verified against live state, not a fixture.** Rehydrating the real mainnet pool UTXO
+  (`b3fc3b49…:0`) from its locking script reads back `resolved=1, winner=1, paid=1` — the flag is genuinely on
+  chain. Replaying the payout against that real UTXO is **rejected by the Script interpreter: `already paid`**.
+  That is the exact transaction shape that SUCCEEDED on 2026-08-06 (`9a1879b2…`, block 961150). The fix is
+  consensus-enforced, not a daemon policy, and it is now demonstrable from the chain by anyone.
+- Wallet: 298,319 → ~155k sat. Both mainnet runs together cost ~275k sat in fees, all of it contract size.
+- What this establishes, plainly: a person with a browser wallet can trade a native on-chain LMSR market on BSV,
+  have their fills settle in one transaction, see the settlement audited against what they signed, and be paid
+  to the key they traded with — with an operator who cannot pay them twice even by mistake.

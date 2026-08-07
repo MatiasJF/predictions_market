@@ -1,12 +1,13 @@
 # STATE — living
 
-_Last updated: 2026-08-06 — PLATFORM (Phase P5). The system now has a **face**: `apps/web` gives traders a market
-list → order ticket → sign → position/receipts, and gives the operator a **sign-off queue** where every on-chain
-action waits for a human. Signing stays with the user (real BRC-100 wallet, dev-key fallback clearly labelled),
-and the daemon — which until now had **no auth at all** — gates money-spending routes behind an operator token
-(UI-001, ADR-029). The full journey was driven **through the UI** end to end. Everything below the P5 board is the
-earlier history; the mainnet evidence chain runs deploy → settle (26 real signed fills → 1 tx) → resolve → **payout,
-block 961094, 4 winners paid**. 114 workspace tests green._
+_Last updated: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
+mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
+operator a **sign-off queue** where every on-chain action waits for a human (UI-001, ADR-029). The whole journey
+was **clicked through the UI on mainnet** on 2026-08-07: deploy `e7f46a7b…` → settle `35da80d1…` (2 wallet-signed
+fills in one tx) → resolve `9a9e4130…` → payout `b3fc3b49…`, audit ok, **143,017 sat vs 142,968 predicted**.
+An earlier run exposed a real defect — winners could be **paid twice** (block 961150) — now closed at both layers,
+with the contract's `paid` flag verifiable in the live pool's own locking script and a replay **rejected by Script**
+(MAINNET-004/005, ADR-034/035/036). 120 workspace + 29 sCrypt tests green. Funding wallet ~155k sat._
 
 _Previously: 2026-08-04 — PRODUCTIZATION (Phase P3). Feasibility proven + traded live on mainnet; full token lifecycle VM-proven. NOW: the spike is **APIfied** — a localhost HTTP daemon (`@pm/daemon`) drives the full market lifecycle autonomously behind a `ChainEngine` swap seam (`@pm/engine`, Rúnar now / sCrypt next), with a **sign-off queue** so the human only authorizes wallet spends. Hardened with `/positions`, multi-share buy/sell (0-conf chain), and a full API README. 72 tests green. **Live run (2026-08-04): DEPLOY confirmed on mainnet via the daemon (9d7c370f…, block 960831); BUY blocked by BUG-006 (NULLFAIL, VM≠mainnet) + BUG-003 + WoC 429s** — which motivated Phase 2 (sCrypt). **PHASE 2 COMPLETE: the FULL lifecycle (deploy→buy+mint→resolve→redeem) is now LIVE on BSV mainnet under sCrypt** (txids in SCRYPT-004 / VERDICT.md) — every Rúnar blocker fixed. Funds ~1,996,947 sat (lifecycle cost ≈ fees only)._
 
@@ -329,6 +330,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   never asserted `q ≥ 0` (a net-sell could drive shares negative) — now guarded. Added
   `ExecutionEngine.resyncState` (chain is authoritative at settlement boundaries). **20 sCrypt + 88 workspace
   green**, typecheck clean.
+- ● MAINNET-005 — **`payout` is idempotent ON CHAIN + proven live — DONE (2026-08-07, ADR-035/036).** The
+  2026-08-06 run paid a winner TWICE (`6dd31acc…` then `9a1879b2…`, both block 961150): `payout` was replayable,
+  because the replay just spent the pool output the first payout produced and `collateral` (seeded at 1e9) never
+  bound. Fixed at both layers — the daemon refuses a second payout naming the tx that already paid, and the
+  contract carries a **`paid` state flag** (`assert(this.paid == 0n)`), costing script 36,762 → **40,073 B**
+  (+9%) and a journey 131,570 → **142,969 sat** (+8.7%). **Proven live:** the full journey clicked through the
+  UI on mainnet with a real BRC-100 wallet — deploy `e7f46a7b…`, settle `35da80d1…` (2 signed fills → 1 tx),
+  resolve `9a9e4130…`, payout `b3fc3b49…` paying 3,000 sat to the winner's own key; audit ok, 0 violations.
+  **143,017 sat actual vs 142,968 predicted (0.03% out).** Reading the LIVE pool's locking script back gives
+  `resolved=1 winner=1 paid=1`, and replaying the payout against that real UTXO is **rejected by Script —
+  `already paid`**. 120 workspace + 29 sCrypt tests green.
 - ● UI-002 — **Four defects the first real user hit — FIXED (2026-08-06, ADR-030).** The first human-driven
   session broke at step 2 and step 4; the acceptance test missed all of it because it only ever ran against an
   **empty DB**. (1) The console defaulted to the *oldest* market and "new market" didn't select what it created,

@@ -99,6 +99,36 @@ winner** — each landing in the address derived from the key that trader signed
 Independently confirmed on-chain: trader-2's address holds **4,000 confirmed satoshis** (unspent, block
 961094). **Real users won real money on a real market**, with the settlement provably matching what they signed.
 
+### 4b · The whole journey, driven through the UI, by a human (2026-08-07)
+
+The run above was scripted. This one was **clicked** — market created, pool deployed, orders signed by a **real
+BRC-100 wallet in a browser**, settled, audited, resolved and paid, each step authorized by a human in the
+sign-off queue. Same contract, same chain.
+
+| stage | tx | size | fee |
+|---|---|---|---|
+| deploy | [`e7f46a7b…eaee6c`](https://whatsonchain.com/tx/e7f46a7b0095edcc6e2b50ba868bbe9ab09ab58a56fc063d12b7784addeaee6c) | 39.7 KB | 20,367 sat |
+| settle (2 signed fills → 1 tx) | [`35da80d1…d1bd9b`](https://whatsonchain.com/tx/35da80d19bdba9fa1e7f004ee87b53bdc903cdbb4663fd1a0659fe3a83d1bd9b) | 79.6 KB | 40,788 sat |
+| resolve (Rabin oracle, YES) | [`9a9e4130…10aa6f`](https://whatsonchain.com/tx/9a9e41307ac28126870b3b7a77cbf0d5f9243401a8dc263a1d6cc4512010aa6f) | 80.0 KB | 40,956 sat |
+| payout | [`b3fc3b49…0b700a`](https://whatsonchain.com/tx/b3fc3b49dc369fbfe67b6e72aef876589121ccf20ee22ee75c32c428730b700a) | 79.9 KB | 40,906 sat |
+
+**143,017 sat total, against 142,968 predicted** by `measure:journey` before a satoshi was spent — 0.03% out.
+Audit: ok, 2 receipts, 0 violations, Rabin-attested. Payout outputs: pool continuation + OP_RETURN digest +
+**3,000 sat to `1B2a3Pv75wx1nxYKe9X8j2KopmN1Fn1wXv`** (the winner's own signing key) + change.
+
+**Double-payment is now impossible, and that is verifiable from the chain.** An earlier run paid the same winner
+twice — `6dd31acc…` then `9a1879b2…`, both confirmed in block 961150 — because `payout` was replayable: the
+replay simply spent the pool output the first payout produced, and `collateral` was seeded far above any real
+liability so solvency never bound it (ADR-034/035). The contract now carries a `paid` flag. Reading the **live
+mainnet pool's locking script** back:
+
+```
+resolved = 1   winner = 1 (YES)   paid = 1
+```
+
+and replaying that exact payout against the real on-chain UTXO is **rejected by the Script interpreter —
+`already paid`**. Not a policy, not a daemon check: consensus.
+
 ### 5 · Concurrency — N trades settle in ONE transaction
 
 | Transaction | Detail |
