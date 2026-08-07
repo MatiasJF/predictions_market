@@ -1,0 +1,14 @@
+{
+  "name": "@pm/wallet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@bsv/sdk": "^2.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
+  }
+}

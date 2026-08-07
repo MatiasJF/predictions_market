@@ -189,6 +189,16 @@ importers:
         specifier: ^7.6.12
         version: 7.6.13
 
+  packages/wallet:
+    dependencies:
+      '@bsv/sdk':
+        specifier: ^2.1.9
+        version: 2.1.9
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+
 packages:
 
   '@asamuzakjp/css-color@3.2.0':

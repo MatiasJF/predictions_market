@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json && tsc --noEmit -p packages/engine/tsconfig.json && tsc --noEmit -p packages/execution/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p apps/spike/tsconfig.json && tsc --noEmit -p apps/daemon/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/lmsr/tsconfig.json && tsc --noEmit -p packages/persistence/tsconfig.json && tsc --noEmit -p packages/engine/tsconfig.json && tsc --noEmit -p packages/execution/tsconfig.json && tsc --noEmit -p packages/wallet/tsconfig.json && tsc --noEmit -p packages/contracts/tsconfig.json && tsc --noEmit -p apps/spike/tsconfig.json && tsc --noEmit -p apps/daemon/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
     "test": "vitest run",
     "test:ui": "vitest run apps/web/test/ui-journey.test.tsx",
     "daemon": "pnpm --filter @pm/daemon dev",
