@@ -45,7 +45,12 @@ const db = openDb(dbPath);
 const applied = migrate(db);
 
 const { engine, label } = await makeEngine();
-const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()));
+// FUND-001, IN PROGRESS. The engine-level payment gate is built and proven (`funding.test.ts`), but the daemon
+// does not yet issue payment intents or verify payments, so switching it on here would reject every order and
+// break a working, demoed system mid-feature. It is therefore explicitly OFF for now — meaning the free option
+// documented in ADR-040 is still open on this path — and gets flipped to `true` in the same commit that wires
+// `createPaymentIntent` + payment verification into `submitOrder`. Loud rather than silent, deliberately.
+const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()), true, false);
 const service = new MarketService(db, engine, exec);
 const port = Number(process.env.PM_PORT ?? 8787);
 

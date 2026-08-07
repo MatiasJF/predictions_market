@@ -17,7 +17,10 @@ function freshService() {
 function freshExecService() {
   const db: Db = openDb(':memory:');
   migrate(db);
-  const exec = new ExecutionEngine(db, makeReceiptSigner());
+  // FUND-001: funding is verified by the DAEMON (payment intent → chain check) before it reaches the
+  // engine; these tests drive the engine directly, so the engine-level gate is opted out here and the
+  // real path is covered by the daemon's own funding tests.
+  const exec = new ExecutionEngine(db, makeReceiptSigner(), true, false);
   return { db, svc: new MarketService(db, new MockEngine(), exec) };
 }
 

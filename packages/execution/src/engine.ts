@@ -44,6 +44,24 @@ export interface OrderInput {
   nonce?: number;
   /** How the trader signed — `ecdsa` (CLI/runner) or `brc100` (a real wallet, from the browser). */
   sigScheme?: SigScheme;
+  /**
+   * FUND-001: proof the trader actually paid for this buy. Required for buys unless the engine was built with
+   * `requireFunding: false`. Without it a "trade" is a free option — unlimited upside, no stake — which is
+   * exactly what this system shipped with until now.
+   */
+  funding?: FundingProof;
+}
+
+/**
+ * Evidence that a buy was paid for. The engine deliberately knows nothing about HOW the money arrived (BRC-29
+ * derivation, wallet internalization, chain verification all live in the daemon and `@pm/wallet`); it only
+ * needs the amount, to compare against the cost it just computed, and the intent id, to record the link.
+ */
+export interface FundingProof {
+  /** `payment_intents.id` — the row proving a payment was accepted for this order. */
+  intentId: number;
+  /** Satoshis actually received. Must cover the computed cost. */
+  paidSats: number;
 }
 
 export interface SignedReceipt {
@@ -101,7 +119,8 @@ export class ExecutionEngine {
     private readonly db: Db,
     private readonly signer: ReceiptSigner,
     /** Require trader-signed orders (LIVE-001a). Default ON — only disable for legacy/unit tests. */
-    private readonly requireSignedOrders: boolean = true
+    private readonly requireSignedOrders: boolean = true,
+    private readonly requireFunding: boolean = true
   ) {}
 
   /** Register a market's authoritative state (fresh unless a `seed` state + `seq` is supplied to resume). */
@@ -190,6 +209,26 @@ export class ExecutionEngine {
         costSats += sellPayoutApproxSats(state, o.side, p.unit, p);
       }
     }
+
+    // FUND-001 — THE PAYMENT GATE. A buy may only become a fill if it was paid for.
+    //
+    // Placed HERE deliberately: after the cost is known, but BEFORE `m.state`/`m.seq` are mutated. Rejecting an
+    // unfunded order must leave the market exactly as it was — if this check moved below, a refused order would
+    // still shift the price for everyone else, which is a free way to move a market without paying.
+    //
+    // Sells are exempt: a seller is OWED money, so there is nothing to collect. The daemon pays them.
+    if (this.requireFunding && o.action === 'buy') {
+      const paid = o.funding?.paidSats;
+      if (o.funding === undefined || paid === undefined) {
+        throw new Error('execution: buy must carry proof of payment — unfunded orders are not fillable');
+      }
+      if (BigInt(paid) < costSats) {
+        throw new Error(
+          `execution: underfunded buy — paid ${paid} sat, costs ${costSats} sat`
+        );
+      }
+    }
+
     m.state = state;
     m.seq += 1;
 
@@ -211,23 +250,25 @@ export class ExecutionEngine {
       ts: o.ts ?? Date.now(),
     };
     const sig = this.signer.sign(receiptPayload(receipt));
-    this.persist(receipt, sig, o.sig ?? null, o.nonce ?? null, o.sigScheme ?? 'ecdsa');
+    this.persist(receipt, sig, o.sig ?? null, o.nonce ?? null, o.sigScheme ?? 'ecdsa', o.funding);
     return { receipt, sig, signerPubkey: this.signer.publicKeyHex };
   }
 
-  private persist(r: Receipt, sig: string, orderSig: string | null, nonce: number | null, sigScheme: SigScheme): void {
+  private persist(r: Receipt, sig: string, orderSig: string | null, nonce: number | null, sigScheme: SigScheme, funding?: FundingProof): void {
     // The UNIQUE(market_id, trader_pubkey, nonce) index makes a replayed order fail here even if it somehow
     // passed signature verification — belt and braces on the replay guard.
     this.db
       .prepare(
         `INSERT INTO exec_orders
          (market_id, seq, trader_pubkey, side, action, shares, price_sats, cost_sats,
-          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts, order_sig, nonce, sig_scheme)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          q_yes, q_no, e_yes, e_no, state_hash, sig, signer_pubkey, ts, order_sig, nonce, sig_scheme,
+          payment_intent_id, paid_sats)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         r.marketId, r.seq, r.trader, r.side, r.action, r.shares, r.priceSats, r.costSats,
-        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts, orderSig, nonce, sigScheme
+        r.qYes, r.qNo, r.eYes, r.eNo, r.stateHash, sig, this.signer.publicKeyHex, r.ts, orderSig, nonce, sigScheme,
+        funding?.intentId ?? null, funding?.paidSats ?? null
       );
   }
 

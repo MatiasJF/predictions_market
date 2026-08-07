@@ -18,7 +18,9 @@ const carol = makeTraderWallet();
 function fresh(): { db: Db; eng: ExecutionEngine } {
   const db = openDb(':memory:');
   migrate(db);
-  const eng = new ExecutionEngine(db, new WifReceiptSigner(PrivateKey.fromRandom().toWif()));
+  // FUND-001: these predate the money leg and exercise LMSR/receipt/settlement mechanics, not funding.
+  // Funding is proven in `funding.test.ts`; opting out explicitly here keeps each test about one thing.
+  const eng = new ExecutionEngine(db, new WifReceiptSigner(PrivateKey.fromRandom().toWif()), true, false);
   eng.openMarket(MARKET, P);
   return { db, eng };
 }
