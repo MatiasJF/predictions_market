@@ -42,6 +42,16 @@ const TOKEN_SATS = 1
  *
  * Overridable with `PM_FEE_PER_KB` because it is policy, not consensus: if miners raise their minimum, or a
  * transaction sits unconfirmed longer than you like, raise this rather than editing code.
+ *
+ * WHERE IT TAKES EFFECT — this trips people up. The ONLY thing that sets a transaction's fee is the connected
+ * provider's `getFeePerKb()` (below, `FeeProvider`). The `tx.feePerKb(...)` calls inside the custom tx builders
+ * are **overridden by the framework afterwards and have no effect** — measured 2026-08-07 by running a local
+ * journey with `PM_FEE_PER_KB=9999`: every stage still paid exactly 1.0 sat/KB, the offline provider's rate.
+ * They are kept aligned to this constant only so nobody reads a stale number and believes it.
+ *
+ * Consequence: a `local` run canNOT show mainnet fees (its provider charges ~1 sat/KB), which is why
+ * `apps/spike/src/measure-journey.ts` PROJECTS cost as size × rate rather than reading it back. That projection
+ * was validated against the 2026-08-07 mainnet run to 0.03%.
  */
 const FEE_PER_KB = (() => {
     const raw = process.env.PM_FEE_PER_KB
@@ -641,7 +651,7 @@ export class ScryptEngine {
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: opret, satoshis: 0 }))
-            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500)
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(FEE_PER_KB)
             if (options.changeAddress) tx.change(options.changeAddress)
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
@@ -681,7 +691,7 @@ export class ScryptEngine {
             const tx = new bsv.Transaction().addInput(cur.buildContractInput())
                 .addOutput(new bsv.Transaction.Output({ script: next.lockingScript, satoshis: cur.balance }))
                 .addOutput(new bsv.Transaction.Output({ script: tokenScript, satoshis: Number(tokenSats) }))
-            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(500) // 0.5 sat/B — confirm-worthy
+            ;(tx as unknown as { feePerKb: (n: number) => void }).feePerKb(FEE_PER_KB)
             if (options.changeAddress) tx.change(options.changeAddress)
             captured = next
             return { tx, atInputIndex: 0, nexts: [{ instance: next, atOutputIndex: 0, balance: cur.balance }], next: { instance: next, atOutputIndex: 0, balance: cur.balance } }
