@@ -50,6 +50,12 @@ only; signing material is injected from env at runtime.
   slashable against the operator `Bond`. Settled orders get `exec_orders.batch_id` stamped to it. Enables
   `auditSettlement` to prove a settlement matches its receipts.
 
+- **payment_intents** (`014`, FUND-001) — the record of "we quoted this price to this trader, payable to this
+  one-time script". Created *before* the payment and kept after it, because `derivation_prefix`/
+  `derivation_suffix` are the only record of how the destination key was derived and **cannot be
+  reconstructed** — losing a row loses the ability to spend satoshis that are demonstrably ours. Treat as
+  ledger, not cache. `status` drives the gate: a fill is created only once an intent reaches `paid`.
+
 ## Market lifecycle (markets.state)
 `imported → reviewed → deployed → trading → closed → awaiting_result → resolved → settled`
 Exceptional overrides: `voided`, `refunded`. (Mirrors the source roadmap's lifecycle, adapted to on-chain.)
@@ -88,6 +94,13 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
 - `013_broadcast_cost.sql` — `broadcasts` += `size_bytes`/`fee_sats` (MAINNET-006: what each broadcast actually
   cost, so the on-chain transaction log survives a reload and a run stays auditable after the fact. NULL for
   rows predating the migration and for anything never broadcast).
+- `014_funding.sql` — **FUND-001, the money leg.** New `payment_intents` (a quoted, payable order: trader,
+  side/action/units, `quoted_cost_sats`, the BRC-29 `derivation_prefix`/`derivation_suffix`, the derived
+  `locking_script`/`address`, lifecycle `pending→paid|rejected|expired`, `paid_sats`, `txid`/`output_index`,
+  `refund_txid`, `expires_at`), plus `exec_orders += payment_intent_id, paid_sats` and
+  `payouts += derivation_prefix, derivation_suffix, sender_identity_key`. Until this, a trader signed a message,
+  `cost_sats` was recorded, and **nothing collected it** — every trader held a free option. The unique index on
+  `(txid, output_index)` means one payment output can fund at most one fill.
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

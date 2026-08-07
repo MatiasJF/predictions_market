@@ -133,6 +133,40 @@ export interface ExecOrderRow {
   order_sig: string | null; // trader signature over marketId|trader|side|action|units|nonce (DER hex)
   nonce: number | null;     // per-trader-per-market; UNIQUE, so a signed order is single-use
   sig_scheme: 'ecdsa' | 'brc100'; // 012: how the trader signed (CLI raw ECDSA vs a real BRC-100 wallet)
+  // Added in 014_funding (FUND-001) — the payment that bought this fill. NULL only for pre-014 rows; the
+  // service refuses to create a new fill without one, which is what ends the "free option".
+  payment_intent_id: number | null;
+  paid_sats: number | null;
+}
+
+/**
+ * A quoted, payable order (014_funding / FUND-001).
+ *
+ * Created BEFORE the trader pays, and kept afterwards: `derivation_prefix`/`derivation_suffix` are the only
+ * record of how the destination key was derived, and they cannot be reconstructed. Losing this row loses the
+ * ability to spend satoshis that are demonstrably ours — so it is ledger, not cache.
+ */
+export interface PaymentIntentRow {
+  id: number;
+  market_id: number;
+  trader_pubkey: string;
+  side: Side;
+  action: 'buy' | 'sell';
+  units: number;
+  quoted_cost_sats: number;
+  derivation_prefix: string;
+  derivation_suffix: string;
+  locking_script: string;
+  address: string;
+  status: 'pending' | 'paid' | 'rejected' | 'expired';
+  paid_sats: number | null;
+  txid: string | null;
+  output_index: number | null;
+  refund_txid: string | null;
+  error: string | null;
+  expires_at: string;
+  created_at: string;
+  decided_at: string | null;
 }
 
 /** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */
