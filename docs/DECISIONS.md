@@ -1231,3 +1231,34 @@ transient or uninitialised condition recorded as a permanent verdict.**
   green.
 - 213 workspace tests, typecheck and build clean. **Still unverified: the appearance.** The headless browser
   available here does not execute localhost bundles, so no one has seen any of this in a browser yet.
+
+## ADR-049 · Stakes were paid to the trader's own address (MAINNET-011) · Accepted · 2026-08-10
+- **The defect.** `createPaymentIntent` built the address a trader pays INTO with
+  `deriveDestination(this.payKey(), trader)`. That call derives the **counterparty's** key — correct for paying
+  a winner, exactly backwards for taking a stake. So every stake a trader has ever paid went to a one-time
+  address only **that trader** could spend. The payment gate verified each payment correctly, the money really
+  did leave the trader's wallet, and **the operator received none of it**: 16,440 sat across ten stakes on
+  mainnet, sitting where the daemon cannot reach.
+- **How it surfaced.** The first sell-proceeds payment (998 sat owed on market #7) was rejected by the network.
+  `potStakes()` spends with `derivePaymentKey(payKey, …)`, which inverts the *other* derivation, so the
+  signatures were invalid. The daemon's own guard refused to record anything — the failure was loud, and
+  nothing was recorded as paid that had not been.
+- **`@pm/wallet` already contained a test named `'pays the RECIPIENT, not the payer — the expensive mistake this
+  guards'`.** The helper was well understood and well tested. Nothing asserted **which helper production
+  called**, and that is the whole lesson: the unit tests covered the tool, not its use.
+- **Why the suite was green.** `payer.test.ts` built its fixture stakes the CORRECT way round —
+  `deriveDestination(trader, operatorPub)` — so the proceeds path passed against a pot that production never
+  produces. The tests exercised the code I meant to write rather than the code that runs.
+- Fix: new `deriveOwnDestination(ownKey, counterparty)` using BRC-42 `forSelf: true` — our key for the
+  relationship, which the payer computes identically from their side with `forSelf: false`. `createPaymentIntent`
+  uses it; `deriveDestination` stays for payouts, where paying the counterparty is the point.
+- Verified by **mutation**, not by assertion alone: restoring the original call makes the new daemon-level test
+  fail with *"the daemon quoted an address the operator cannot spend — the stake would be unrecoverable"*. Four
+  further tests pin the direction of each helper and prove both parties compute the same invoice address.
+  218 workspace tests, typecheck clean.
+- **What is not fixed.** The ten existing stakes remain at trader-controlled addresses; nothing in the daemon
+  can spend them and this ADR does not try. They are recoverable only by the key that paid them — which in this
+  spike is the same person, so nothing is lost, but with a real counterparty it would be the platform having
+  accepted payment into the payer's own pocket. **Market #7's 998 sat therefore remains unpaid** until stakes
+  accumulate under the corrected derivation. That is the honest state: the sell path is now correct and still
+  unproven on mainnet.

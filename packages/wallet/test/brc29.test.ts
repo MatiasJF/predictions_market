@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { P2PKH, PrivateKey, Transaction } from '@bsv/sdk';
 import {
-  BRC29_PROTOCOL, brc29KeyID, deriveDestination, derivePaymentAddress, derivePaymentKey,
+  BRC29_PROTOCOL, brc29KeyID, deriveDestination, deriveOwnDestination, derivePaymentAddress, derivePaymentKey,
   findPaymentOutput, identityKeyOf, assertIdentityKey, newDerivationNonce,
 } from '../src/brc29.js';
 
@@ -117,5 +117,50 @@ describe('assertIdentityKey', () => {
     expect(assertIdentityKey(identityKeyOf(trader))).toBe(identityKeyOf(trader));
     expect(() => assertIdentityKey('not-a-key')).toThrow(/invalid identity key/);
     expect(() => assertIdentityKey('')).toThrow(/invalid identity key/);
+  });
+});
+
+/**
+ * MAINNET-011 — the direction of a derivation is the difference between being paid and giving money
+ * away, and the two calls look almost identical at a call site.
+ *
+ * `createPaymentIntent` used `deriveDestination` to build the address a TRADER PAYS INTO. That
+ * derives the counterparty's key, so every stake went to an address only the paying trader could
+ * spend. The gate verified each payment correctly and the operator received none of it — 16,440 sat
+ * across ten stakes on mainnet. It surfaced only when the first sell-proceeds payment was rejected
+ * for an invalid signature.
+ *
+ * The suite did not catch it because `payer.test.ts` built its fixture stakes the CORRECT way round.
+ * It tested the code I meant to write. These tests pin the direction of each call instead.
+ */
+describe('MAINNET-011 — which side can spend it', () => {
+  it('deriveOwnDestination gives US the key: the address a counterparty pays INTO', () => {
+    const dest = deriveOwnDestination(operator, identityKeyOf(trader));
+    // We can spend it…
+    expect(derivePaymentKey(operator, dest.remittance).toPublicKey().toString()).toBe(dest.publicKey);
+    // …and the payer cannot.
+    expect(derivePaymentKey(trader, dest.remittance).toPublicKey().toString()).not.toBe(dest.publicKey);
+  });
+
+  it('deriveDestination gives THEM the key: the address we pay a winner AT', () => {
+    const dest = deriveDestination(operator, identityKeyOf(trader));
+    expect(derivePaymentKey(trader, dest.remittance).toPublicKey().toString()).toBe(dest.publicKey);
+    expect(derivePaymentKey(operator, dest.remittance).toPublicKey().toString()).not.toBe(dest.publicKey);
+  });
+
+  it('the two are NOT interchangeable — swapping them is the whole bug', () => {
+    const nonces = { prefix: 'AAAAAAAAAAA=', suffix: 'BBBBBBBBBBB=' };
+    expect(deriveOwnDestination(operator, identityKeyOf(trader), nonces).address)
+      .not.toBe(deriveDestination(operator, identityKeyOf(trader), nonces).address);
+  });
+
+  it('both parties compute the SAME invoice address from their own side', () => {
+    const nonces = { prefix: 'CCCCCCCCCCC=', suffix: 'DDDDDDDDDDD=' };
+    // The operator issues the invoice with forSelf…
+    const invoice = deriveOwnDestination(operator, identityKeyOf(trader), nonces);
+    // …and the payer, deriving the counterparty's key from their side, must land on the same place,
+    // or the trader would pay somewhere the operator is not looking.
+    const asPayerSeesIt = deriveDestination(trader, identityKeyOf(operator), nonces);
+    expect(asPayerSeesIt.address).toBe(invoice.address);
   });
 });

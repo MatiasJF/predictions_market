@@ -127,6 +127,45 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   /**
+   * MAINNET-011 — the stake must land somewhere the OPERATOR can spend.
+   *
+   * This is the test that was missing, and its absence cost 16,440 sat of unusable stakes on
+   * mainnet. `@pm/wallet` had thorough tests for both derivations; nothing asserted which one
+   * `createPaymentIntent` actually called. `payer.test.ts` even built its fixture stakes the correct
+   * way round, so the suite was testing the code I meant to write rather than the code that runs.
+   *
+   * It asserts against the LOCKING SCRIPT the daemon really hands a trader — the only artefact that
+   * matters, since that is what the money is paid into.
+   */
+  it('derives a stake destination the OPERATOR can spend — not the trader who pays it', async () => {
+    const { P2PKH } = await import('@bsv/sdk');
+    const { derivePaymentKey } = await import('@pm/wallet');
+
+    const intent = svc.createPaymentIntent(marketId, {
+      trader: traderPub, side: 'yes', action: 'buy', units: 2,
+    }) as any;
+
+    const row = db.prepare('SELECT derivation_prefix, derivation_suffix FROM payment_intents WHERE id=?')
+      .get(intent.intent_id) as { derivation_prefix: string; derivation_suffix: string };
+    const remittance = {
+      derivationPrefix: row.derivation_prefix,
+      derivationSuffix: row.derivation_suffix,
+      senderIdentityKey: traderPub,
+    };
+
+    // The operator's own key, derived against the paying trader, must unlock the quoted script.
+    const ours = derivePaymentKey(operatorPayKey, remittance);
+    expect(
+      new P2PKH().lock(ours.toPublicKey().toAddress()).toHex(),
+      'the daemon quoted an address the operator cannot spend — the stake would be unrecoverable',
+    ).toBe(intent.locking_script);
+
+    // And the trader who pays must NOT hold the key, or they have simply paid themselves.
+    const theirs = derivePaymentKey(trader, remittance);
+    expect(new P2PKH().lock(theirs.toPublicKey().toAddress()).toHex()).not.toBe(intent.locking_script);
+  });
+
+  /**
    * MAINNET-010 — a wallet that signs but does not broadcast.
    *
    * Observed live: a trader's wallet produced three signed payments and put exactly one on the network. The

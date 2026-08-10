@@ -12,7 +12,7 @@ import {
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, pkhOf, type ExecutionEngine, type PayoutDestination } from '@pm/execution';
-import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, buildProceedsPayment, TransientPaymentError, type BeefSource, type ChainCheck, type DerivedDestination, type StakeUtxo } from '@pm/wallet';
+import { deriveDestination, deriveOwnDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, buildProceedsPayment, TransientPaymentError, type BeefSource, type ChainCheck, type DerivedDestination, type StakeUtxo } from '@pm/wallet';
 import type { PrivateKey } from '@bsv/sdk';
 import type { PaymentIntentRow, SellProceedRow } from '@pm/persistence';
 
@@ -320,7 +320,13 @@ export class MarketService {
       charge += buyChargeApproxSats(sBuy, side, p.unit, p);
     }
     const quoted = Number(charge);
-    const dest = deriveDestination(this.payKey(), trader);
+    // MAINNET-011: the destination must be one WE can spend — the trader is paying INTO it.
+    // This used `deriveDestination`, which derives the COUNTERPARTY's key: correct for paying a
+    // winner, exactly backwards for taking a stake. Every stake accepted before this fix went to an
+    // address only the paying trader could unlock; the gate verified each payment correctly and the
+    // operator received none of it. `derivePaymentKey` — which `potStakes()` already used — inverts
+    // THIS derivation, which is why the first sell-proceeds payment was rejected as unsigned.
+    const dest = deriveOwnDestination(this.payKey(), trader);
     const expiresAt = new Date(Date.now() + MarketService.INTENT_TTL_MS).toISOString();
 
     const info = this.db.prepare(

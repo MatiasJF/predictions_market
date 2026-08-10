@@ -461,6 +461,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     market #7's 998 sat**, verified against a backup of the live mainnet DB. 15 new tests.
     **Not yet run on mainnet** — market #7's 998 sat is the intended first, and costs ~1 sat in fees.
     (No wallet-toolbox server wallet was needed after all: `@bsv/sdk` builds and signs the payment directly.)
+  - ⨯ **MAINNET-011 — stakes were paid to the TRADER's own address (ADR-049).** `createPaymentIntent` used
+    `deriveDestination`, which derives the counterparty's key — right for paying a winner, backwards for taking
+    a stake. **16,440 sat across ten mainnet stakes sit where the daemon cannot spend them.** Surfaced when the
+    first sell-proceeds payment was rejected for invalid signatures; the guard refused to record anything.
+    Fixed with `deriveOwnDestination` (BRC-42 `forSelf`), pinned by a daemon-level test verified by mutation.
+    **The old stakes are not recoverable by the operator**, so market #7's 998 sat stays unpaid until new
+    stakes accumulate. The sell path is correct and still unproven on mainnet.
   - ○ **step 9 — recover a stranded payment.** A buy whose intent was burned leaves the trader's satoshis at an
     operator-derived address with nothing to show for them (1,002 sat at `17WV463R…` from this run). Pressing
     "buy" again mints a *new* intent and pays *again*: an intent whose address is already funded must be reused,

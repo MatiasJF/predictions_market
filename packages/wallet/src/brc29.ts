@@ -106,6 +106,50 @@ export function deriveDestination(
 }
 
 /**
+ * INVOICE side: derive a destination WE can spend, for a counterparty to pay into.
+ *
+ * The mirror image of `deriveDestination`, and the distinction is the difference between receiving
+ * money and giving it away. `deriveDestination` derives the COUNTERPARTY's key — right when we are
+ * paying them. To be PAID, we need our own key for the same relationship, which BRC-42 gives us via
+ * `forSelf: true`: the payer computes the identical address from their side with `forSelf: false`,
+ * so both parties agree on it without either learning the other's private key.
+ *
+ * MAINNET-011. This function did not exist, and `createPaymentIntent` used `deriveDestination`
+ * instead — so every stake a trader paid went to an address only THAT TRADER could spend. The
+ * payment gate verified each one correctly; the operator simply never received the money. It
+ * surfaced when the first sell-proceeds payment was rejected by the network for an invalid
+ * signature, because `derivePaymentKey` (correct) inverts THIS derivation, not that one.
+ */
+export function deriveOwnDestination(
+  ownKey: PrivateKey,
+  counterpartyIdentityKey: string,
+  nonces?: { prefix: string; suffix: string },
+): DerivedDestination {
+  const prefix = nonces?.prefix ?? newDerivationNonce();
+  const suffix = nonces?.suffix ?? newDerivationNonce();
+  const pub = new KeyDeriver(ownKey).derivePublicKey(
+    BRC29_PROTOCOL,
+    brc29KeyID(prefix, suffix),
+    counterpartyIdentityKey,
+    true, // forSelf — OUR key for this relationship, which is the whole point
+  );
+  const address = pub.toAddress();
+  return {
+    lockingScript: new P2PKH().lock(address).toHex(),
+    address,
+    pkh: pub.toHash('hex') as string,
+    publicKey: pub.toString(),
+    // The counterparty is the one who will PAY, so from their side they are the sender — which is
+    // what `derivePaymentKey` expects to invert this.
+    remittance: {
+      derivationPrefix: prefix,
+      derivationSuffix: suffix,
+      senderIdentityKey: counterpartyIdentityKey,
+    },
+  };
+}
+
+/**
  * RECIPIENT side: derive the private key for a payment made to us, so we can spend it.
  *
  * The server needs this even while using a wallet: it is what lets us prove (in a test, or during recovery)
