@@ -31,6 +31,7 @@ export {
   payoutTotal,
   pkhOf,
   type WinnerPayout,
+  type PayoutDestination,
 } from './payout.js';
 export {
   computeBatchDigest,

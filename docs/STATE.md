@@ -1,6 +1,15 @@
 # STATE — living
 
-_Last updated: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
+_Last updated: 2026-08-10 — THE MONEY LEG (Phase P6, FUND-001). **A bet now costs money and winnings now land
+somewhere a wallet can see.** The user found the defect that mattered most in one question: nothing had ever
+collected a trader's stake, so every trader held a free option and the operator carried the whole downside. A
+buy is now a real payment the trader approves in their own wallet, verified against the chain before any fill
+exists (ADR-040); a payout now goes to a one-time BRC-29 destination derived for the winner, served with the
+derivation their wallet needs, instead of an address no wallet watches (ADR-041). **Still open:** sells are owed
+rather than paid, and one-click claiming needs `@bsv/wallet-toolbox` (step 7). **Every mainnet run below
+predates this** — those runs proved the mechanism, not a market. 161 workspace tests green._
+
+_Previously: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
 mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
 operator a **sign-off queue** where every on-chain action waits for a human (UI-001, ADR-029). The whole journey
 was **clicked through the UI on mainnet** on 2026-08-07: deploy `e7f46a7b…` → settle `35da80d1…` (2 wallet-signed
@@ -400,6 +409,38 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   clean). Remaining ops work: automated fee/UTXO-pool management; cold-restart token recovery depends on the
   provider's `getTransaction`.
 
+### Phase P6 — The money leg (FUND-001; ADR-039/040/041)
+- ◐ FUND-001 — **A bet is now an actual bet.** The defect, found by the user in one question: *"if no money
+  leaves my balance at any time then I am not betting, I am just winning or not."* No satoshi belonging to a
+  trader had ever entered the system — a trader signed a message, the engine recorded `costSats`, nothing
+  collected it, and winners were paid real money from the operator's wallet. Every trader held a **free
+  option**. Not an off-chain oversight either: the on-chain `buy` compares `paymentSats` (a free method
+  argument) to a number and relates it to no input or output. Shipped so far:
+  - ● **step 1 — `@pm/wallet`.** BRC-29 derivation (`protocolID [2,'3241645161d8']`), payment verification, and
+    a `ChainCheck` seam. Round-trip proven: the recipient derives a key that spends what the payer built.
+  - ● **step 2 — migration `014_funding.sql`.** `payment_intents` (a quoted, payable order), `exec_orders +=
+    payment_intent_id/paid_sats`, `payouts +=` the derivation nonces. Unique index on `(txid, output_index)`:
+    one payment output funds at most one fill.
+  - ● **step 3 — the execution-engine gate.** A buy with no `FundingProof`, or one that does not cover the
+    computed cost, is refused — **after** the cost is computed but **before** `m.state`/`m.seq` mutate, so a
+    refused buy cannot move the price for everyone else.
+  - ● **step 4 — the daemon collects before it fills.** Quote an intent → verify the trader's transaction pays
+    it → confirm it is on the network (the never-broadcast side door) → only then fill.
+  - ● **step 5 — the UI pays.** `Signer.pay()` via `createAction`; `LocalSigner` refuses, because a dev key
+    holds no funds. The order ticket is quote → approve in your wallet → filled.
+  - ● **step 6 — winnings land where a wallet can see them (ADR-041).** Payouts go to a one-time BRC-29
+    destination derived for the winner instead of `hash160(identity key)`, which no wallet watches; the
+    remittance is persisted and served at `GET /markets/:id/payouts`. Nonces are **scoped** to
+    `(market, trader)`, so the destination survives a restart (the payout digest commits to it) and is
+    recoverable from the market id alone — that class of money-loss is now impossible. `MockEngine` gained
+    `buildPayout` so this bookkeeping has coverage without minutes of Script verification. 7 new tests; the
+    load-bearing one derives the winner's key and checks it unlocks the exact output that was paid.
+  - ○ **step 7 — the wallet-toolbox server wallet.** Manages the stake pot, pays **sell proceeds** (still owed
+    rather than paid), and brings `Services.getMerklePath` → BEEF → one-click `internalizeAction`, which is the
+    only thing standing between a winner and their balance updating by itself.
+  - ○ **step 8 — local end-to-end then a gated mainnet proof:** money visibly leaves a wallet on a buy and comes
+    back on a payout. Every mainnet number recorded so far predates the money leg (see `VERDICT.md`).
+
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the
   bindings file", run `npm --prefix node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3 run
@@ -407,7 +448,10 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
   ~/Library/pnpm/store/v3 --global` to relink; `pnpm rebuild` silently no-ops, hence the direct node-gyp build.
 - The daemon DB defaults to `data/spike.db` (`PM_DB_PATH` overrides). The old `apps/spike/data/pool.json` is
   legacy CLI scratch — the daemon uses `pool_utxos` full-state instead (ADR-016).
-- Node is v20.19.5 → no `node:sqlite`; we use `better-sqlite3`. `sqlite3` CLI 3.43.2 is available for schema checks.
+- **Node 22 is a hard floor** (ADR-039, `.nvmrc` 22.23.0) — not a preference. A shell still on v20 fails every
+  DB-touching test with `NODE_MODULE_VERSION 127 … requires 115`: the native `better-sqlite3` binary is built
+  per ABI. `nvm use` before running the suite, and `pnpm rebuild -r` after any Node switch.
+  We use `better-sqlite3` rather than `node:sqlite`; `sqlite3` CLI 3.43.2 is available for schema checks.
 - `runar-testing` needs `fast-check` at import time but doesn't declare it; added as a `@pm/contracts` devDep.
 - Rúnar is v0.4.6 (pre-1.0) — treat compiler behavior as verify-empirically, not assume.
 

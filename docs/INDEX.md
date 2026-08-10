@@ -43,6 +43,11 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Throughput benchmark (fills/sec + fills per settlement)** | `packages/execution/bench/bench.ts` |
 | **Trader-authenticated orders (sign/verify, LIVE-001a)** | `packages/execution/src/order.ts` |
 | **Receipt → payout derivation (winningPayouts, PAYOUT-001)** | `packages/execution/src/payout.ts` |
+| **BRC-29 payment derivation + scoped payout nonces (FUND-001)** | `packages/wallet/src/brc29.ts` |
+| **Payment verification + the never-broadcast check (`ChainCheck`)** | `packages/wallet/src/verify.ts` |
+| **Where a winner's money goes + the claim they need** (`payoutDestination`, `payoutClaims`) | `apps/daemon/src/service.ts` |
+| **A winner can spend what they won (the BRC-29 round trip)** | `apps/daemon/test/payout-claim.test.ts` |
+| **The payment gate: an unfunded buy is not fillable** | `apps/daemon/test/funding.test.ts`, `packages/execution/test/funding.test.ts` |
 | Multi-winner `payout` contract method + tests | `packages/contracts-scrypt/tests/payout.test.ts` |
 | **Real multi-wallet market runner (HTTP against the daemon)** | `apps/spike/src/live-market.ts` |
 | Trader wallet keygen (WIFs git-ignored) | `apps/spike/src/trader-keygen.ts` |

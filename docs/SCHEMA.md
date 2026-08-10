@@ -56,6 +56,14 @@ only; signing material is injected from env at runtime.
   reconstructed** — losing a row loses the ability to spend satoshis that are demonstrably ours. Treat as
   ledger, not cache. `status` drives the gate: a fill is created only once an intent reaches `paid`.
 
+- **payouts** (`011`; `014` adds the derivation) — who was actually paid on-chain, the digest pinned by the
+  payout transaction, and from FUND-001 the **remittance** (`derivation_prefix`, `derivation_suffix`,
+  `sender_identity_key`) a winner's wallet needs to internalize the money as spendable balance. Unlike
+  `payment_intents`, these nonces are **scoped** — derived from `sha256("pm-payout:<marketId>:<trader>")` — so
+  the row is an audit record rather than the only copy: a winner's destination can always be re-derived from
+  the market id and the key they traded with (ADR-041). Rows written before FUND-001 have NULLs here and paid a
+  bare `hash160(identity key)`; the API reports `remittance: null` for them rather than inventing one.
+
 ## Market lifecycle (markets.state)
 `imported → reviewed → deployed → trading → closed → awaiting_result → resolved → settled`
 Exceptional overrides: `voided`, `refunded`. (Mirrors the source roadmap's lifecycle, adapted to on-chain.)

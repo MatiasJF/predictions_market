@@ -72,6 +72,11 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'exec-positions') return svc.execPositions(id, query.get('trader') ?? undefined);
     if (method === 'GET' && segs.length === 3 && segs[2] === 'audit') return svc.auditMarket(id); // CONC-003a
     if (method === 'GET' && segs.length === 3 && segs[2] === 'payout-preview') return svc.payoutPreview(id);
+    // FUND-001: how a winner claims their money into their own wallet. Trader-facing and read-only — it hands
+    // back the derivation a winner needs to internalize a payout that has already been made to them.
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'payouts') {
+      return svc.payoutClaims(id, query.get('trader') ?? undefined);
+    }
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       if (OPERATOR_ACTIONS.has(segs[2] ?? '')) assertOperator(ctx);

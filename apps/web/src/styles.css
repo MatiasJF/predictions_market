@@ -67,6 +67,11 @@ button.danger { background:var(--err); border-color:var(--err); color:#fff; }
 .failed { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
 .failed .err { overflow-wrap:anywhere; }
 
+/* --- a winner's payout + how they claim it (FUND-001) --------------------------------------------------- */
+.paid { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
+.paid summary { cursor:pointer; }
+.paid pre { margin-top:6px; overflow-wrap:anywhere; white-space:pre-wrap; }
+
 /* --- on-chain transaction log (MAINNET-006) ------------------------------------------------------------ */
 .txlog { display:flex; flex-direction:column; gap:10px; }
 .txrow { border-top:1px solid var(--line); padding-top:8px; }

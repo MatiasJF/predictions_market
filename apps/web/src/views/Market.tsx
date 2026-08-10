@@ -17,6 +17,7 @@ export function Market({
   const [positions] = usePoll<any>(() => api.execPositions(id, identity || undefined), [id, identity]);
   const [receipts] = usePoll<any>(() => api.receipts(id, identity || undefined), [id, identity]);
   const [payout] = usePoll<any>(() => api.payoutPreview(id), [id]);
+  const [claims] = usePoll<any>(() => api.payoutClaims(id, identity || undefined), [id, identity]);
 
   const [side, setSide] = useState<'yes' | 'no'>('yes');
   const [units, setUnits] = useState(1);
@@ -29,6 +30,7 @@ export function Market({
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
   const myPayout = payout?.winners?.find((w: any) => w.trader === identity);
+  const myClaim = claims?.claims?.find((c: any) => c.trader === identity);
   // Don't let someone build a position that could never be settled on-chain.
   const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
 
@@ -186,6 +188,32 @@ export function Market({
             <p className="ok">
               You are owed <b>{myPayout.sats} sat</b> for {shares(myPayout.shares)} winning shares.
             </p>
+          )}
+          {myClaim && (
+            <div className="paid">
+              <p className="ok">
+                Paid <b>{myClaim.sats} sat</b> — <a href={`https://whatsonchain.com/tx/${myClaim.txid}`} target="_blank" rel="noreferrer">{myClaim.txid.slice(0, 12)}…</a>
+              </p>
+              {myClaim.remittance ? (
+                <details>
+                  <summary className="dim tiny">
+                    Sent to a one-time address only your key can unlock — how to claim it
+                  </summary>
+                  <p className="dim tiny">
+                    Your wallet has to be told how the address was derived (BRC-29) before it will show the
+                    balance. One-click claiming lands with the wallet-toolbox step; until then these are the
+                    values it needs, and they are recoverable from this market at any time — nothing here can
+                    be lost.
+                  </p>
+                  <pre className="tiny">{JSON.stringify(myClaim.remittance, null, 2)}</pre>
+                </details>
+              ) : (
+                <p className="warnText tiny">
+                  This payout predates one-time addresses: it went to your identity key's own hash, which no
+                  wallet watches. The satoshis are yours but you would have to sweep that key by hand.
+                </p>
+              )}
+            </div>
           )}
         </div>
 

@@ -34,6 +34,8 @@ export const api = {
   execPositions: (id: number, trader?: string) => call('GET', `/markets/${id}/exec-positions${trader ? `?trader=${trader}` : ''}`),
   audit: (id: number) => call('GET', `/markets/${id}/audit`),
   payoutPreview: (id: number) => call('GET', `/markets/${id}/payout-preview`),
+  /** FUND-001: payouts already made to a trader, with the derivation their wallet needs to claim them. */
+  payoutClaims: (id: number, trader?: string) => call('GET', `/markets/${id}/payouts${trader ? `?trader=${trader}` : ''}`),
   broadcasts: (status?: string) => call('GET', `/broadcasts${status ? `?status=${status}` : ''}`),
   balance: () => call('GET', '/wallet/balance'),
   /** Side-effect-free token check, so the console can say "accepted" before anything is spent. */

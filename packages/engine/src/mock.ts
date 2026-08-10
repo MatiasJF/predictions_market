@@ -4,7 +4,7 @@
 // full enqueue → authorize → apply-effects → advance-lineage flow be tested with zero broadcasts.
 import { WAD, powFixed } from '@pm/lmsr';
 import { RunarEngine } from './runar.js';
-import type { BroadcastResult, MarketConfig, PoolRef, SettleBatch, Side, TxEffects, TxPlan, Utxo } from './types.js';
+import type { BroadcastResult, MarketConfig, PoolRef, SettleBatch, Side, TxEffects, TxPlan, Utxo, WinnerPayoutRef } from './types.js';
 
 export class MockEngine extends RunarEngine {
   override readonly name: string = 'mock';
@@ -74,6 +74,37 @@ export class MockEngine extends RunarEngine {
       holderPkh: 'ab'.repeat(20), shares: (shares * WAD).toString(), side,
     };
     return plan;
+  }
+
+  /**
+   * Pay the winners (PAYOUT-001), without the 40 KB covenant.
+   *
+   * The sCrypt engine is the only other implementation, and building one payout there takes minutes of Script
+   * verification — so the daemon's payout persistence (who was paid, and from FUND-001 the derivation a winner
+   * needs to claim it) had no cheap coverage at all. This gives it some: the money is fake, the bookkeeping the
+   * service performs afterwards is exactly the same.
+   */
+  async buildPayout(cfg: MarketConfig, pool: PoolRef, winners: WinnerPayoutRef[], digest: string): Promise<TxPlan> {
+    if (pool.state.resolved !== 1n) throw new Error('market not resolved');
+    if (winners.length === 0) throw new Error('no winners to pay');
+    const total = winners.reduce((s, w) => s + w.sats, 0);
+    return {
+      kind: 'payout',
+      summary: `pay ${winners.length} winner(s) ${total} sat total`,
+      spendSats: total + 200,
+      build: { kind: 'payout', marketId: cfg.marketId, digest },
+      effects: {
+        pool: {
+          vout: 0, satoshis: pool.satoshis,
+          eYes: pool.state.eYes.toString(), eNo: pool.state.eNo.toString(),
+          qYes: pool.state.qYes.toString(), qNo: pool.state.qNo.toString(),
+          collateral: (pool.state.collateral - BigInt(total)).toString(),
+          resolved: 1, winner: pool.state.winner === 1n ? 1 : 0, lockingScript: '',
+        },
+        spendsPrevPool: true,
+        payouts: { digest, winners },
+      },
+    };
   }
 
   /** Deterministic Rabin-attestation stub (no real Rabin key in tests) — exercises the recording path. */

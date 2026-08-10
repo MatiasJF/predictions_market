@@ -19,11 +19,26 @@ export interface WinnerPayout {
 }
 
 /**
+ * Where a winner's satoshis go, given the key they traded with. Returns the hash160 to pay.
+ *
+ * A hook rather than a hard-coded `pkhOf` because the answer needs a private key the execution package must
+ * never hold: FUND-001 pays winners at a BRC-29 destination derived for them, so their own wallet recognises
+ * the money and takes custody of it. The daemon supplies that; the default below is the pre-FUND-001 behaviour.
+ */
+export type PayoutDestination = (traderPubkeyHex: string) => string;
+
+/**
  * Who is owed what, from the fill ledger. Folds each trader's NET position on the winning side (buys − sells,
  * the same fold `positionsOf` uses) and drops anyone not net-long: losers and flat traders get nothing.
  * Deterministic order (by trader pubkey) so the digest is stable.
  */
-export function winningPayouts(db: Db, marketId: number, winner: Side, payoutUnit: bigint): WinnerPayout[] {
+export function winningPayouts(
+  db: Db,
+  marketId: number,
+  winner: Side,
+  payoutUnit: bigint,
+  destination: PayoutDestination = pkhOf,
+): WinnerPayout[] {
   const rows = db
     .prepare('SELECT * FROM exec_orders WHERE market_id = ? ORDER BY seq')
     .all(marketId) as ExecOrderRow[];
@@ -40,14 +55,20 @@ export function winningPayouts(db: Db, marketId: number, winner: Side, payoutUni
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([trader, shares]) => ({
       trader,
-      pkh: pkhOf(trader),
+      pkh: destination(trader),
       shares: shares.toString(),
       sats: Number((shares * payoutUnit) / WAD),
     }))
     .filter((p) => p.sats > 0);
 }
 
-/** hash160 of a trader's public key — their payout address, derived with no extra registration. */
+/**
+ * hash160 of a trader's public key — their payout address, derived with no extra registration.
+ *
+ * LEGACY as of FUND-001: paying an identity key's own hash160 puts the money outside the recipient wallet's
+ * basket flow, so a winner saw nothing they could spend. Kept because markets paid before FUND-001 were paid
+ * here and their rows must still resolve; new payouts derive a per-payment key instead.
+ */
 export function pkhOf(traderPubkeyHex: string): string {
   return PublicKey.fromString(traderPubkeyHex).toHash('hex') as string;
 }

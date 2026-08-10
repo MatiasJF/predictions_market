@@ -946,3 +946,41 @@ Template:
   was simply unpaid for. Sells are still owed rather than paid (the payout side lands next), the UI does not yet
   ask a wallet to pay, and `ARCHITECTURE.md`'s boundary section is stale in both directions and is corrected
   separately. The misleading `paymentSats` assert in `buy` stays until the pool holds real collateral.
+
+## ADR-041 · Winnings are paid where a wallet can actually see them (FUND-001, return leg) · Accepted · 2026-08-10
+- **The other half of the user's complaint.** ADR-040 made money leave a trader's wallet. This makes it come
+  back *visibly*. Winners were paid to `hash160(their identity key)` — an address no wallet watches, outside the
+  BRC-100 basket flow. The satoshis were real, on-chain, and genuinely theirs, and were in practice
+  **unspendable**: nothing in the winner's wallet knew the output existed. That is what the user saw when they
+  looked at MetaNet Desktop and found nothing meaningful.
+- Decision: a payout goes to a **one-time BRC-29 destination derived for the winner** from the operator's
+  payment key, and the daemon persists and serves the **remittance** (`derivationPrefix`, `derivationSuffix`,
+  `senderIdentityKey`) so the winner's wallet can internalize it as ordinary spendable balance.
+- **Scoped nonces, not random ones — and this is the interesting part.** A payment intent can use random nonces
+  because a database row is created in the same breath to remember them. A payout cannot: the payout digest
+  **commits to every winner's address**, so the preview, the built transaction and any rebuild after a restart
+  must derive the identical destination or the commitment is worthless. Nonces are therefore derived from
+  `sha256("pm-payout:<marketId>:<trader>")`. The second benefit is larger than the first: `014_funding.sql` says
+  outright that losing `payment_intents` loses money, and this makes that class of loss **impossible for
+  payouts** — a winner's destination is recoverable from the market id and the key they traded with, with no
+  row to lose. Predictability costs nothing, since the key ID travels in the clear inside every remittance and
+  deriving the private key still needs one of the two identity keys.
+- `applyEffects` re-derives the destination when recording the payment and **refuses to write the row** if it
+  does not match the `pkh` that was actually paid. A recorded claim pointing at an address the money did not go
+  to would be worse than no claim at all.
+- `winningPayouts` gained a `PayoutDestination` hook rather than a hard-coded `pkhOf`, because the answer needs
+  a private key `@pm/execution` must never hold. `pkhOf` stays as the documented legacy path so markets paid
+  before this change still resolve.
+- **`MockEngine` gained `buildPayout`.** The sCrypt engine was the only implementation, and one payout there
+  costs minutes of Script verification, so the daemon's payout bookkeeping had no cheap coverage at all. Now it
+  does: fake money, identical bookkeeping.
+- Verified: **7 new tests**, the load-bearing one being that the served remittance derives a key whose hash160
+  equals the `pkh` the payout transaction actually paid — i.e. the winner really can spend it — plus that a
+  stranger's key cannot, that the destination survives a daemon restart unchanged, and that a pre-FUND-001
+  payout reports `remittance: null` rather than a half-filled object. 161 workspace tests, typecheck and web
+  build clean.
+- **Not done, stated plainly.** One-click claiming is not shipped: `internalizeAction` needs the payout tx as
+  valid BEEF, which needs its merkle path, and the clean way to get one is `Services.getMerklePath` from
+  `@bsv/wallet-toolbox` — which is the next step (it is also what sells need). Until then the UI shows the
+  winner their payment, the txid, and the derivation, and says what is missing instead of implying the money has
+  landed. Sells are still owed rather than paid.

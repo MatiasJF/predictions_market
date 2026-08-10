@@ -11,8 +11,8 @@ import {
   type MarketParams, type MarketState,
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
-import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, type ExecutionEngine } from '@pm/execution';
-import { deriveDestination, verifyPayment, assertIdentityKey, type ChainCheck } from '@pm/wallet';
+import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, pkhOf, type ExecutionEngine, type PayoutDestination } from '@pm/execution';
+import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, type ChainCheck, type DerivedDestination } from '@pm/wallet';
 import type { PrivateKey } from '@bsv/sdk';
 import type { PaymentIntentRow } from '@pm/persistence';
 
@@ -514,11 +514,71 @@ export class MarketService {
       throw new EngineLimitation('payout', 'this engine has no payout path — run PM_ENGINE=scrypt');
     }
     const cfg = cfgOf(m);
-    const winners = winningPayouts(this.db, id, m.resolution, cfg.payoutUnit);
+    const winners = winningPayouts(this.db, id, m.resolution, cfg.payoutUnit, this.payoutDestination(id));
     if (winners.length === 0) throw badReq('no winning positions to pay out');
     const digest = computePayoutDigest(winners);
     const buildPayout = this.engine.buildPayout.bind(this.engine);
     return this.enqueue(id, await built(() => buildPayout(cfg, poolRef(pool), winners, digest)));
+  }
+
+  /**
+   * FUND-001, the return leg — where this market's winnings are paid.
+   *
+   * Winners used to be paid at `hash160(their identity key)`. The satoshis were genuinely theirs, but no wallet
+   * watches that address, so the money was invisible and unspendable in practice: exactly the "I never see
+   * anything in my wallet" complaint that started this ticket. Each winner now gets a one-time BRC-29
+   * destination derived for them, and the remittance that lets their wallet internalize it as real balance.
+   *
+   * Scoped nonces (see `scopedNonces`) rather than random ones: the same market and trader must derive the same
+   * address in the preview, in the built transaction, and after a restart — the payout digest commits to it.
+   *
+   * Falls back to the legacy derivation when this daemon has no payment key, so an unfunded local daemon still
+   * runs the whole journey. That is a degraded mode, not a supported one.
+   */
+  private payoutDestination(marketId: number): PayoutDestination {
+    if (!this.paymentKey) return pkhOf;
+    return (trader) => this.payoutRemittance(marketId, trader).pkh;
+  }
+
+  private payoutRemittance(marketId: number, trader: string): DerivedDestination {
+    return deriveDestination(this.payKey(), trader, scopedNonces(`pm-payout:${marketId}:${trader}`));
+  }
+
+  /**
+   * What a winner needs to claim their payout into their own wallet: the transaction that paid them, which
+   * output it is, and the derivation nonces. Served to the trader, not the operator — it is their money, and
+   * without this they cannot derive the key that spends it.
+   */
+  payoutClaims(id: number, trader?: string) {
+    this.marketRow(id);
+    const rows = this.db
+      .prepare(
+        `SELECT trader_pubkey, pkh, shares, sats, txid, derivation_prefix, derivation_suffix, sender_identity_key
+           FROM payouts WHERE market_id=?${trader ? ' AND trader_pubkey=?' : ''} ORDER BY id`,
+      )
+      .all(...(trader ? [id, trader] : [id])) as {
+        trader_pubkey: string; pkh: string; shares: string; sats: number; txid: string;
+        derivation_prefix: string | null; derivation_suffix: string | null; sender_identity_key: string | null;
+      }[];
+    return {
+      market_id: id,
+      claims: rows.map((r) => ({
+        trader: r.trader_pubkey,
+        sats: r.sats,
+        shares: r.shares,
+        txid: r.txid,
+        pkh: r.pkh,
+        // Pre-FUND-001 payouts have no remittance: they were paid to a bare identity hash and there is nothing
+        // to internalize. Say so plainly rather than emitting a half-filled object a wallet would choke on.
+        remittance: r.derivation_prefix && r.derivation_suffix && r.sender_identity_key
+          ? {
+              derivationPrefix: r.derivation_prefix,
+              derivationSuffix: r.derivation_suffix,
+              senderIdentityKey: r.sender_identity_key,
+            }
+          : null,
+      })),
+    };
   }
 
   /** Rows recording winners actually paid on-chain for a market (migration 011). */
@@ -538,7 +598,7 @@ export class MarketService {
     this.execOrThrow();
     const m = this.marketRow(id);
     if (!m.resolution) return { market_id: id, resolved: false, winners: [], paid: [], total_sats: 0 };
-    const all = winningPayouts(this.db, id, m.resolution, cfgOf(m).payoutUnit);
+    const all = winningPayouts(this.db, id, m.resolution, cfgOf(m).payoutUnit, this.payoutDestination(id));
     const paid = this.paidRows(id);
     const paidBy = new Set(paid.map((p) => p.trader_pubkey));
     const winners = all.filter((w) => !paidBy.has(w.trader));
@@ -647,11 +707,28 @@ export class MarketService {
     }
     if (eff.payouts) {
       // PAYOUT-001: record who was actually paid on-chain (the audit trail for the payout tx).
+      //
+      // FUND-001 adds the remittance. It is re-derived here rather than threaded through the engine, which is
+      // safe precisely because the nonces are scoped: the same market and trader always derive the same
+      // destination, and the assert below refuses to write a row if that ever stops being true — a mismatch
+      // would mean recording a claim for an address the money did not go to.
       const ins = this.db.prepare(
-        `INSERT INTO payouts(market_id, trader_pubkey, pkh, shares, sats, payout_digest, txid)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO payouts(market_id, trader_pubkey, pkh, shares, sats, payout_digest, txid,
+                             derivation_prefix, derivation_suffix, sender_identity_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
-      for (const w of eff.payouts.winners) ins.run(marketId, w.trader, w.pkh, w.shares, w.sats, eff.payouts.digest, result.txid);
+      for (const w of eff.payouts.winners) {
+        const dest = this.paymentKey ? this.payoutRemittance(marketId, w.trader) : undefined;
+        if (dest && dest.pkh !== w.pkh) {
+          throw new ServiceError(500, `payout destination for ${w.trader.slice(0, 16)}… does not re-derive`);
+        }
+        ins.run(
+          marketId, w.trader, w.pkh, w.shares, w.sats, eff.payouts.digest, result.txid,
+          dest?.remittance.derivationPrefix ?? null,
+          dest?.remittance.derivationSuffix ?? null,
+          dest?.remittance.senderIdentityKey ?? null,
+        );
+      }
     }
     if (eff.settle) {
       // One settlement row for the whole batch, plus a trade row per fill, plus stamp the settled orders.

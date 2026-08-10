@@ -11,7 +11,7 @@
 //
 // Verified end-to-end on Node 20 with @bsv/sdk 2.1.9 before any of this was built (ADR-039): keys correspond
 // and the recipient can spend the resulting P2PKH.
-import { KeyDeriver, P2PKH, PrivateKey, PublicKey, Random, Utils, type WalletProtocol } from '@bsv/sdk';
+import { Hash, KeyDeriver, P2PKH, PrivateKey, PublicKey, Random, Utils, type WalletProtocol } from '@bsv/sdk';
 
 /**
  * The BRC-29 protocol identifier. Security level 2 = per-counterparty keys requiring explicit permission; the
@@ -25,6 +25,28 @@ export const brc29KeyID = (prefix: string, suffix: string): string => `${prefix}
 
 /** A fresh base64 nonce. `prefix` is per payment request, `suffix` per output. */
 export const newDerivationNonce = (): string => Utils.toBase64(Random(8));
+
+/**
+ * Nonces derived from a caller-chosen scope string instead of randomness — same scope, same destination, for
+ * ever.
+ *
+ * Random nonces are right for a payment REQUEST (the trader asks, we quote, we store), because there is a
+ * database row created at the same moment to remember them in. They are wrong for a PAYOUT, because a payout's
+ * destination has to be agreed on before the money moves and stay identical afterwards:
+ *
+ *   - the payout digest commits to every winner's address, so the preview, the built transaction and any
+ *     rebuild after a restart must all derive the same one or the commitment is worthless;
+ *   - and — the real reason — the nonces are what make the money spendable. `payment_intents` is honest that
+ *     losing the table loses money. Deriving a payout's nonces from `(market, trader)` means a winner can be
+ *     paid again, or repaid, from nothing but the market id and the key they traded with. No row to lose.
+ *
+ * Predictability costs nothing here: the key ID travels in the clear inside every remittance anyway, and
+ * deriving the private key still needs one of the two identity keys.
+ */
+export function scopedNonces(scope: string): { prefix: string; suffix: string } {
+  const h = Hash.sha256(scope, 'utf8');
+  return { prefix: Utils.toBase64(h.slice(0, 8)), suffix: Utils.toBase64(h.slice(8, 16)) };
+}
 
 /**
  * Everything the recipient needs to internalize a payment, and everything we must persist to be able to spend
@@ -43,6 +65,8 @@ export interface DerivedDestination {
   lockingScript: string;
   /** Address form, for display and for chain queries. */
   address: string;
+  /** hash160 of the one-time public key — what the covenant's payout method takes as a winner. */
+  pkh: string;
   /** The one-time public key the script pays. */
   publicKey: string;
   remittance: PaymentRemittance;
@@ -71,6 +95,7 @@ export function deriveDestination(
   return {
     lockingScript: new P2PKH().lock(address).toHex(),
     address,
+    pkh: pub.toHash('hex') as string,
     publicKey: pub.toString(),
     remittance: {
       derivationPrefix: prefix,
