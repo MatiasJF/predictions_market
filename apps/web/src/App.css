@@ -147,8 +147,7 @@
    Three soft blobs give the blur something to chew on while keeping luminance nearly uniform, so
    text contrast is the same wherever a card lands. Fixed, so it does not move while scrolling.
    Rendered only in glass mode. */
-.ambient { display: none; }
-:root[data-surface="glass"] .ambient {
+.ambient {
   display: block;
   position: fixed;
   inset: -20vmax;
@@ -159,7 +158,13 @@
     radial-gradient(34vmax 34vmax at 84% 26%, color-mix(in srgb, var(--ambient-2) calc(var(--ambient-alpha) * 100%), transparent), transparent 60%),
     radial-gradient(40vmax 40vmax at 62% 88%, color-mix(in srgb, var(--ambient-3) calc(var(--ambient-alpha) * 100%), transparent), transparent 60%);
   filter: blur(40px);
+  /* Glass raises --ambient-alpha, so the same layer serves both modes and there is only one of it. */
+  transition: opacity var(--dur-base) var(--ease);
 }
+
+/* The shell owns a stacking context, so the z-index:-1 wash is reliably ABOVE the page background
+   and below every card — rather than depending on what else happens to be on the page. */
+.app-shell { position: relative; z-index: 0; }
 
 /* --- the glass treatment itself ---------------------------------------------------------------------
    Applied to SURFACES only — cards, the sheet, the bars. Not to pills, chips or buttons: a dozen

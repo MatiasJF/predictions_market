@@ -112,6 +112,15 @@
 
   --focus-ring: 0 0 0 2px var(--surface-app), 0 0 0 4px var(--accent);
 
+  /* --- ambient wash -------------------------------------------------------------------------
+     Present in EVERY mode, quietly. A flat near-black page reads as unfinished — the operator's
+     word for it was "plain black" — and it also left glass with nothing to be glass over, which is
+     why toggling it looked like nothing happened. Solid gets a whisper of it; glass turns it up. */
+  --ambient-1: #6d5efc;
+  --ambient-2: #38bdf8;
+  --ambient-3: #fb7185;
+  --ambient-alpha: 0.10;
+
   /* The trader hero. Saturated and confident — the one place colour is allowed to shout. */
   --hero-gradient: linear-gradient(135deg, #5b4ef0 0%, #7b3fe4 55%, #a12fd0 100%);
   --hero-text: #ffffff;
@@ -120,6 +129,7 @@
 /* --- dark: follows the OS unless the user has explicitly chosen light ------------------------ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --ambient-alpha: 0.16;
     --surface-app: #0d0f13;
     --surface-raised: #16191f;
     --surface-sunken: #101319;
@@ -157,6 +167,7 @@
 
 /* --- dark: chosen explicitly. Duplicated on purpose — see the theming note at the top. ------- */
 :root[data-theme="dark"] {
+  --ambient-alpha: 0.16;
   --surface-app: #0d0f13;
   --surface-raised: #16191f;
   --surface-sunken: #101319;
@@ -206,7 +217,7 @@
    become unreadable in sunlight. This is a money interface, so the amounts win over the effect.
    ============================================================================================= */
 :root[data-surface="glass"] {
-  --surface-raised: color-mix(in srgb, #ffffff 78%, transparent);
+  --surface-raised: color-mix(in srgb, #ffffff 70%, transparent);
   --surface-overlay: color-mix(in srgb, #ffffff 86%, transparent);
   --surface-sunken: color-mix(in srgb, #ffffff 46%, transparent);
   --border: color-mix(in srgb, #14161a 10%, transparent);
@@ -218,12 +229,12 @@
   --ambient-1: #8b7dff;
   --ambient-2: #38bdf8;
   --ambient-3: #fb7185;
-  --ambient-alpha: 0.30;
+  --ambient-alpha: 0.46;
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-surface="glass"]:not([data-theme="light"]) {
-    --surface-raised: color-mix(in srgb, #191d25 76%, transparent);
+    --surface-raised: color-mix(in srgb, #191d25 68%, transparent);
     --surface-overlay: color-mix(in srgb, #1c2028 88%, transparent);
     --surface-sunken: color-mix(in srgb, #0d0f13 55%, transparent);
     --border: color-mix(in srgb, #ffffff 12%, transparent);
@@ -231,11 +242,11 @@
     --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0) 45%);
     --shadow-1: 0 2px 10px rgb(0 0 0 / 0.45);
     --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
-    --ambient-alpha: 0.38;
+    --ambient-alpha: 0.58;
   }
 }
 :root[data-surface="glass"][data-theme="dark"] {
-  --surface-raised: color-mix(in srgb, #191d25 76%, transparent);
+  --surface-raised: color-mix(in srgb, #191d25 68%, transparent);
   --surface-overlay: color-mix(in srgb, #1c2028 88%, transparent);
   --surface-sunken: color-mix(in srgb, #0d0f13 55%, transparent);
   --border: color-mix(in srgb, #ffffff 12%, transparent);
@@ -243,5 +254,5 @@
   --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0) 45%);
   --shadow-1: 0 2px 10px rgb(0 0 0 / 0.45);
   --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
-  --ambient-alpha: 0.38;
+  --ambient-alpha: 0.58;
 }
