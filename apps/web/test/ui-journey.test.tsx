@@ -139,19 +139,25 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
     await waitFor(() => expect(screen.getByText(/^0[23][0-9a-f]{6}/)).toBeTruthy(), WAIT);
 
     // ---- OPERATOR: create + deploy the pool -------------------------------------------------------------
-    fireEvent.click(screen.getByRole('button', { name: /^Operator$/ }));
-    await clickWhenReady(/new market/);
-
+    //
     // REGRESSION (reported 2026-08-06): the console used to default to markets[0] — the OLDEST market — and
     // "new market" did not select what it had just created. Against a DB with prior markets that silently
     // pointed every operator action at the wrong market: "deploy pool" looked broken (the old market already
     // had a pool) and settle/resolve acted on a stale one. Creating a second market must move the selection.
+    //
+    // Counts are RELATIVE to what was already there. This used to assert "there is now exactly 1 market",
+    // so the journey only passed against a virgin database and failed on its second run — useless for a test
+    // that has to be re-run after every stage of a redesign. Hence the baseline, taken before the first click.
     const marketCount = async () => ((await fetch(`${API}/markets`).then((r) => r.json())) as any[]).length;
-    await waitFor(async () => expect(await marketCount()).toBe(1), WAIT); // let the first create land
+    const started = await marketCount();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Operator$/ }));
+    await clickWhenReady(/new market/);
+    await waitFor(async () => expect(await marketCount()).toBe(started + 1), WAIT); // first create landed
     await clickWhenReady(/new market/);
     const newest = await waitFor(async () => {
       const after = (await fetch(`${API}/markets`).then((r) => r.json())) as any[];
-      expect(after.length, 'second market not created yet').toBe(2);
+      expect(after.length, 'second market not created yet').toBe(started + 2);
       return Math.max(...after.map((m) => m.id as number));
     }, WAIT);
     await waitFor(() => {

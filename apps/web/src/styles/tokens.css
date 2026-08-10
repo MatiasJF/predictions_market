@@ -1,0 +1,192 @@
+/* =============================================================================================
+   Design tokens (UI-010).
+   =============================================================================================
+   Everything visual resolves through these. Components never name a colour, a radius or a gap
+   directly — that is what let the previous stylesheet drift into ten variables and a lot of
+   hard-coded pixels.
+
+   THE COLOUR ASSIGNMENT IS A CORRECTNESS DECISION, NOT A TASTE ONE.
+
+   The old palette gave `--no` and `--err` the SAME hex, so a market's NO side and an error state
+   were indistinguishable. In a money UI that is a defect. Two rules now hold:
+
+     1. YES and NO must never be confusable — they are green and ORANGE, not green and red. That
+        is also the standard colour-blind-safe pair; green/red is the one that fails.
+     2. Danger owns red, alone. Nothing else in the system is red, so red always means "this can
+        lose you money".
+
+   Colour is never the only signal anyway — every status carries an icon and words (see base.css
+   and the StatusMessage/Callout primitives). This palette is the belt; that is the braces.
+
+   THEMING. Light is the base, defined on bare `:root`. Dark overrides only the tokens that
+   change, guarded so an explicit choice always wins:
+     - `@media (prefers-color-scheme: dark)` + `:root:not([data-theme="light"])` → follow the OS
+     - `:root[data-theme="dark"]`                                               → user chose dark
+   A colour must never be defined ONLY inside a media query, or the toggle can't override it.
+   ============================================================================================= */
+
+:root {
+  /* --- surfaces ------------------------------------------------------------------------------
+     Cards sit on a slightly grey app background rather than white-on-white — the thing every
+     good light-mode fintech surface does, and the reason their cards read as objects. */
+  --surface-app: #f4f5f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceef2;
+  --surface-overlay: #ffffff;
+  --surface-inverse: #14161a;
+
+  /* --- text: three weights of emphasis, not five ------------------------------------------- */
+  --text-strong: #14161a;
+  --text-muted: #5a6472;
+  --text-subtle: #8b95a5;
+  --text-on-accent: #ffffff;
+  --text-inverse: #f7f8fa;
+
+  --border: #e2e6ec;
+  --border-strong: #c9d0da;
+
+  /* --- meaning ------------------------------------------------------------------------------ */
+  --accent: #5b4ef0;          /* brand: primary actions, links, focus                            */
+  --accent-hover: #4a3ce0;
+  --accent-soft: #ecebfe;     /* tinted backgrounds — the "icon in a soft circle" move           */
+  --positive: #0b8f68;        /* YES                                                             */
+  --positive-soft: #dcf5ec;
+  --negative: #c2410c;        /* NO — orange, deliberately NOT red                               */
+  --negative-soft: #fdeade;
+  --danger: #d21c1c;          /* errors, mainnet, anything that can lose money. Red is ITS alone */
+  --danger-soft: #fde8e8;
+  --warning: #a15c07;
+  --warning-soft: #fdf0d5;
+
+  /* --- shape --------------------------------------------------------------------------------
+     Revolut sits around 12–20px. Cards get the big one; controls are fully rounded, which is
+     most of why that family of apps reads as "soft" without looking like a toy. */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* --- space: a 4px rhythm, referenced by name so gaps stay in tune ------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* --- type ---------------------------------------------------------------------------------
+     `--font-numeric` is load-bearing, not decoration: this UI polls every 2 seconds, and without
+     tabular figures every satoshi amount jitters sideways as the digits change. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-numeric: var(--font-sans);
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.75rem;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* --- elevation ---------------------------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgb(20 22 26 / 0.06), 0 1px 3px rgb(20 22 26 / 0.04);
+  --shadow-2: 0 4px 12px rgb(20 22 26 / 0.08), 0 2px 4px rgb(20 22 26 / 0.04);
+  --shadow-3: 0 12px 32px rgb(20 22 26 / 0.14);
+
+  /* --- motion --------------------------------------------------------------------------------
+     Short and unfussy. `--dur-slow` is only for the price bar, where the movement IS the
+     information and needs to be perceptible. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 450ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  --focus-ring: 0 0 0 2px var(--surface-app), 0 0 0 4px var(--accent);
+
+  /* The trader hero. Saturated and confident — the one place colour is allowed to shout. */
+  --hero-gradient: linear-gradient(135deg, #5b4ef0 0%, #7b3fe4 55%, #a12fd0 100%);
+  --hero-text: #ffffff;
+}
+
+/* --- dark: follows the OS unless the user has explicitly chosen light ------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-app: #0d0f13;
+    --surface-raised: #16191f;
+    --surface-sunken: #101319;
+    --surface-overlay: #1c2028;
+    --surface-inverse: #f7f8fa;
+
+    --text-strong: #eef1f5;
+    --text-muted: #98a2b3;
+    --text-subtle: #6b7684;
+    --text-on-accent: #ffffff;
+    --text-inverse: #14161a;
+
+    --border: #252a33;
+    --border-strong: #39414e;
+
+    --accent: #8b7dff;
+    --accent-hover: #a094ff;
+    --accent-soft: #211d3d;
+    --positive: #2ecc95;
+    --positive-soft: #10281f;
+    --negative: #ff8a4c;
+    --negative-soft: #2e1a10;
+    --danger: #ff5a5a;
+    --danger-soft: #2e1315;
+    --warning: #f0b429;
+    --warning-soft: #2b2110;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 12px 32px rgb(0 0 0 / 0.6);
+
+    --hero-gradient: linear-gradient(135deg, #4b3fd6 0%, #6b32c9 55%, #8b25b0 100%);
+  }
+}
+
+/* --- dark: chosen explicitly. Duplicated on purpose — see the theming note at the top. ------- */
+:root[data-theme="dark"] {
+  --surface-app: #0d0f13;
+  --surface-raised: #16191f;
+  --surface-sunken: #101319;
+  --surface-overlay: #1c2028;
+  --surface-inverse: #f7f8fa;
+
+  --text-strong: #eef1f5;
+  --text-muted: #98a2b3;
+  --text-subtle: #6b7684;
+  --text-on-accent: #ffffff;
+  --text-inverse: #14161a;
+
+  --border: #252a33;
+  --border-strong: #39414e;
+
+  --accent: #8b7dff;
+  --accent-hover: #a094ff;
+  --accent-soft: #211d3d;
+  --positive: #2ecc95;
+  --positive-soft: #10281f;
+  --negative: #ff8a4c;
+  --negative-soft: #2e1a10;
+  --danger: #ff5a5a;
+  --danger-soft: #2e1315;
+  --warning: #f0b429;
+  --warning-soft: #2b2110;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-3: 0 12px 32px rgb(0 0 0 / 0.6);
+
+  --hero-gradient: linear-gradient(135deg, #4b3fd6 0%, #6b32c9 55%, #8b25b0 100%);
+}

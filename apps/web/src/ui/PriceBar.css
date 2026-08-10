@@ -1,0 +1,40 @@
+/* The bonding curve made visible. The transition on `width` is the whole point: when a fill moves
+   the price, the split SLIDES, and the eye catches movement it would never catch in a number.
+   `--dur-slow` is used deliberately — fast enough not to feel laggy, slow enough to be seen.
+   Reduced-motion callers get an instant snap via the global rule in base.css. */
+.pricebar { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.pricebar-track {
+  display: flex;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--negative);
+  height: 34px;
+}
+.pricebar-sm .pricebar-track { height: 24px; }
+.pricebar-lg .pricebar-track { height: 48px; }
+
+.pricebar-yes {
+  background: var(--positive);
+  display: flex; align-items: center;
+  min-width: 0;
+  transition: width var(--dur-slow) var(--ease);
+}
+.pricebar-no { flex: 1 1 auto; display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+
+.pricebar-pct {
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pricebar-lg .pricebar-pct { font-size: var(--text-lg); }
+
+.pricebar-legend {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  font-size: var(--text-sm);
+  flex-wrap: wrap;
+}
+.pricebar-legend b { font-size: var(--text-lg); }

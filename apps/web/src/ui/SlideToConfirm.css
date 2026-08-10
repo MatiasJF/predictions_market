@@ -1,0 +1,83 @@
+/* Slide to confirm. A styled <input type="range"> — the native control stays in the DOM and stays
+   focusable, so keyboard and switch users get the same action as everyone else. */
+.slide-wrap { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.slide-ack {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--text-muted);
+  cursor: pointer;
+}
+.slide-ack input { margin-top: 3px; accent-color: var(--danger); flex: none; }
+
+.slide {
+  position: relative;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.slide.is-locked { opacity: 0.55; }
+.slide.is-done { border-color: var(--positive); }
+
+/* The fill trails the handle. No transition while dragging (it must track the finger); the snap
+   back to 0 is instant for the same reason — a springy return reads as a bug. */
+.slide-fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--tone-fill) 22%, transparent);
+  border-right: 2px solid var(--tone-fill);
+}
+.slide.tone-danger { --tone-fill: var(--danger); }
+.slide.tone-accent { --tone-fill: var(--accent); }
+.slide.is-done .slide-fill { background: color-mix(in srgb, var(--positive) 22%, transparent); border-color: var(--positive); }
+
+.slide-label {
+  position: relative;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  pointer-events: none;
+  padding-left: var(--space-6);
+  text-align: center;
+}
+.slide.is-done .slide-label { color: var(--positive); }
+
+/* The range input covers the whole control and is transparent apart from its thumb, which is the
+   visible handle. Opacity is NOT used to hide it — that would hide the thumb too. */
+.slide-input {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: grab;
+}
+.slide-input:disabled { cursor: not-allowed; }
+.slide-input:active { cursor: grabbing; }
+
+.slide-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px; height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--tone-fill);
+  border: 3px solid var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  cursor: grab;
+}
+.slide-input::-moz-range-thumb {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--tone-fill);
+  border: 3px solid var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  cursor: grab;
+  border-width: 3px;
+}
+.slide.is-done .slide-input::-webkit-slider-thumb { background: var(--positive); }
+.slide.is-done .slide-input::-moz-range-thumb { background: var(--positive); }
+
+/* The focus ring belongs on the visible control, not the invisible input. */
+.slide:has(.slide-input:focus-visible) { box-shadow: var(--focus-ring); }
