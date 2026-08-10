@@ -1,0 +1,98 @@
+/* App shell (UI-010). */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--surface-app) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.brand { font-weight: var(--weight-bold); letter-spacing: -0.02em; }
+
+.identity {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.identity code { color: var(--text-muted); }
+
+.code-block {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  margin: 0;
+}
+
+/* --- the trader hero -------------------------------------------------------------------------
+   The one place colour is allowed to shout. Everything else in the app is restrained so that this
+   reads as the entry point. */
+.hero {
+  background: var(--hero-gradient);
+  color: var(--hero-text);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.hero-label { font-size: var(--text-sm); opacity: 0.82; }
+.hero-value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.hero-value small { font-size: 0.36em; font-weight: var(--weight-medium); opacity: 0.8; margin-left: var(--space-2); }
+.hero-stats { display: flex; gap: var(--space-6); flex-wrap: wrap; }
+.hero-stat-value { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.hero-stat-label { font-size: var(--text-xs); opacity: 0.8; }
+
+/* --- market card ------------------------------------------------------------------------------- */
+.market-card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.market-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.market-question { font-weight: var(--weight-semibold); line-height: 1.35; }
+.market-meta { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+
+/* --- order ticket -------------------------------------------------------------------------------- */
+.ticket { display: flex; flex-direction: column; gap: var(--space-4); }
+.ticket-controls { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end; }
+.ticket-shares { width: 7rem; }
+.review { background: var(--surface-sunken); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+
+/* --- receipts + positions -------------------------------------------------------------------------- */
+.receipt-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm); }
+.receipt-row:last-child { border-bottom: none; }
+.receipt-seq { color: var(--text-subtle); font-family: var(--font-mono); font-size: var(--text-xs); flex: none; }
+
+.claim-box { border-top: 1px solid var(--border); padding-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.claim-box pre { margin: var(--space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
