@@ -132,7 +132,7 @@ export function Market({
       )}
 
       <div className="cols">
-        <div className="card">
+        <div className="card" data-testid="panel-price">
           <h3>Price</h3>
           <div className="bigprices">
             <div className="yes"><b>{market.prices.yes_sats}</b><span>YES</span></div>
@@ -152,7 +152,7 @@ export function Market({
           )}
         </div>
 
-        <div className="card">
+        <div className="card" data-testid="panel-order">
           <h3>Order ticket</h3>
           {!canTrade ? (
             <p className="dim">
@@ -209,7 +209,7 @@ export function Market({
       </div>
 
       <div className="cols">
-        <div className="card">
+        <div className="card" data-testid="panel-position">
           <h3>My position</h3>
           {mine ? (
             <div className="row">
@@ -270,14 +270,14 @@ export function Market({
           )}
         </div>
 
-        <div className="card">
+        <div className="card" data-testid="panel-receipts">
           <h3>My receipts <span className="dim">({receipts?.count ?? 0})</span></h3>
           <p className="dim tiny">
             Each fill is a signed receipt — your proof of the trade, and what the on-chain settlement is audited against.
           </p>
           <div className="scroll">
             {(receipts?.receipts ?? []).slice().reverse().map((r: any) => (
-              <div key={r.seq} className="receipt">
+              <div key={r.seq} className="receipt" data-testid="receipt-row">
                 <span>#{r.seq}</span>
                 <span className={r.side}>{r.action} {shares(r.shares)} {r.side.toUpperCase()}</span>
                 <span className="dim">@{r.price_sats} sat</span>

@@ -24,7 +24,7 @@ export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
       {markets.slice().reverse().map((m) => {
         const stranded = m.pool && m.pool.spendable === false;
         return (
-          <button key={m.id} className="card market" onClick={() => onOpen(m.id)}>
+          <button key={m.id} className="card market" data-testid="market-card" onClick={() => onOpen(m.id)}>
             <div className="q">#{m.id} · {m.question}</div>
             <div className="prices">
               <span className="yes">YES {m.prices.yes_sats}</span>

@@ -7,9 +7,20 @@
 // screen wires to the daemon correctly and that the journey a user actually walks — create → deploy → sign an
 // order → settle → audit → resolve → pay winners — works end to end with a human authorizing each broadcast.
 //
+// UI-010 STAGE 0 — this test is the CONTRACT the redesign has to satisfy.
+//
+// It used to find elements by CSS class (`closest('.card')`, `querySelectorAll('.queue')`,
+// `className.includes('market')`), which made it a test of the stylesheet as much as of the app. Rewriting the
+// UI and its only regression test together would have proved nothing, so the selectors were moved to roles,
+// labels and explicit test ids FIRST, and proved green against the unchanged UI. Everything below is now
+// indifferent to how the app looks — which is the point, and which is why the next restyle is free.
+//
+// Rules for anyone editing this file: identify things the way a user or a screen reader would (role + name),
+// or by an explicit `data-testid` that names the THING and not its appearance. Never by class.
+//
 // It needs a live daemon, so it skips unless one is running:
-//   PM_NETWORK=local PM_ENGINE=scrypt PM_OPERATOR_TOKEN=<tok> pnpm --filter @pm/daemon dev
-//   PM_UI_E2E=1 PM_OPERATOR_TOKEN=<tok> pnpm vitest run apps/web/test/ui-journey.test.tsx
+//   PM_PORT=8799 PM_NETWORK=local PM_ENGINE=scrypt PM_OPERATOR_TOKEN=<tok> pnpm --filter @pm/daemon dev
+//   PM_UI_E2E=1 VITE_PM_API=http://127.0.0.1:8799 PM_OPERATOR_TOKEN=<tok> pnpm vitest run apps/web/test/ui-journey.test.tsx
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { render, screen, within, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { App } from '../src/App';
@@ -25,12 +36,23 @@ const LONG = { timeout: 420_000 };
 let daemonUp = false;
 beforeAll(async () => {
   if (!ENABLED) return;
-  daemonUp = await fetch(`${API}/health`).then((r) => r.ok).catch(() => false);
+  const health = await fetch(`${API}/health`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  daemonUp = health !== null;
+
+  // This test creates markets and AUTHORIZES BROADCASTS. Against a mainnet daemon that spends real satoshis on
+  // every run. The default port is the one an operator's real daemon also uses, so refuse rather than trust the
+  // environment to be pointed somewhere harmless.
+  if (health && health.network === 'mainnet') {
+    throw new Error(
+      `REFUSING TO RUN: ${API} is a MAINNET daemon. This test authorizes broadcasts and would spend real money. ` +
+      'Start a local daemon (PM_NETWORK=local) on another port and set VITE_PM_API to it.',
+    );
+  }
   localStorage.setItem('pm.operator.token', TOKEN);
 });
 afterEach(() => cleanup());
 
-/** Click the button whose visible text matches, once it exists and is enabled. */
+/** Click the button whose accessible name matches, once it exists and is enabled. */
 async function clickWhenReady(name: RegExp, scope?: HTMLElement) {
   const q = scope ? within(scope) : screen;
   const btn = await waitFor(() => {
@@ -42,14 +64,19 @@ async function clickWhenReady(name: RegExp, scope?: HTMLElement) {
   return btn;
 }
 
-/** The pending rows currently shown in the sign-off queue. */
-function queueRows(kind: RegExp): HTMLElement[] {
-  const card = screen.getByText(/Sign-off queue/).closest('.card') as HTMLElement;
-  return [...card.querySelectorAll('.queue')].filter((r) => kind.test(r.textContent ?? '')) as HTMLElement[];
+/** A named panel of the UI. `data-testid` names the thing, never its styling. */
+const panel = (name: string): HTMLElement => screen.getByTestId(`panel-${name}`);
+
+/**
+ * Pending rows in the sign-off queue, selected by the KIND of broadcast rather than by matching a regex against
+ * the row's rendered text — the kind is data, the text is presentation.
+ */
+function queueRows(kind: string): HTMLElement[] {
+  return [...panel('signoff').querySelectorAll(`[data-testid="queue-row"][data-kind="${kind}"]`)] as HTMLElement[];
 }
 
 /** Authorize what's sitting in the sign-off queue — the human gate every on-chain action passes through. */
-async function authorizeQueue(kind: RegExp) {
+async function authorizeQueue(kind: string) {
   const row = await waitFor(() => {
     const [r] = queueRows(kind);
     if (!r) throw new Error(`no pending ${kind} in the queue`);
@@ -61,7 +88,6 @@ async function authorizeQueue(kind: RegExp) {
     if (queueRows(kind).length > 0) throw new Error(`${kind} still pending`);
   }, { timeout: 180_000, interval: 500 });
 }
-
 
 /**
  * Place a PAID buy through the API, the way a funded wallet would: quote an intent, build a transaction paying
@@ -129,30 +155,30 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
       return Math.max(...after.map((m) => m.id as number));
     }, WAIT);
     await waitFor(() => {
-      const sel = screen.getByRole('combobox') as HTMLSelectElement;
+      const sel = screen.getByLabelText(/^market$/i) as HTMLSelectElement;
       expect(Number(sel.value), 'console must target the market it just created').toBe(newest);
     }, WAIT);
 
     await clickWhenReady(/deploy pool/);
-    await authorizeQueue(/deploy/i);
+    await authorizeQueue('deploy');
 
     // ---- TRADER: sign and place an order ----------------------------------------------------------------
     fireEvent.click(screen.getByRole('button', { name: /^Trade$/ }));
     const card = await waitFor(() => {
-      const b = screen.getAllByRole('button').find((e) => e.className.includes('market'));
-      if (!b) throw new Error('no market card');
-      return b as HTMLElement;
+      const [first] = screen.getAllByTestId('market-card');
+      if (!first) throw new Error('no market card');
+      return first as HTMLElement;
     }, WAIT);
     fireEvent.click(card);
 
-    await waitFor(() => expect(screen.getByText('Order ticket')).toBeTruthy(), WAIT);
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '5' } });
+    await waitFor(() => expect(panel('order')).toBeTruthy(), WAIT);
+    fireEvent.change(screen.getByLabelText(/^shares$/i), { target: { value: '5' } });
 
     // FUND-001 changed what this step means. A buy is now a real payment, and the dev key jsdom falls back to
     // holds no funds — so the UI must REFUSE, clearly, rather than trade for free. That refusal is the correct
     // behaviour and is asserted here; a funded buy needs a real wallet and is covered by the mainnet run.
     expect(
-      screen.getByText(/development key holds no funds/i),
+      within(panel('order')).getByText(/development key holds no funds/i),
       'an unfunded browser must be told it cannot buy',
     ).toBeTruthy();
     await clickWhenReady(/pay & buy 5 YES/i);
@@ -164,41 +190,38 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
 
     // The position and the receipt both show up for this trader.
     await waitFor(() => {
-      const pos = screen.getByText('My position').closest('.card') as HTMLElement;
-      expect(within(pos).getByText(/YES 5/)).toBeTruthy();
+      expect(within(panel('position')).getByText(/YES 5/)).toBeTruthy();
     }, WAIT);
     await waitFor(() => {
-      const rec = screen.getByText('My receipts').closest('.card') as HTMLElement;
-      const rows = [...rec.querySelectorAll('.receipt')];
+      const rows = within(panel('receipts')).getAllByTestId('receipt-row');
       expect(rows.length, 'no receipt row').toBe(1);
-      expect(rows[0].textContent).toMatch(/buy 5 YES/);
+      expect(rows[0]!.textContent).toMatch(/buy 5 YES/);
     }, WAIT);
 
     // ---- OPERATOR: settle the batch on chain ------------------------------------------------------------
     fireEvent.click(screen.getByRole('button', { name: /^Operator$/ }));
     await clickWhenReady(/settle batch/);
-    await authorizeQueue(/settle/i);
+    await authorizeQueue('settle');
 
     // ---- AUDIT: does the chain match the receipts the trader signed? ------------------------------------
     await waitFor(() => {
-      const audit = screen.getByText('Audit').closest('.card') as HTMLElement;
-      expect(within(audit).getByText(/settlements match the signed receipts/)).toBeTruthy();
+      expect(within(panel('audit')).getByText(/settlements match the signed receipts/)).toBeTruthy();
     }, WAIT);
 
     // ---- OPERATOR: resolve YES, then pay the winners ----------------------------------------------------
     await clickWhenReady(/resolve YES/);
-    await authorizeQueue(/resolve/i);
+    await authorizeQueue('resolve');
 
     // The payout preview must name a winner before "pay winners" is even clickable.
     const winners = await waitFor(() => {
-      const c = screen.getByText('Winners').closest('.card') as HTMLElement;
+      const c = panel('winners');
       if (!within(c).queryByText(/sat$/)) throw new Error('no winners yet');
       return c;
     }, WAIT);
     expect(within(winners).getByText(/5 shares/)).toBeTruthy();
 
     await clickWhenReady(/pay winners/);
-    await authorizeQueue(/payout/i);
+    await authorizeQueue('payout');
 
     // Broadcast, and the trade is paid.
     const paid = await fetch(`${API}/broadcasts`).then((r) => r.json());

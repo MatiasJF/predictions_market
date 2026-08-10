@@ -75,7 +75,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
 
   return (
     <div>
-      <div className={`card${blocked ? ' danger' : ''}`}>
+      <div className={`card${blocked ? ' danger' : ''}`} data-testid="panel-token">
         <h3>
           Operator token{' '}
           {authRequired
@@ -102,11 +102,11 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         )}
       </div>
 
-      <div className="card">
+      <div className="card" data-testid="panel-signoff">
         <h3>Sign-off queue <span className="dim">({pending.length} pending)</span></h3>
         {pending.length === 0 && <p className="dim">Nothing awaiting authorization.</p>}
         {pending.map((b) => (
-          <div key={b.id} className="queue">
+          <div key={b.id} className="queue" data-testid="queue-row" data-kind={b.kind}>
             <div>
               <b>#{b.id} {b.kind}</b>
               <div className="dim">{b.summary}</div>
@@ -152,10 +152,10 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
 
       <TxLog broadcasts={queue ?? []} isMainnet={isMainnet} />
 
-      <div className="card">
+      <div className="card" data-testid="panel-market">
         <h3>Market</h3>
         <div className="row">
-          <select value={marketId ?? ''} onChange={(e) => setSel(Number(e.target.value))}>
+          <select aria-label="market" value={marketId ?? ''} onChange={(e) => setSel(Number(e.target.value))}>
             {(markets ?? []).map((m) => (
               <option key={m.id} value={m.id}>
                 #{m.id} · {m.payoutUnit} sat/share · b={m.bUnits} · {m.question.slice(0, 40)}
@@ -252,7 +252,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
       </div>
 
       <div className="cols">
-        <div className="card">
+        <div className="card" data-testid="panel-audit">
           <h3>Audit</h3>
           <p className="dim tiny">Does the on-chain settlement match the receipts traders actually signed?</p>
           {!audit ? <p className="dim">—</p> : audit.batches === 0 ? <p className="dim">nothing settled yet</p> : (
@@ -271,7 +271,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
           )}
         </div>
 
-        <div className="card">
+        <div className="card" data-testid="panel-winners">
           <h3>Winners</h3>
           {!payout?.resolved ? <p className="dim">market not resolved</p> : (
             <>
