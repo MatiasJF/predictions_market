@@ -12,7 +12,7 @@ import {
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, pkhOf, type ExecutionEngine, type PayoutDestination } from '@pm/execution';
-import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, type ChainCheck, type DerivedDestination } from '@pm/wallet';
+import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, type BeefSource, type ChainCheck, type DerivedDestination } from '@pm/wallet';
 import type { PrivateKey } from '@bsv/sdk';
 import type { PaymentIntentRow } from '@pm/persistence';
 
@@ -65,7 +65,9 @@ export class MarketService {
      */
     private readonly paymentKey?: PrivateKey,
     /** Confirms a trader's payment reached the network. Offline for `local`, WhatsOnChain for mainnet. */
-    private readonly chainCheck?: ChainCheck
+    private readonly chainCheck?: ChainCheck,
+    /** Proof a winner's wallet will accept for the transaction that paid them. Absent offline. */
+    private readonly beefSource?: BeefSource
   ) {}
 
   /** How long a quoted price is honoured. Short: the LMSR price moves with every other fill. */
@@ -578,6 +580,56 @@ export class MarketService {
             }
           : null,
       })),
+    };
+  }
+
+  /**
+   * Everything a winner's wallet needs to take custody of a payout — the `internalizeAction` call, prepared.
+   *
+   * Split from `payoutClaims` on purpose. That one is cheap and polled; this one fetches tens of kilobytes of
+   * merkle-proved transaction from the network, so it happens when a winner actually asks to claim.
+   *
+   * The honest failure mode is `ready: false`. A payout is only claimable once it is **mined**, because the
+   * proof a wallet accepts is the transaction's merkle path (see `BeefSource` for why its ancestry is not an
+   * option here). Until then the money is theirs and nothing is lost — it just cannot be internalized yet.
+   */
+  async payoutClaim(id: number, traderInput: string) {
+    const trader = assertIdentityKey((traderInput ?? '').trim());
+    const { claims } = this.payoutClaims(id, trader);
+    const claim = claims[0];
+    if (!claim) throw notFound(`no payout to ${trader.slice(0, 16)}… in market ${id}`);
+    if (!claim.remittance) {
+      throw conflict(
+        'this payout predates one-time addresses — it was paid to your identity key\'s own hash and there is ' +
+        'nothing for a wallet to internalize; that key has to be swept directly',
+      );
+    }
+    if (!this.beefSource) {
+      return { ready: false as const, reason: 'this daemon is offline — there is no chain to prove a payment against', ...claim };
+    }
+
+    const tx = await this.beefSource.atomicBeef(claim.txid);
+    if (!tx) {
+      return {
+        ready: false as const,
+        reason: 'the payout transaction is not mined yet — a wallet needs its merkle proof before it will accept the money',
+        ...claim,
+      };
+    }
+    // Read the output index off the transaction itself rather than trusting a stored one.
+    const { outputIndex, satoshis } = outputPayingPkh(tx, claim.pkh);
+    return {
+      ready: true as const,
+      ...claim,
+      satoshis,
+      /** Pass straight to `wallet.internalizeAction`. */
+      internalize: {
+        tx,
+        outputIndex,
+        protocol: 'wallet payment' as const,
+        paymentRemittance: claim.remittance,
+        description: `prediction market #${id} winnings`,
+      },
     };
   }
 

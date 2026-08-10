@@ -14,8 +14,8 @@ import { MockEngine } from '@pm/engine';
 import { ExecutionEngine, makeReceiptSigner, signOrder, pkhOf } from '@pm/execution';
 import { MarketService } from '../src/service.js';
 import { paidBuy } from './helpers/pay.js';
-import { OfflineChainCheck, derivePaymentKey, scopedNonces, BRC29_PROTOCOL, brc29KeyID } from '@pm/wallet';
-import { KeyDeriver, P2PKH, PrivateKey } from '@bsv/sdk';
+import { OfflineChainCheck, derivePaymentKey, scopedNonces, BRC29_PROTOCOL, brc29KeyID, type BeefSource } from '@pm/wallet';
+import { KeyDeriver, LockingScript, MerklePath, P2PKH, PrivateKey, Transaction } from '@bsv/sdk';
 
 const PAYOUT_UNIT = 1000;
 const UNITS = 3;
@@ -25,14 +25,34 @@ let operatorKey: PrivateKey;
 /** The winner's identity key — the key they traded with, and the only key that can claim the payout. */
 let winnerKey: PrivateKey;
 
-async function resolvedMarketWithAWinner() {
+/**
+ * A stand-in for the chain: hands back a merkle-proved transaction that pays the winner, in the AtomicBEEF a
+ * wallet demands. The real source (`ToolboxBeefSource`) fetches this from WhatsOnChain, which a unit test has
+ * no business doing — but the SHAPE has to be genuine, so this builds a real BEEF with a real (single-leaf)
+ * merkle path rather than a stub object.
+ */
+class FakeBeefSource implements BeefSource {
+  /** A decoy output goes first, so the daemon has to actually find the right one. */
+  constructor(private readonly pkh: string, private readonly sats: number, private readonly mined = true) {}
+  async atomicBeef(): Promise<string | undefined> {
+    if (!this.mined) return undefined; // exactly how an unconfirmed payout behaves
+    const tx = new Transaction();
+    tx.addOutput({ lockingScript: new P2PKH().lock(PrivateKey.fromRandom().toPublicKey().toAddress()), satoshis: 1 });
+    tx.addOutput({ lockingScript: LockingScript.fromHex(`76a914${this.pkh}88ac`), satoshis: this.sats });
+    const txid = tx.id('hex');
+    tx.merklePath = new MerklePath(800_000, [[{ offset: 0, hash: txid, txid: true }]]);
+    return Buffer.from(tx.toAtomicBEEF()).toString('hex');
+  }
+}
+
+async function resolvedMarketWithAWinner(beef?: BeefSource) {
   operatorKey = PrivateKey.fromRandom();
   winnerKey = PrivateKey.fromRandom();
 
   const db: Db = openDb(':memory:');
   migrate(db);
   const exec = new ExecutionEngine(db, makeReceiptSigner());
-  const svc = new MarketService(db, new MockEngine(), exec, operatorKey, new OfflineChainCheck());
+  const svc = new MarketService(db, new MockEngine(), exec, operatorKey, new OfflineChainCheck(), beef);
 
   const m = await svc.createMarket({ question: 'Will X happen?', bUnits: 1000, payoutUnit: PAYOUT_UNIT });
   await svc.enqueueDeploy(m.id);
@@ -121,6 +141,52 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
     const { prefix, suffix } = scopedNonces(`pm-payout:${marketId}:${trader}`);
     const asPayer = new KeyDeriver(operatorKey).derivePublicKey(BRC29_PROTOCOL, brc29KeyID(prefix, suffix), trader);
     expect(asPayer.toHash('hex')).toBe(claims[0].pkh);
+  });
+
+  it('prepares the exact internalizeAction call a wallet needs', async () => {
+    await payWinners(db, svc, marketId);
+    const pkh = (svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
+
+    // Same database, but a daemon that can reach the chain.
+    const online = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorKey, new OfflineChainCheck(),
+      new FakeBeefSource(pkh, UNITS * PAYOUT_UNIT),
+    );
+    const prepared = await online.payoutClaim(marketId, trader) as any;
+
+    expect(prepared.ready).toBe(true);
+    expect(prepared.satoshis).toBe(UNITS * PAYOUT_UNIT);
+    expect(prepared.internalize.protocol).toBe('wallet payment');
+    // Found by looking at the transaction, not by trusting a stored index — the decoy is at 0.
+    expect(prepared.internalize.outputIndex).toBe(1);
+    expect(prepared.internalize.paymentRemittance).toEqual({
+      derivationPrefix: expect.any(String),
+      derivationSuffix: expect.any(String),
+      senderIdentityKey: operatorKey.toPublicKey().toString(),
+    });
+    // And what the wallet is handed really does parse back to the transaction paying this winner.
+    const tx = Transaction.fromAtomicBEEF([...Buffer.from(prepared.internalize.tx, 'hex')]);
+    expect(tx.outputs[prepared.internalize.outputIndex]?.lockingScript.toHex()).toBe(`76a914${pkh}88ac`);
+  });
+
+  it('says WHY an unmined payout cannot be claimed yet, rather than failing', async () => {
+    await payWinners(db, svc, marketId);
+    const pkh = (svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
+    const online = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorKey, new OfflineChainCheck(),
+      new FakeBeefSource(pkh, UNITS * PAYOUT_UNIT, false),
+    );
+    const prepared = await online.payoutClaim(marketId, trader) as any;
+    expect(prepared.ready).toBe(false);
+    expect(prepared.reason).toMatch(/not mined yet/);
+    // The money is not lost and the part that cannot be reconstructed still comes back.
+    expect(prepared.remittance.senderIdentityKey).toBe(operatorKey.toPublicKey().toString());
+  });
+
+  it('refuses to prepare a claim for someone who was not paid', async () => {
+    await payWinners(db, svc, marketId);
+    const stranger = PrivateKey.fromRandom().toPublicKey().toString();
+    await expect(svc.payoutClaim(marketId, stranger)).rejects.toMatchObject({ status: 404 });
   });
 
   it('reports no remittance for pre-FUND-001 payouts instead of a half-filled one', () => {

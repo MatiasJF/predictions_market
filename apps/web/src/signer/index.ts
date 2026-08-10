@@ -30,6 +30,22 @@ export interface Signer {
    * (it holds no funds), which is exactly why an unfunded browser cannot place a buy any more.
    */
   pay(p: PaymentRequest): Promise<{ txid: string; rawTx: string }>;
+  /**
+   * FUND-001 step 7: take custody of money paid TO the user — the return leg of `pay`.
+   *
+   * A payout at a BRC-29 destination is already the winner's; their wallet simply does not know the output
+   * exists. Handing it the transaction plus the derivation is what turns it into spendable balance, and is the
+   * difference between "the explorer says you were paid" and the number in the wallet going up.
+   */
+  claim(c: ClaimRequest): Promise<{ accepted: boolean }>;
+}
+
+export interface ClaimRequest {
+  /** The paying transaction as AtomicBEEF, hex — a wallet verifies it rather than taking our word. */
+  tx: string;
+  outputIndex: number;
+  paymentRemittance: { derivationPrefix: string; derivationSuffix: string; senderIdentityKey: string };
+  description: string;
 }
 
 export interface PaymentRequest {

@@ -2,7 +2,7 @@
 // This is NOT production custody: the key lives in localStorage. The UI labels it plainly wherever it is used.
 // Same interface as WalletSigner, so nothing else in the app knows or cares which one is active.
 import { PrivateKey } from '@bsv/sdk';
-import { orderPayload, type OrderFields, type PaymentRequest, type Signer } from './index';
+import { orderPayload, type ClaimRequest, type OrderFields, type PaymentRequest, type Signer } from './index';
 
 const KEY = 'pm.dev.trader.wif';
 
@@ -42,4 +42,13 @@ export class LocalSigner implements Signer {
     );
   }
 
+  /**
+   * There is no wallet here to internalize into — a loose key in localStorage has no basket, no balance and no
+   * UTXO management. The money would still be spendable by this key, but only by sweeping it by hand.
+   */
+  async claim(_c: ClaimRequest): Promise<{ accepted: boolean }> {
+    throw new Error(
+      'the development key has no wallet to claim into — connect a BSV wallet (e.g. MetaNet Desktop)',
+    );
+  }
 }

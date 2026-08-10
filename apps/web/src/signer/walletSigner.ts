@@ -2,7 +2,7 @@
 // we ask it to sign the order payload with `counterparty: 'anyone'`, which lets the daemon verify from the
 // public identity key alone — no wallet, no key, no callback to this browser.
 import { Transaction, Utils, WalletClient } from '@bsv/sdk';
-import { ORDER_PROTOCOL_ID, orderKeyID, orderPayload, type OrderFields, type PaymentRequest, type Signer } from './index';
+import { ORDER_PROTOCOL_ID, orderKeyID, orderPayload, type ClaimRequest, type OrderFields, type PaymentRequest, type Signer } from './index';
 
 export class WalletSigner implements Signer {
   readonly kind = 'wallet' as const;
@@ -57,4 +57,20 @@ export class WalletSigner implements Signer {
     return { txid: txid ?? '', rawTx: Transaction.fromAtomicBEEF(tx).toHex() };
   }
 
+  /**
+   * Claim winnings into the wallet. The wallet re-derives the key from the remittance, verifies the transaction
+   * against its own merkle proof, and adds the output to the user's balance — `accepted` is its answer, not ours.
+   */
+  async claim(c: ClaimRequest): Promise<{ accepted: boolean }> {
+    const { accepted } = await this.wallet.internalizeAction({
+      tx: Utils.toArray(c.tx, 'hex'),
+      outputs: [{
+        outputIndex: c.outputIndex,
+        protocol: 'wallet payment',
+        paymentRemittance: c.paymentRemittance,
+      }],
+      description: c.description.slice(0, 50),
+    });
+    return { accepted: accepted === true };
+  }
 }

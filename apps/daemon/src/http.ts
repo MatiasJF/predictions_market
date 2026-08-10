@@ -77,6 +77,11 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'payouts') {
       return svc.payoutClaims(id, query.get('trader') ?? undefined);
     }
+    // …and the prepared `internalizeAction` call for one winner. Separate because it fetches the merkle-proved
+    // transaction from the network, so it runs when someone claims rather than on every poll.
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'claim') {
+      return svc.payoutClaim(id, query.get('trader') ?? '');
+    }
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       if (OPERATOR_ACTIONS.has(segs[2] ?? '')) assertOperator(ctx);

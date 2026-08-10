@@ -4,3 +4,4 @@
 // keys), and everything that touches money, keys or the chain lives here.
 export * from './brc29.js';
 export * from './verify.js';
+export * from './beef.js';

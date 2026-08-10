@@ -26,6 +26,8 @@ export function Market({
   // What the user is waiting on. A wallet approval can sit for a while, so say which stage it is.
   const [step, setStep] = useState<'idle' | 'quoting' | 'approving' | 'filling'>('idle');
   const [msg, setMsg] = useState<string>('');
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState<string>('');
   const [quote] = usePoll<any>(() => api.quote(id, side, units), [id, side, units], 4000);
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
@@ -78,6 +80,29 @@ export function Market({
     } finally {
       setStep('idle');
       setBusy(false);
+    }
+  }
+
+  /**
+   * Claim winnings into the connected wallet. Two steps, and the first is the one that fails: the daemon has to
+   * fetch the payout transaction with its merkle proof, which only exists once the transaction is mined. The
+   * wallet then verifies that proof itself before it will accept the money.
+   */
+  async function claim() {
+    if (!signer) return;
+    setClaiming(true);
+    setClaimMsg('');
+    try {
+      const prepared = await api.payoutClaim(id, identity);
+      if (!prepared.ready) throw new Error(prepared.reason);
+      const { accepted } = await signer.claim(prepared.internalize);
+      setClaimMsg(accepted
+        ? `claimed ${prepared.satoshis} sat — it is in your wallet balance now`
+        : 'your wallet did not accept the payment');
+    } catch (e) {
+      setClaimMsg(`✗ ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setClaiming(false);
     }
   }
 
@@ -195,18 +220,22 @@ export function Market({
                 Paid <b>{myClaim.sats} sat</b> — <a href={`https://whatsonchain.com/tx/${myClaim.txid}`} target="_blank" rel="noreferrer">{myClaim.txid.slice(0, 12)}…</a>
               </p>
               {myClaim.remittance ? (
-                <details>
-                  <summary className="dim tiny">
-                    Sent to a one-time address only your key can unlock — how to claim it
-                  </summary>
+                <>
+                  <button className="primary" disabled={claiming || !signer} onClick={() => void claim()}>
+                    {claiming ? 'claiming…' : 'claim into my wallet'}
+                  </button>
+                  {claimMsg && <p className={claimMsg.startsWith('✗') ? 'err' : 'ok'}>{claimMsg}</p>}
                   <p className="dim tiny">
-                    Your wallet has to be told how the address was derived (BRC-29) before it will show the
-                    balance. One-click claiming lands with the wallet-toolbox step; until then these are the
-                    values it needs, and they are recoverable from this market at any time — nothing here can
-                    be lost.
+                    Sent to a one-time address only your key can unlock. Your wallet needs the transaction and
+                    the derivation before the balance appears — that is what this button hands it. It only works
+                    once the payout has been mined, and the derivation is recoverable from this market at any
+                    time, so nothing here can be lost by waiting.
                   </p>
-                  <pre className="tiny">{JSON.stringify(myClaim.remittance, null, 2)}</pre>
-                </details>
+                  <details>
+                    <summary className="dim tiny">the derivation, if you want to claim from elsewhere</summary>
+                    <pre className="tiny">{JSON.stringify(myClaim.remittance, null, 2)}</pre>
+                  </details>
+                </>
               ) : (
                 <p className="warnText tiny">
                   This payout predates one-time addresses: it went to your identity key's own hash, which no

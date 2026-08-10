@@ -5,9 +5,10 @@ somewhere a wallet can see.** The user found the defect that mattered most in on
 collected a trader's stake, so every trader held a free option and the operator carried the whole downside. A
 buy is now a real payment the trader approves in their own wallet, verified against the chain before any fill
 exists (ADR-040); a payout now goes to a one-time BRC-29 destination derived for the winner, served with the
-derivation their wallet needs, instead of an address no wallet watches (ADR-041). **Still open:** sells are owed
-rather than paid, and one-click claiming needs `@bsv/wallet-toolbox` (step 7). **Every mainnet run below
-predates this** — those runs proved the mechanism, not a market. 161 workspace tests green._
+derivation their wallet needs, instead of an address no wallet watches (ADR-041), and a winner can **claim it
+into their wallet in one click** once the payout is mined (ADR-042). **Still open:** sells are owed rather than
+paid, and nothing has been through a real wallet's `internalizeAction` yet. **Every mainnet run below predates
+the money leg** — those runs proved the mechanism, not a market. 167 workspace tests green._
 
 _Previously: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
 mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
@@ -435,9 +436,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     recoverable from the market id alone — that class of money-loss is now impossible. `MockEngine` gained
     `buildPayout` so this bookkeeping has coverage without minutes of Script verification. 7 new tests; the
     load-bearing one derives the winner's key and checks it unlocks the exact output that was paid.
-  - ○ **step 7 — the wallet-toolbox server wallet.** Manages the stake pot, pays **sell proceeds** (still owed
-    rather than paid), and brings `Services.getMerklePath` → BEEF → one-click `internalizeAction`, which is the
-    only thing standing between a winner and their balance updating by itself.
+  - ● **step 7a — one-click claiming (ADR-042).** `GET /markets/:id/claim` returns the prepared
+    `internalizeAction` call; the winner's wallet verifies the merkle proof and credits the balance itself.
+    **A payout is claimable once MINED, not once broadcast** — a wallet wants a proof, and the covenant's
+    ancestry is far too heavy to carry instead. Two dependency landmines dealt with: `@bsv/wallet-toolbox`
+    declares `@bsv/sdk ^2.1.8` but needs 2.3.x (workspace moved 2.1.9 → 2.3.1, all tests still pass), and it
+    runs `dotenv.config({override:true})` **on import**, which would have rewritten `PM_NETWORK` mid-session —
+    the import is now snapshot-and-restore wrapped.
+  - ○ **step 7b — the wallet-toolbox server wallet.** Manages the stake pot and pays **sell proceeds**, which
+    are still owed rather than paid. This is the last piece where money is recorded but not moved.
   - ○ **step 8 — local end-to-end then a gated mainnet proof:** money visibly leaves a wallet on a buy and comes
     back on a payout. Every mainnet number recorded so far predates the money leg (see `VERDICT.md`).
 

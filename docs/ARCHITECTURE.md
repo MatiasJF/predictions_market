@@ -61,8 +61,10 @@ The chain is the real ledger; everything local is either ground-truth math or an
 > **Extended 2026-08-10 (ADR-041).** The return leg matched: a winner is paid at a one-time BRC-29 destination
 > derived for them, not at `hash160(their identity key)` — which is a real address no wallet watches, so the
 > money was on-chain, theirs, and effectively unspendable. The daemon serves the derivation at
-> `GET /markets/:id/payouts`. **Sells remain owed rather than paid**, and claiming still needs a manual step
-> until the wallet-toolbox server wallet lands.
+> `GET /markets/:id/payouts`, and `GET /markets/:id/claim` returns the prepared `internalizeAction` so the
+> winner's wallet credits the balance itself (ADR-042) — **once the payout is mined**, because a wallet wants a
+> merkle proof and the covenant's ancestry is far too heavy to carry instead. **Sells remain owed rather than
+> paid** until the server wallet lands.
 
 ## Data flow — a buy (target design under test)
 1. CLI reads current unspent pool UTXO (v_n) for the market from SQLite (+ confirms against chain).

@@ -36,6 +36,8 @@ export const api = {
   payoutPreview: (id: number) => call('GET', `/markets/${id}/payout-preview`),
   /** FUND-001: payouts already made to a trader, with the derivation their wallet needs to claim them. */
   payoutClaims: (id: number, trader?: string) => call('GET', `/markets/${id}/payouts${trader ? `?trader=${trader}` : ''}`),
+  /** The prepared `internalizeAction` call for one winner. Hits the network, so call it on demand, not on a poll. */
+  payoutClaim: (id: number, trader: string) => call('GET', `/markets/${id}/claim?trader=${trader}`),
   broadcasts: (status?: string) => call('GET', `/broadcasts${status ? `?status=${status}` : ''}`),
   balance: () => call('GET', '/wallet/balance'),
   /** Side-effect-free token check, so the console can say "accepted" before anything is spent. */

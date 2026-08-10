@@ -13,14 +13,14 @@
     "measure:journey": "tsx src/measure-journey.ts"
   },
   "dependencies": {
-    "@bsv/sdk": "^2.1.9",
+    "@bsv/sdk": "^2.3.1",
     "@pm/engine": "workspace:*",
+    "@pm/execution": "workspace:*",
     "@pm/lmsr": "workspace:*",
+    "@pm/persistence": "workspace:*",
     "runar-compiler": "^0.4.6",
     "runar-lang": "^0.4.6",
-    "runar-sdk": "^0.4.6",
-    "@pm/execution": "workspace:*",
-    "@pm/persistence": "workspace:*"
+    "runar-sdk": "^0.4.6"
   },
   "devDependencies": {
     "runar-testing": "^0.4.6",

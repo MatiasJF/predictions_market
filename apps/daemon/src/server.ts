@@ -11,7 +11,7 @@ import { ExecutionEngine, makeReceiptSigner } from '@pm/execution';
 import { MarketService } from './service.js';
 import { startServer } from './http.js';
 import { PrivateKey } from '@bsv/sdk';
-import { WocChainCheck, OfflineChainCheck } from '@pm/wallet';
+import { WocChainCheck, OfflineChainCheck, ToolboxBeefSource, NoBeefSource } from '@pm/wallet';
 
 /** Read a WIF from the repo-root .env (used at runtime only — never stored/echoed; Golden Rule 6). */
 function envWif(name: string): string {
@@ -62,7 +62,12 @@ const payKey = paymentWif() ? PrivateKey.fromWif(paymentWif()) : undefined;
 const chainCheck = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
   ? new WocChainCheck('main')
   : new OfflineChainCheck();
-const service = new MarketService(db, engine, exec, payKey, chainCheck);
+// A winner's wallet will not accept money on our say-so; it wants the payout transaction with a merkle proof.
+// Offline there is none, and `NoBeefSource` says so instead of failing at request time.
+const beefSource = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
+  ? new ToolboxBeefSource('main')
+  : new NoBeefSource();
+const service = new MarketService(db, engine, exec, payKey, chainCheck, beefSource);
 const port = Number(process.env.PM_PORT ?? 8787);
 
 startServer(service, port);

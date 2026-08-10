@@ -984,3 +984,39 @@ Template:
   `@bsv/wallet-toolbox` — which is the next step (it is also what sells need). Until then the UI shows the
   winner their payment, the txid, and the derivation, and says what is missing instead of implying the money has
   landed. Sells are still owed rather than paid.
+
+## ADR-042 · One-click claiming, and what it cost to get there (FUND-001, step 7a) · Accepted · 2026-08-10
+- ADR-041 made a payout *derivable*. It did not make it *appear*. A winner's wallet takes custody only via
+  `internalizeAction`, which requires the paying transaction as **AtomicBEEF** — the wallet verifies the payment
+  itself rather than trusting whoever hands it over. Correct instinct, and the whole of this ADR.
+- **A payout is claimable once it is MINED, not once it is broadcast.** BEEF is verifiable two ways: carry the
+  full ancestry, or carry a merkle path for the transaction itself. Ancestry is hopeless here — a payout spends
+  the pool covenant, whose input script alone is ~40 KB, and chains back through every settlement. The merkle
+  path is one lookup and costs nothing after confirmation. So the wait is real, is stated in the UI, and is
+  reported as `ready: false` with a reason rather than an error.
+- `Services.getBeefForTxid` from `@bsv/wallet-toolbox` does the TSC-proof → `MerklePath` → BEEF conversion.
+  Borrowed rather than written: hand-rolled proof conversion is exactly the code that appears to work and
+  silently produces something no wallet accepts.
+- Split into two endpoints on purpose. `GET /markets/:id/payouts` is cheap and polled; `GET /markets/:id/claim`
+  fetches ~75 KB from the network and runs when a winner actually claims. The output index is read **off the
+  transaction**, never persisted — the transaction is what holds the money, so anything derived from it cannot
+  drift from it.
+- **Two things the dependency did that had to be dealt with, not absorbed:**
+  - It declares `@bsv/sdk ^2.1.8` and then calls `sdk.Telemetry`, which does not exist before **2.3.x**. The
+    declared peer range is simply wrong. Our manifests already said `^2.1.9`, so the lockfile was pinning an
+    artificially old 2.1.9 that no fresh clone would get; `pnpm update -r @bsv/sdk` moved the workspace to
+    2.3.1 with no manifest edits and **all 164 existing tests still pass**.
+  - It runs `dotenv.config({ override: true })` **at import time**, silently rewriting the running process's
+    environment from `.env`. Not cosmetic: the daemon reads `PM_NETWORK` per request to decide whether to show
+    the MAINNET warning, so a winner clicking "claim" could have flipped the one affordance whose job is to
+    stop accidental real-money spends — and it would conjure `PM_FUNDING_WIF` into a process deliberately
+    started without one. The import is therefore wrapped: snapshot the environment, import, restore it exactly.
+- Verified: 3 offline tests (output discovery past decoys either side, refusal when nothing pays, offline source
+  admits it has nothing) plus 2 network tests behind `PM_CHAIN_E2E=1` — run against a **real mainnet payout of
+  this project's** (`4332b024…`, 8 winners × 4,000 sat): 75,808-byte AtomicBEEF assembled, both winners' outputs
+  located at the right index and amount, cache hit on the second call, and the environment provably intact
+  afterwards. Plus 3 daemon tests for the prepared call, the unmined case, and a non-winner. 167 workspace tests,
+  typecheck and web build clean; the toolbox is confirmed **absent** from the browser bundle.
+- **Still not done:** sells remain owed rather than paid — that needs the server wallet to send money, which is
+  step 7b. Nothing here has been exercised against a real wallet's `internalizeAction` yet; that is part of the
+  gated mainnet proof (step 8).

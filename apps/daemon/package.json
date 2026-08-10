@@ -8,7 +8,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
-    "@bsv/sdk": "^2.1.9",
+    "@bsv/sdk": "^2.3.1",
     "@pm/engine": "workspace:*",
     "@pm/execution": "workspace:*",
     "@pm/lmsr": "workspace:*",
