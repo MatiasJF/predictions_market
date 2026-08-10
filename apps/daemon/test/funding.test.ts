@@ -116,8 +116,72 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     await expect(svc2.submitOrder(m2.id, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signOrder(trader.toWif(), fields), nonce: 1,
       intentId: intent.intent_id, paymentTx: buildPayment(intent.locking_script, intent.satoshis),
-    })).rejects.toThrow(/is not on the network — was it broadcast/);
+    })).rejects.toThrow(/has not reached the network yet/);
     expect((db2.prepare('SELECT COUNT(*) c FROM exec_orders').get() as { c: number }).c).toBe(0);
+
+    // MAINNET-008: "not visible yet" is NOT "invalid". The intent must survive, because the trader may have
+    // already paid it — burning it here strands their money, which is exactly what happened on mainnet with
+    // `16bbde85…` (1,002 sat). Retryable failures leave the quote alive; only permanent ones kill it.
+    const after = db2.prepare('SELECT status FROM payment_intents WHERE id=?').get(intent.intent_id) as { status: string };
+    expect(after.status, 'a propagation race must not consume a paid quote').toBe('pending');
+  });
+
+  /**
+   * MAINNET-010 — a wallet that signs but does not broadcast.
+   *
+   * Observed live: a trader's wallet produced three signed payments and put exactly one on the network. The
+   * other two existed nowhere, which from here is indistinguishable from trying to get a fill for free. Since
+   * we are holding the signed transaction, we send it ourselves rather than refuse.
+   */
+  it('BROADCASTS the payment itself when the trader\'s wallet did not', async () => {
+    const db2 = openDb(':memory:');
+    migrate(db2);
+    let published: string | undefined;
+    const chain = {
+      // Nowhere to be seen — until someone puts it there.
+      exists: async () => published !== undefined,
+      publish: async (raw: string) => { published = raw; return true; },
+    };
+    const svc2 = new MarketService(
+      db2, new MockEngine(), new ExecutionEngine(db2, makeReceiptSigner()), operatorPayKey, chain,
+    );
+    const m2 = await svc2.createMarket({ question: 'q', bUnits: 1000, payoutUnit: PAYOUT_UNIT });
+    await svc2.enqueueDeploy(m2.id);
+    const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
+    await svc2.authorize(dep.id);
+
+    const intent = svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const fields = { marketId: m2.id, trader: traderPub, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 7 };
+    const paymentTx = buildPayment(intent.locking_script, intent.satoshis);
+    const res = await svc2.submitOrder(m2.id, {
+      trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signOrder(trader.toWif(), fields), nonce: 7,
+      intentId: intent.intent_id, paymentTx,
+    });
+    expect(res.receipt, 'the fill should go through once we broadcast it ourselves').toBeTruthy();
+    expect(published, 'the daemon must have pushed the exact transaction it was given').toBe(paymentTx);
+  });
+
+  it('does NOT relay a payment that fails validation — we are not an open broadcast service', async () => {
+    const db2 = openDb(':memory:');
+    migrate(db2);
+    let published = false;
+    const svc2 = new MarketService(
+      db2, new MockEngine(), new ExecutionEngine(db2, makeReceiptSigner()), operatorPayKey,
+      { exists: async () => false, publish: async () => { published = true; return true; } },
+    );
+    const m2 = await svc2.createMarket({ question: 'q', bUnits: 1000, payoutUnit: PAYOUT_UNIT });
+    await svc2.enqueueDeploy(m2.id);
+    const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
+    await svc2.authorize(dep.id);
+
+    const intent = svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const fields = { marketId: m2.id, trader: traderPub, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 8 };
+    await expect(svc2.submitOrder(m2.id, {
+      trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signOrder(trader.toWif(), fields), nonce: 8,
+      // Pays someone else entirely.
+      intentId: intent.intent_id, paymentTx: buildPayment('76a914' + 'cd'.repeat(20) + '88ac', intent.satoshis),
+    })).rejects.toThrow(/no output pays the expected destination/);
+    expect(published, 'a transaction that does not pay us must never be relayed').toBe(false);
   });
 
   it('REFUSES a sell intent — a seller is owed money, not charged', () => {

@@ -241,6 +241,13 @@ export class ScryptEngine {
     }
 
     private async ready(): Promise<void> {
+        this.ensureArtifact()
+    }
+    /**
+     * Load the compiled artifact. Synchronous, and separate from `ready()`, because a SYNC caller needs it too
+     * — see `poolSpendable`, where its absence marked a perfectly good pool as unspendable.
+     */
+    private ensureArtifact(): void {
         if (!this.loaded) { LMSRMarket.loadArtifact(lmsrArtifact as never); this.loaded = true }
     }
     /** The funding key, in memory only (Golden Rule 6). Also signs the co-spent token/funding inputs (CONC-003c). */
@@ -316,6 +323,19 @@ export class ScryptEngine {
     /**
      * Can this build spend that pool? Pure CPU (script-vs-template match, no network), but `/markets` is polled
      * every couple of seconds, so the verdict is cached per UTXO.
+     *
+     * MAINNET-009 — two bugs lived here, and together they condemned a healthy pool on mainnet (2026-08-10,
+     * market #7, `9798adff…`):
+     *
+     *   1. The artifact was only loaded by `ready()`, which every *build* path awaits and this one does not.
+     *      `/markets` is polled the instant the app opens, so on a fresh daemon this ran first and
+     *      `fromUTXO` threw "No artifact found" — nothing to do with the pool at all.
+     *   2. That answer was then CACHED. One unlucky ordering and the market was declared unspendable for the
+     *      lifetime of the process, with the console disabling settle, resolve and payout on a pool that was
+     *      perfectly fine. Restarting the daemon — the obvious remedy — reproduced it every time.
+     *
+     * So: load the artifact first, and only ever cache a verdict reached with one loaded. A cache is for
+     * answers, not for accidents.
      */
     private readonly spendableCache = new Map<string, boolean>()
     poolSpendable(pool: PoolRef): boolean {
@@ -323,6 +343,11 @@ export class ScryptEngine {
         const key = `${pool.txid}:${pool.vout}`
         const hit = this.spendableCache.get(key)
         if (hit !== undefined) return hit
+        try {
+            this.ensureArtifact()
+        } catch {
+            return false // cannot judge without the compiled contract — say no, but do not remember saying it
+        }
         let ok = true
         try {
             LMSRMarket.fromUTXO({

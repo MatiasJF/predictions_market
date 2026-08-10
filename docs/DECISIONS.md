@@ -1020,3 +1020,46 @@ Template:
 - **Still not done:** sells remain owed rather than paid — that needs the server wallet to send money, which is
   step 7b. Nothing here has been exercised against a real wallet's `internalizeAction` yet; that is part of the
   gated mainnet proof (step 8).
+
+## ADR-043 · The round trip, proven on mainnet — and the three defects it took (FUND-001 step 8) · Accepted · 2026-08-10
+- **The result.** Market #7 on mainnet: a trader's own wallet paid for two bets, the market settled, resolved and
+  paid, and the winnings landed back in that wallet as spendable balance via `internalizeAction`. Deploy
+  `9798adff…` (block 961665); settle `cddc3a89…`, resolve `a743e25c…`, payout `7c8be780…` (all block 961684).
+  Total fees **28,601 sat**. Payments in: `7e6f5874…` (1,002 sat) and `2b0748b8…` (1,000 sat). Claim: 2,000 sat
+  from 82,316 bytes of AtomicBEEF, output index 2. This is the first run in the project's history that proved a
+  *market* rather than a mechanism.
+- **Fees fell 5×.** The comparable 2026-08-07 lifecycle cost 143,017 sat; this one 28,601 for a bigger contract —
+  0.1 sat/byte, the miner minimum. ADR-038's correction had never been measured across a full mainnet run.
+- **The pay-once guard fired on live mainnet state**, refusing a second payout with the amount and txid of the
+  first. That is ADR-034/035/036 working against the real defect that paid 3,000 sat twice on 2026-08-06.
+
+Three defects surfaced, all shipped fixed **during** the run. They share one root cause worth naming: **a
+transient or uninitialised condition recorded as a permanent verdict.**
+
+- **MAINNET-008 — a propagation race burned a paid quote.** The trader's wallet broadcast 1,002 sat
+  (`16bbde85…`, later confirmed in block 961665); WhatsOnChain had not indexed it at the instant we asked; the
+  intent was marked `rejected`. A transient network condition permanently consumed something the trader had
+  **already paid for**, stranding real money. Fix: `TransientPaymentError` is distinct from a bad payment, the
+  existence check retries 3× over ~4s, and only permanent failures kill an intent.
+- **MAINNET-009 — a healthy pool declared unspendable.** `poolSpendable()` is sync and never awaited `ready()`,
+  so on a freshly restarted daemon `/markets` (polled the instant the app opens) ran before the artifact loaded,
+  `fromUTXO` threw *"No artifact found"*, and that read as "wrong contract build". It was then **cached**, so one
+  unlucky ordering condemned the market for the life of the process — and restarting, the obvious remedy,
+  reproduced it every time. Fix: load the artifact first; never cache a verdict reached without one.
+- **MAINNET-010 — a wallet that signs but does not broadcast.** The trader's wallet produced three signed
+  payments and put exactly **one** on the network; the other two existed nowhere, confirmed or unconfirmed. From
+  the daemon's side that is indistinguishable from trying to get a fill for free, so it refused — correctly and
+  uselessly. Fix: **the daemon broadcasts the payment itself.** It is holding the signed transaction; sending it
+  costs nothing and forges nothing (signed by the trader's keys, not ours), and re-broadcasting a known
+  transaction is a no-op. Ordering is deliberate: validate that it pays *us* the *right amount* first, so the
+  daemon is not an open relay. Tested both ways.
+- **Also fixed, at the operator's request:** the claim button is now disabled until the payout is in a block,
+  with the reason shown. Claiming cannot succeed before then — a wallet needs the merkle proof — and a button
+  whose only possible outcome is an error should not be pressable. Backed by a cheap `minedAt` check, cached
+  permanently once mined so an open tab does not poll WhatsOnChain every 2.5 seconds.
+- **Papercut worth recording:** `apps/daemon`'s `dev` script is plain `tsx src/server.ts` with **no watch mode**.
+  Twice during this run a fix appeared not to work because the running process predated it by nearly two hours;
+  it was settled by comparing file mtimes against the process start time. Switch it to `tsx watch`.
+- **What the run also proved does not work.** Two sells filled and recorded **998 sat owed** to the trader that
+  nothing will ever pay, and the stranded 1,002 sat above bought nothing. Both were survivable only because one
+  person held both keys. Sells (step 7b) are now the largest correctness gap in the system.

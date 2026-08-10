@@ -221,15 +221,28 @@ export function Market({
               </p>
               {myClaim.remittance ? (
                 <>
-                  <button className="primary" disabled={claiming || !signer} onClick={() => void claim()}>
-                    {claiming ? 'claiming…' : 'claim into my wallet'}
+                  {/*
+                    Disabled until the payout is in a block. A wallet will not accept the money without the
+                    merkle proof of a mined transaction, so before that this button has exactly one possible
+                    outcome — an error. Better to show why it is waiting than to let someone press it.
+                  */}
+                  <button
+                    className="primary"
+                    disabled={claiming || !signer || !myClaim.mined_at}
+                    onClick={() => void claim()}
+                  >
+                    {claiming ? 'claiming…'
+                      : !myClaim.mined_at ? 'waiting for the payout to confirm…'
+                      : 'claim into my wallet'}
                   </button>
                   {claimMsg && <p className={claimMsg.startsWith('✗') ? 'err' : 'ok'}>{claimMsg}</p>}
                   <p className="dim tiny">
                     Sent to a one-time address only your key can unlock. Your wallet needs the transaction and
-                    the derivation before the balance appears — that is what this button hands it. It only works
-                    once the payout has been mined, and the derivation is recoverable from this market at any
-                    time, so nothing here can be lost by waiting.
+                    the derivation before the balance appears — that is what this button hands it.{' '}
+                    {myClaim.mined_at
+                      ? `Confirmed in block ${myClaim.mined_at}.`
+                      : 'It is not in a block yet; a wallet needs that proof before it will take the money. ' +
+                        'The derivation is recoverable from this market at any time, so nothing is lost by waiting.'}
                   </p>
                   <details>
                     <summary className="dim tiny">the derivation, if you want to claim from elsewhere</summary>

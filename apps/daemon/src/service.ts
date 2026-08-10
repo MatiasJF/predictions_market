@@ -12,7 +12,7 @@ import {
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, pkhOf, type ExecutionEngine, type PayoutDestination } from '@pm/execution';
-import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, type BeefSource, type ChainCheck, type DerivedDestination } from '@pm/wallet';
+import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, TransientPaymentError, type BeefSource, type ChainCheck, type DerivedDestination } from '@pm/wallet';
 import type { PrivateKey } from '@bsv/sdk';
 import type { PaymentIntentRow } from '@pm/persistence';
 
@@ -358,6 +358,14 @@ export class MarketService {
       paid = await verifyPayment(rawTxHex, intent.locking_script, intent.quoted_cost_sats, this.chainCheck ?? { exists: async () => true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // A payment that is merely not visible YET must not burn the intent. Rejecting on a propagation race
+      // permanently consumes a quote the trader has already paid for — which is exactly what happened on
+      // mainnet (2026-08-10, `16bbde85…`, 1,002 sat): the money was on the network moments later, and the only
+      // record of what it bought had already been marked dead. Leave it pending so a retry can still use it.
+      if (e instanceof TransientPaymentError) {
+        this.db.prepare('UPDATE payment_intents SET error=? WHERE id=?').run(msg, intent.id);
+        throw new ServiceError(503, `${msg} — press again in a moment; your quote is still valid`, 'payment_pending');
+      }
       this.db.prepare("UPDATE payment_intents SET status='rejected', error=?, decided_at=datetime('now') WHERE id=?")
         .run(msg, intent.id);
       throw badReq(msg);
@@ -551,7 +559,24 @@ export class MarketService {
    * output it is, and the derivation nonces. Served to the trader, not the operator — it is their money, and
    * without this they cannot derive the key that spends it.
    */
-  payoutClaims(id: number, trader?: string) {
+  /**
+   * Has this transaction made it into a block, and which one?
+   *
+   * Cached hard, because `/payouts` sits behind a polling UI. Once mined the answer can never change, so it is
+   * kept for ever; while unmined it is re-asked at most every 15 seconds. Without this a claim card open in a
+   * browser would ask WhatsOnChain the same question every 2.5 seconds for as long as it stayed open.
+   */
+  private readonly minedCache = new Map<string, { height?: number; askedAt: number }>();
+  private async minedHeight(txid: string): Promise<number | undefined> {
+    const hit = this.minedCache.get(txid);
+    if (hit?.height !== undefined) return hit.height;
+    if (hit && Date.now() - hit.askedAt < 15_000) return undefined;
+    const height = await this.chainCheck?.minedAt?.(txid);
+    this.minedCache.set(txid, { ...(height !== undefined ? { height } : {}), askedAt: Date.now() });
+    return height;
+  }
+
+  async payoutClaims(id: number, trader?: string) {
     this.marketRow(id);
     const rows = this.db
       .prepare(
@@ -562,6 +587,8 @@ export class MarketService {
         trader_pubkey: string; pkh: string; shares: string; sats: number; txid: string;
         derivation_prefix: string | null; derivation_suffix: string | null; sender_identity_key: string | null;
       }[];
+    const heights = new Map<string, number | undefined>();
+    for (const txid of new Set(rows.map((r) => r.txid))) heights.set(txid, await this.minedHeight(txid));
     return {
       market_id: id,
       claims: rows.map((r) => ({
@@ -570,6 +597,8 @@ export class MarketService {
         shares: r.shares,
         txid: r.txid,
         pkh: r.pkh,
+        /** Claiming is impossible before this is a number — a wallet needs the merkle proof of a mined tx. */
+        mined_at: heights.get(r.txid) ?? null,
         // Pre-FUND-001 payouts have no remittance: they were paid to a bare identity hash and there is nothing
         // to internalize. Say so plainly rather than emitting a half-filled object a wallet would choke on.
         remittance: r.derivation_prefix && r.derivation_suffix && r.sender_identity_key
@@ -595,7 +624,7 @@ export class MarketService {
    */
   async payoutClaim(id: number, traderInput: string) {
     const trader = assertIdentityKey((traderInput ?? '').trim());
-    const { claims } = this.payoutClaims(id, trader);
+    const { claims } = await this.payoutClaims(id, trader);
     const claim = claims[0];
     if (!claim) throw notFound(`no payout to ${trader.slice(0, 16)}… in market ${id}`);
     if (!claim.remittance) {

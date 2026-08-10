@@ -103,7 +103,7 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
   it('records the remittance with the payment, and serves it to the winner', async () => {
     const res = await payWinners(db, svc, marketId);
 
-    const { claims } = svc.payoutClaims(marketId, trader) as any;
+    const { claims } = await svc.payoutClaims(marketId, trader) as any;
     expect(claims).toHaveLength(1);
     expect(claims[0]).toMatchObject({ trader, sats: UNITS * PAYOUT_UNIT, txid: res.txid });
     expect(claims[0].remittance).toMatchObject({
@@ -115,7 +115,7 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
 
   it('THE POINT: the remittance derives a key that unlocks the satoshis actually paid', async () => {
     await payWinners(db, svc, marketId);
-    const { claims } = svc.payoutClaims(marketId, trader) as any;
+    const { claims } = await svc.payoutClaims(marketId, trader) as any;
     const claim = claims[0];
 
     // The winner's side of BRC-29: derive the private key from the operator's identity key + the nonces.
@@ -130,14 +130,14 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
 
   it('nobody else can derive it — including the operator, from the winner side', async () => {
     await payWinners(db, svc, marketId);
-    const { claims } = svc.payoutClaims(marketId, trader) as any;
+    const { claims } = await svc.payoutClaims(marketId, trader) as any;
     const stranger = PrivateKey.fromRandom();
     expect(derivePaymentKey(stranger, claims[0].remittance).toPublicKey().toHash('hex')).not.toBe(claims[0].pkh);
   });
 
   it('matches what the operator derives as payer, so the two sides agree on one address', async () => {
     await payWinners(db, svc, marketId);
-    const { claims } = svc.payoutClaims(marketId, trader) as any;
+    const { claims } = await svc.payoutClaims(marketId, trader) as any;
     const { prefix, suffix } = scopedNonces(`pm-payout:${marketId}:${trader}`);
     const asPayer = new KeyDeriver(operatorKey).derivePublicKey(BRC29_PROTOCOL, brc29KeyID(prefix, suffix), trader);
     expect(asPayer.toHash('hex')).toBe(claims[0].pkh);
@@ -145,7 +145,7 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
 
   it('prepares the exact internalizeAction call a wallet needs', async () => {
     await payWinners(db, svc, marketId);
-    const pkh = (svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
+    const pkh = (await svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
 
     // Same database, but a daemon that can reach the chain.
     const online = new MarketService(
@@ -171,7 +171,7 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
 
   it('says WHY an unmined payout cannot be claimed yet, rather than failing', async () => {
     await payWinners(db, svc, marketId);
-    const pkh = (svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
+    const pkh = (await svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
     const online = new MarketService(
       db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorKey, new OfflineChainCheck(),
       new FakeBeefSource(pkh, UNITS * PAYOUT_UNIT, false),
@@ -183,18 +183,46 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
     expect(prepared.remittance.senderIdentityKey).toBe(operatorKey.toPublicKey().toString());
   });
 
+  /**
+   * The claim button is disabled until this says a block number, so the number has to be right. A button whose
+   * only possible outcome is an error should not be pressable — the payout has to be MINED before a wallet will
+   * take the money, and a poll-cheap fact is what lets the UI know that without fetching a 75 KB proof.
+   */
+  it('reports whether the payout is in a block, so the UI can refuse to offer a doomed claim', async () => {
+    await payWinners(db, svc, marketId);
+
+    const unconfirmed = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorKey,
+      { exists: async () => true, minedAt: async () => undefined },
+    );
+    expect(((await unconfirmed.payoutClaims(marketId, trader)) as any).claims[0].mined_at).toBeNull();
+
+    let asked = 0;
+    const confirmed = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorKey,
+      { exists: async () => true, minedAt: async () => { asked += 1; return 961_700; } },
+    );
+    expect(((await confirmed.payoutClaims(marketId, trader)) as any).claims[0].mined_at).toBe(961_700);
+
+    // Polled every couple of seconds by an open browser tab: once mined, the answer can never change, so it
+    // must not be asked twice.
+    await confirmed.payoutClaims(marketId, trader);
+    await confirmed.payoutClaims(marketId, trader);
+    expect(asked, 'a mined height must be cached, not re-fetched on every poll').toBe(1);
+  });
+
   it('refuses to prepare a claim for someone who was not paid', async () => {
     await payWinners(db, svc, marketId);
     const stranger = PrivateKey.fromRandom().toPublicKey().toString();
     await expect(svc.payoutClaim(marketId, stranger)).rejects.toMatchObject({ status: 404 });
   });
 
-  it('reports no remittance for pre-FUND-001 payouts instead of a half-filled one', () => {
+  it('reports no remittance for pre-FUND-001 payouts instead of a half-filled one', async () => {
     db.prepare(
       `INSERT INTO payouts(market_id, trader_pubkey, pkh, shares, sats, payout_digest, txid)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(marketId, trader, pkhOf(trader), '0', 500, 'de'.repeat(32), 'f'.repeat(64));
-    const { claims } = svc.payoutClaims(marketId, trader) as any;
+    const { claims } = await svc.payoutClaims(marketId, trader) as any;
     expect(claims[0].remittance, 'a legacy payout has nothing to internalize — say so').toBeNull();
   });
 });

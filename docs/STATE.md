@@ -1,14 +1,15 @@
 # STATE — living
 
-_Last updated: 2026-08-10 — THE MONEY LEG (Phase P6, FUND-001). **A bet now costs money and winnings now land
-somewhere a wallet can see.** The user found the defect that mattered most in one question: nothing had ever
-collected a trader's stake, so every trader held a free option and the operator carried the whole downside. A
-buy is now a real payment the trader approves in their own wallet, verified against the chain before any fill
-exists (ADR-040); a payout now goes to a one-time BRC-29 destination derived for the winner, served with the
-derivation their wallet needs, instead of an address no wallet watches (ADR-041), and a winner can **claim it
-into their wallet in one click** once the payout is mined (ADR-042). **Still open:** sells are owed rather than
-paid, and nothing has been through a real wallet's `internalizeAction` yet. **Every mainnet run below predates
-the money leg** — those runs proved the mechanism, not a market. 167 workspace tests green._
+_Last updated: 2026-08-10 — **THE ROUND TRIP IS CLOSED ON MAINNET** (Phase P6, FUND-001, ADR-043). A trader's
+own satoshis funded a bet and came back into their own wallet as spendable balance. Market #7: deploy
+`9798adff…` (block 961665) → settle `cddc3a89…` → resolve `a743e25c…` → payout `7c8be780…` (all block 961684),
+audit 4 receipts / 0 violations, **28,601 sat total fees — 5× cheaper than the comparable 143,017 sat run** on a
+bigger contract. Paid in: `7e6f5874…` 1,002 sat + `2b0748b8…` 1,000 sat. Claimed out: 2,000 sat via
+`internalizeAction` from 82,316 B of AtomicBEEF. The pay-once guard also fired on live state. Everything before
+this proved the mechanism; this proved a market. **Three defects were found and fixed during the run**
+(MAINNET-008/009/010 — all one root cause: a transient condition cached as a permanent verdict). **Still broken:
+sells are booked as owed and never paid** (998 sat outstanding from this very run) — now the largest correctness
+gap. 170 workspace tests green._
 
 _Previously: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
 mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
@@ -443,10 +444,23 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     declares `@bsv/sdk ^2.1.8` but needs 2.3.x (workspace moved 2.1.9 → 2.3.1, all tests still pass), and it
     runs `dotenv.config({override:true})` **on import**, which would have rewritten `PM_NETWORK` mid-session —
     the import is now snapshot-and-restore wrapped.
-  - ○ **step 7b — the wallet-toolbox server wallet.** Manages the stake pot and pays **sell proceeds**, which
-    are still owed rather than paid. This is the last piece where money is recorded but not moved.
-  - ○ **step 8 — local end-to-end then a gated mainnet proof:** money visibly leaves a wallet on a buy and comes
-    back on a payout. Every mainnet number recorded so far predates the money leg (see `VERDICT.md`).
+  - ● **step 8 — THE MAINNET ROUND TRIP (ADR-043).** Market #7, 2026-08-10. Money left a real BRC-100 wallet on
+    two buys and came back as spendable balance on the payout claim. Four txs, 28,601 sat total fees (5× cheaper
+    than the 143,017 sat comparable run), audit clean, pay-once guard fired on live state. Three defects found
+    and fixed mid-run — MAINNET-008 (a propagation race permanently burned a quote the trader had already paid,
+    stranding 1,002 sat), MAINNET-009 (`poolSpendable` cached a verdict reached before the artifact loaded, so a
+    healthy pool read as "wrong contract build" and restarting reproduced it), MAINNET-010 (the trader's wallet
+    signed three payments and broadcast one — the daemon now publishes the payment itself). Same root cause in
+    all three: **a transient or uninitialised condition recorded as a permanent verdict.**
+  - ⨯ **step 7b — the wallet-toolbox server wallet.** Manages the stake pot and pays **sell proceeds**, which are
+    still owed rather than paid — market #7 booked **998 sat owed** to a trader with no path to collect it. Now
+    the largest correctness gap in the system, and the reason a second counterparty cannot be let in yet.
+  - ○ **step 9 — recover a stranded payment.** A buy whose intent was burned leaves the trader's satoshis at an
+    operator-derived address with nothing to show for them (1,002 sat at `17WV463R…` from this run). Pressing
+    "buy" again mints a *new* intent and pays *again*: an intent whose address is already funded must be reused,
+    not re-quoted.
+  - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
+    during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 
 ## Known issues
 - **`better-sqlite3` native binary is now BUILT** (API-001). If a fresh clone hits "Could not locate the

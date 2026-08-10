@@ -181,6 +181,35 @@ carrying forward: traders need funded wallets (the "no BSV required" onboarding 
 unpaid for), and the operator custodies stakes between bet and payout — ADR-019's first trust rung. Putting the
 money into the pool UTXO itself, so the contract's solvency checks bind real satoshis, is the next step.
 
+### The round trip, on mainnet — 2026-08-10 (market #7, ADR-043)
+
+The first run in this project's history where **a trader's own satoshis funded a bet and came back as spendable
+balance in their own wallet.** Everything above this line proved the mechanism; this proved a market.
+
+| Step | txid | Size | Fee | Block |
+|---|---|---|---|---|
+| deploy | `9798adff…` | 39.7 KB | 4,074 | 961665 |
+| settle (4 fills → net YES 2) | `cddc3a89…` | 79.6 KB | 8,157 | 961684 |
+| resolve YES (Rabin oracle) | `a743e25c…` | 79.9 KB | 8,190 | 961684 |
+| payout | `7c8be780…` | 79.8 KB | 8,180 | 961684 |
+| | | | **28,601** | |
+
+- **Money out:** the trader's BRC-100 wallet paid `7e6f5874…` (1,002 sat, 2 YES) and `2b0748b8…` (1,000 sat,
+  2 NO) — both verified against the chain before either fill existed.
+- **Money back:** 2,000 sat claimed via `internalizeAction` from 82,316 bytes of AtomicBEEF at output index 2,
+  the wallet verifying the merkle proof itself. Confirmed by the operator watching their own balance rise.
+- **Audit:** 4 receipts, 0 violations, attested.
+- **The pay-once guarantee fired on live state** — a second payout attempt was refused with *"already paid 2000
+  sat on chain"*, against the defect that duplicated a real 3,000 sat payment on 2026-08-06.
+- **Fees fell 5×.** The comparable 2026-08-07 run cost 143,017 sat; this one cost 28,601 for a *larger*
+  contract — 0.1 sat/byte, the miner minimum. ADR-038's fee correction had never been measured across a full
+  mainnet lifecycle until now.
+
+**What the same run also showed does not work.** Two sells were filled and recorded as 998 sat owed to the
+trader, and nothing paid them — sells remain a booked liability with no settlement path. One buy attempt cost
+1,002 sat that bought nothing, stranded by a defect this run exposed (see ADR-043). Neither is fatal here, since
+one person held both keys, and neither would be acceptable with a real counterparty.
+
 ## The six unknowns
 
 1. **LMSR math on-chain — RESOLVED.** Script has no `exp`/`ln` and no unbounded loops. Two techniques make LMSR
