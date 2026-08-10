@@ -38,6 +38,8 @@ export const api = {
   payoutClaims: (id: number, trader?: string) => call('GET', `/markets/${id}/payouts${trader ? `?trader=${trader}` : ''}`),
   /** The prepared `internalizeAction` call for one winner. Hits the network, so call it on demand, not on a poll. */
   payoutClaim: (id: number, trader: string) => call('GET', `/markets/${id}/claim?trader=${trader}`),
+  /** What the market owes sellers, and what it has already paid them. */
+  sellDebts: (id: number) => call('GET', `/markets/${id}/debts`),
   broadcasts: (status?: string) => call('GET', `/broadcasts${status ? `?status=${status}` : ''}`),
   balance: () => call('GET', '/wallet/balance'),
   /** Side-effect-free token check, so the console can say "accepted" before anything is spent. */
@@ -54,6 +56,8 @@ export const api = {
   settle: (id: number) => call('POST', `/markets/${id}/settle`, {}, true),
   resolve: (id: number, outcome: string) => call('POST', `/markets/${id}/resolve`, { outcome }, true),
   payout: (id: number) => call('POST', `/markets/${id}/payout`, {}, true),
+  /** FUND-001 step 7b: pay sellers what the market owes them, out of the stake pot. */
+  payProceeds: (id: number) => call('POST', `/markets/${id}/proceeds`, {}, true),
   authorize: (bid: number) => call('POST', `/broadcasts/${bid}/authorize`, {}, true),
   reject: (bid: number) => call('POST', `/broadcasts/${bid}/reject`, {}, true),
 };

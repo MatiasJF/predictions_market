@@ -7,9 +7,10 @@ audit 4 receipts / 0 violations, **28,601 sat total fees — 5× cheaper than th
 bigger contract. Paid in: `7e6f5874…` 1,002 sat + `2b0748b8…` 1,000 sat. Claimed out: 2,000 sat via
 `internalizeAction` from 82,316 B of AtomicBEEF. The pay-once guard also fired on live state. Everything before
 this proved the mechanism; this proved a market. **Three defects were found and fixed during the run**
-(MAINNET-008/009/010 — all one root cause: a transient condition cached as a permanent verdict). **Still broken:
-sells are booked as owed and never paid** (998 sat outstanding from this very run) — now the largest correctness
-gap. 170 workspace tests green._
+(MAINNET-008/009/010 — all one root cause: a transient condition cached as a permanent verdict). **Sells are now
+payable too** (ADR-044): a sell books a debt at fill time and is paid out of the staked satoshis themselves —
+built and tested, **not yet run on mainnet**, with market #7's 998 sat waiting as the first real one. 185
+workspace tests green._
 
 _Previously: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
 mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
@@ -452,9 +453,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     healthy pool read as "wrong contract build" and restarting reproduced it), MAINNET-010 (the trader's wallet
     signed three payments and broadcast one — the daemon now publishes the payment itself). Same root cause in
     all three: **a transient or uninitialised condition recorded as a permanent verdict.**
-  - ⨯ **step 7b — the wallet-toolbox server wallet.** Manages the stake pot and pays **sell proceeds**, which are
-    still owed rather than paid — market #7 booked **998 sat owed** to a trader with no path to collect it. Now
-    the largest correctness gap in the system, and the reason a second counterparty cannot be let in yet.
+  - ◐ **step 7b — sells are a debt the market pays (ADR-044).** A sell now books a `sell_proceeds` row at fill
+    time and the operator clears it from the sign-off queue. **The money comes from the stakes**: each stake is
+    a one-time BRC-29 UTXO, and the proceeds payment spends exactly those — so the pot is a fact about the chain,
+    not an accounting entry, and the operator is not quietly subsidising the market. Refusals are total: an
+    underfunded pot pays nobody rather than some. Migration 015 backfills debts that predate it, **including
+    market #7's 998 sat**, verified against a backup of the live mainnet DB. 15 new tests.
+    **Not yet run on mainnet** — market #7's 998 sat is the intended first, and costs ~1 sat in fees.
+    (No wallet-toolbox server wallet was needed after all: `@bsv/sdk` builds and signs the payment directly.)
   - ○ **step 9 — recover a stranded payment.** A buy whose intent was burned leaves the trader's satoshis at an
     operator-derived address with nothing to show for them (1,002 sat at `17WV463R…` from this run). Pressing
     "buy" again mints a *new* intent and pays *again*: an intent whose address is already funded must be reused,

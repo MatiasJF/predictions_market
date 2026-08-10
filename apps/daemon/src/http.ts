@@ -14,7 +14,7 @@ interface Ctx { method: string; segs: string[]; query: URLSearchParams; body: ()
  * Honest limit: a shared secret over plain HTTP on loopback. Adequate for local operation; NOT a reason to
  * expose the daemon to a network (it still binds 127.0.0.1 only).
  */
-const OPERATOR_ACTIONS = new Set(['deploy', 'buy', 'sell', 'resolve', 'redeem', 'settle', 'payout']);
+const OPERATOR_ACTIONS = new Set(['deploy', 'buy', 'sell', 'resolve', 'redeem', 'settle', 'payout', 'proceeds']);
 const operatorTokenRequired = (): string => process.env.PM_OPERATOR_TOKEN ?? '';
 
 function assertOperator(ctx: Ctx): void {
@@ -82,6 +82,9 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     if (method === 'GET' && segs.length === 3 && segs[2] === 'claim') {
       return svc.payoutClaim(id, query.get('trader') ?? '');
     }
+    // FUND-001 step 7b: what this market owes sellers, and whether it has paid. Readable by anyone — a trader
+    // should be able to see the platform's debt to them without asking the operator.
+    if (method === 'GET' && segs.length === 3 && segs[2] === 'debts') return svc.sellDebts(id);
     if (method === 'POST' && segs.length === 3) {
       const body = await ctx.body();
       if (OPERATOR_ACTIONS.has(segs[2] ?? '')) assertOperator(ctx);
@@ -97,6 +100,8 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
         case 'orders': return svc.submitOrder(id, body); // off-chain instant fill (CONC-001), now paid for
         case 'settle': return svc.enqueueSettle(id); // batch settlement → sign-off queue (CONC-002)
         case 'payout': return svc.enqueuePayout(id); // pay winners on-chain (PAYOUT-001)
+        // FUND-001 step 7b: pay sellers what the market owes them, out of the stake pot.
+        case 'proceeds': return svc.enqueueProceeds(id);
       }
     }
   }

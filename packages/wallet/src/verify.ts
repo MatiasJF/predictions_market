@@ -36,6 +36,13 @@ export interface ChainCheck {
    * mined, and letting someone press a button whose only possible outcome is an error is its own small defect.
    */
   minedAt?(txid: string): Promise<number | undefined>;
+  /**
+   * A transaction's raw hex, or `undefined` if the network does not have it.
+   *
+   * Needed to SPEND a stake: signing an input requires the output being spent, and the stake pot's UTXOs live
+   * on chain rather than in any wallet we keep.
+   */
+  rawTx?(txid: string): Promise<string | undefined>;
 }
 
 /** WhatsOnChain — the same service the rest of the project uses for chain queries. */
@@ -53,6 +60,17 @@ export class WocChainCheck implements ChainCheck {
       const body = (await res.json()) as { blockheight?: number };
       // WoC reports height 0 for a mempool transaction, which is not a block.
       return body.blockheight && body.blockheight > 0 ? body.blockheight : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async rawTx(txid: string): Promise<string | undefined> {
+    try {
+      const res = await fetch(`https://api.whatsonchain.com/v1/bsv/${this.network}/tx/${txid}/hex`);
+      if (!res.ok) return undefined;
+      const hex = (await res.text()).trim();
+      return /^[0-9a-f]+$/i.test(hex) ? hex : undefined;
     } catch {
       return undefined;
     }

@@ -167,6 +167,29 @@ export interface PaymentIntentRow {
   expires_at: string;
   created_at: string;
   decided_at: string | null;
+  /** 1 once this stake has been spent paying someone (migration 015) — a paid intent is a live UTXO until then. */
+  spent: 0 | 1;
+}
+
+/**
+ * A sell's proceeds: what the market owes a trader for unwinding a position, and whether it has been paid
+ * (migration 015). Before this existed the debt was calculated, displayed, and owed by nothing.
+ */
+export interface SellProceedRow {
+  id: number;
+  market_id: number;
+  order_seq: number;
+  trader_pubkey: string;
+  sats: number;
+  status: 'owed' | 'paid';
+  pkh: string | null;
+  derivation_prefix: string | null;
+  derivation_suffix: string | null;
+  sender_identity_key: string | null;
+  txid: string | null;
+  output_index: number | null;
+  created_at: string;
+  paid_at: string | null;
 }
 
 /** One on-chain batch settlement (005_settlement / CONC-002): N fills collapsed into one pool-version advance. */

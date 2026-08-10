@@ -1063,3 +1063,40 @@ transient or uninitialised condition recorded as a permanent verdict.**
 - **What the run also proved does not work.** Two sells filled and recorded **998 sat owed** to the trader that
   nothing will ever pay, and the stranded 1,002 sat above bought nothing. Both were survivable only because one
   person held both keys. Sells (step 7b) are now the largest correctness gap in the system.
+
+## ADR-044 · A sell is a debt, and the market pays it from the stakes (FUND-001 step 7b) · Accepted · 2026-08-10
+- **The gap.** A sell has always been the market owing a trader money. The fill was recorded, the proceeds were
+  computed and displayed, and **nothing ever sent them**. Mainnet market #7 (ADR-043) closed with **998 sat owed
+  to a real trader and no code path capable of paying it** — the platform quietly defaulting on its own ledger.
+  It looked harmless only because the same person held both keys.
+- Decision: a sell **books a debt at fill time** (`sell_proceeds`, migration 015), and the operator clears it
+  through the same human sign-off queue as every other spend.
+- **The money comes from the stakes, and that choice is the substance of this ADR.** Stakes do not sit in a
+  wallet — each was paid to a one-time BRC-29 address, spendable only by re-deriving its key. The proceeds
+  payment spends exactly those UTXOs, which is what makes "the pot" a real thing: the satoshis one trader staked
+  are the satoshis another is paid with, and the pot's balance is the sum of stakes not yet paid out. Paying
+  from the operator's general funding wallet would have been much easier and would have silently reinstated the
+  operator subsidising the market — the precise defect ADR-040 exists to have removed.
+- **`authorize` branches rather than pretending.** A proceeds payment is an ordinary P2PKH spend the daemon
+  builds and signs itself, not a covenant call the engine rebuilds. Forcing it through the `TxPlan`/engine shape
+  would have meant a fake pool effect; instead `kind: 'proceeds'` takes its own path, and the broadcast result
+  reports `pool_version: null` — no covenant was touched, said plainly rather than by omission.
+- **Fee handling is estimate-then-rebuild:** sign once to learn the true size, then sign again with the fee that
+  size implies. This project has been burned by both overpaying 5× (ADR-038) and by transactions too cheap to
+  relay, and two cheap passes avoid guessing.
+- **Refusals are total, never partial.** If the pot cannot cover the whole book — or covers the debt but not the
+  fee — the payment is refused and every debt stands. Paying some sellers and not others is worse than paying
+  none, because it converts a visible liability into a silent one.
+- **Migration 015 backfills.** Sells that filled before the table existed are still owed; creating it without
+  recognising them would be choosing the reading of history in which the platform happens to owe nothing.
+  Verified against a `.backup` of the live mainnet database: it booked market #7's two 499 sat debts and
+  preserved all four broadcasts, fees and txids through the `broadcasts` table rebuild. (Note for future
+  migration testing: the daemon runs SQLite in WAL mode, so `cp` of the `.db` alone silently yields stale
+  state — the first attempt at this test was invalid for exactly that reason.)
+- Verified: **15 new tests.** The load-bearing ones are that a seller derives the key from what was recorded and
+  it unlocks the exact output they were paid; that the stake is marked spent so a second payment cannot
+  double-spend the same input; that a debt cannot be paid twice (the transaction rolls back loudly rather than
+  recording a second payment); and that an underfunded pot refuses instead of paying some sellers. 185 workspace
+  tests, typecheck and web build clean.
+- **Not yet proven on mainnet.** Everything else in FUND-001 has been; this has not. Market #7's 998 sat is the
+  intended first real run, and costs roughly 1 satoshi in fees to settle.

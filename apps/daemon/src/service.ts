@@ -12,9 +12,9 @@ import {
 } from '@pm/lmsr';
 import { EngineLimitation, MAX_UNITS, type BroadcastResult, type ChainEngine, type MarketConfig, type PoolRef, type PoolState, type SettleBatch, type Side, type TxPlan } from '@pm/engine';
 import { computeBatchDigest, receiptFromRow, stateCommitment, auditSettlement, winningPayouts, computePayoutDigest, payoutTotal, pkhOf, type ExecutionEngine, type PayoutDestination } from '@pm/execution';
-import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, TransientPaymentError, type BeefSource, type ChainCheck, type DerivedDestination } from '@pm/wallet';
+import { deriveDestination, scopedNonces, verifyPayment, assertIdentityKey, outputPayingPkh, buildProceedsPayment, TransientPaymentError, type BeefSource, type ChainCheck, type DerivedDestination, type StakeUtxo } from '@pm/wallet';
 import type { PrivateKey } from '@bsv/sdk';
-import type { PaymentIntentRow } from '@pm/persistence';
+import type { PaymentIntentRow, SellProceedRow } from '@pm/persistence';
 
 const DEPLOY_SATS = 1000; // pool UTXO holds dust — collateral is state, not locked sats (spike scope).
 const MAX_QUOTE_SHARES = 10_000;
@@ -418,6 +418,15 @@ export class MarketService {
         ...(input.sigScheme !== undefined ? { sigScheme: input.sigScheme } : {}),
         ...(funding !== undefined ? { funding } : {}),
       });
+      // FUND-001 step 7b — a sell is the market OWING money, so book the debt the moment the fill exists.
+      // Recording it at fill time rather than at payment time is the point: the obligation is created by the
+      // trade, and until this existed a sell's proceeds were computed, shown to the trader, and never owed to
+      // anyone by anything. Mainnet market #7 left 998 sat in exactly that state.
+      if (action === 'sell') {
+        this.db.prepare(
+          `INSERT OR IGNORE INTO sell_proceeds(market_id, order_seq, trader_pubkey, sats) VALUES (?,?,?,?)`,
+        ).run(id, sr.receipt.seq, trader, Number(sr.receipt.costSats));
+      }
       return { market_id: id, receipt: sr.receipt, sig: sr.sig, signer_pubkey: sr.signerPubkey };
     } catch (e) {
       // The payment was accepted but the fill failed (bad signature, oversell, price moved past what was paid).
@@ -662,6 +671,153 @@ export class MarketService {
     };
   }
 
+  // ── the stake pot, and paying what the market owes (FUND-001 step 7b) ───────────────────────────────────
+
+  /**
+   * What this market owes sellers, and whether it has been paid.
+   *
+   * Worth showing even when it is all settled: an operator should be able to see the market's liabilities
+   * without reading the database, because "we owe people money" is exactly the fact a system is most tempted to
+   * keep quiet about.
+   */
+  sellDebts(id: number) {
+    this.marketRow(id);
+    const rows = this.db
+      .prepare('SELECT * FROM sell_proceeds WHERE market_id=? ORDER BY order_seq')
+      .all(id) as SellProceedRow[];
+    const owed = rows.filter((r) => r.status === 'owed');
+    return {
+      market_id: id,
+      owed: owed.map((r) => ({ order_seq: r.order_seq, trader: r.trader_pubkey, sats: r.sats })),
+      owed_sats: owed.reduce((s, r) => s + r.sats, 0),
+      paid: rows.filter((r) => r.status === 'paid').map((r) => ({
+        order_seq: r.order_seq, trader: r.trader_pubkey, sats: r.sats, txid: r.txid,
+      })),
+    };
+  }
+
+  /**
+   * The stake pot: every trader payment we accepted and have not yet spent.
+   *
+   * These are not wallet UTXOs — each one sits at a one-time BRC-29 address whose key exists only by
+   * re-derivation. That is precisely why the pot is real: the satoshis one trader staked are the satoshis
+   * another is paid with, and the balance below is a fact about the chain rather than an accounting entry.
+   */
+  private async potStakes(): Promise<StakeUtxo[]> {
+    const rows = this.db
+      .prepare("SELECT * FROM payment_intents WHERE status='paid' AND spent=0 AND txid IS NOT NULL ORDER BY id")
+      .all() as PaymentIntentRow[];
+    const stakes: StakeUtxo[] = [];
+    for (const r of rows) {
+      const raw = await this.chainCheck?.rawTx?.(r.txid!);
+      // A stake we cannot fetch the funding transaction for cannot be signed against. Skip it rather than fail
+      // the whole payment: the others are still spendable, and this one is not lost, only unavailable now.
+      if (!raw) continue;
+      stakes.push({
+        txid: r.txid!, vout: r.output_index!, satoshis: r.paid_sats!,
+        remittance: {
+          derivationPrefix: r.derivation_prefix,
+          derivationSuffix: r.derivation_suffix,
+          senderIdentityKey: r.trader_pubkey, // the TRADER paid us, so they are the sender
+        },
+        sourceRawTx: raw,
+      });
+    }
+    return stakes;
+  }
+
+  /** What the pot holds, for the operator console. */
+  async potBalance() {
+    const rows = this.db
+      .prepare("SELECT COALESCE(SUM(paid_sats),0) AS sats, COUNT(*) AS n FROM payment_intents WHERE status='paid' AND spent=0")
+      .get() as { sats: number; n: number };
+    return { balance_sats: rows.sats, stakes: rows.n, address: this.paymentKey?.toPublicKey().toAddress() ?? null };
+  }
+
+  /**
+   * Build the payment that clears this market's sell debts and PARK it in the sign-off queue.
+   *
+   * It goes through the same human gate as every covenant spend, because it is the same kind of event: real
+   * satoshis leaving. The transaction is built and signed here but deliberately not broadcast — a signed
+   * transaction nobody has sent is inert.
+   */
+  async enqueueProceeds(id: number) {
+    this.marketRow(id);
+    const { owed, owed_sats } = this.sellDebts(id);
+    if (owed.length === 0) throw badReq('this market owes sellers nothing');
+
+    const stakes = await this.potStakes();
+    const payment = await buildProceedsPayment(
+      this.payKey(),
+      stakes,
+      owed.map((o) => ({ trader: o.trader, satoshis: o.sats, scope: `pm-proceeds:${id}:${o.order_seq}` })),
+    );
+
+    const plan: TxPlan = {
+      kind: 'proceeds',
+      summary: `pay ${owed.length} seller(s) ${owed_sats} sat from the stake pot`,
+      spendSats: owed_sats + payment.feeSats,
+      build: { kind: 'proceeds', marketId: id, rawTx: payment.rawTx, orderSeqs: owed.map((o) => o.order_seq) },
+      // The stakes this spends are recorded with the plan, so authorizing marks exactly those consumed — the
+      // payment used every one of them as an input.
+      effects: { proceeds: { payment, spent: stakes.map((s) => ({ txid: s.txid, vout: s.vout })) } },
+    } as unknown as TxPlan;
+    return this.enqueue(id, plan);
+  }
+
+  /**
+   * Broadcast a proceeds payment and record it. Kept apart from the covenant path in `authorize` because it is
+   * genuinely a different animal: an ordinary P2PKH spend the daemon built, not a contract call the engine
+   * rebuilds and re-signs.
+   */
+  private async authorizeProceeds(row: BroadcastRow, plan: any) {
+    const payment = plan.effects.proceeds.payment as Awaited<ReturnType<typeof buildProceedsPayment>>;
+    const seqs = plan.build.orderSeqs as number[];
+    const marketId = row.market_id!;
+
+    const sent = await this.chainCheck?.publish?.(payment.rawTx);
+    if (!sent) {
+      this.db.prepare("UPDATE broadcasts SET status='failed', error=?, decided_at=datetime('now') WHERE id=?")
+        .run('the network did not accept the proceeds payment', row.id);
+      throw new ServiceError(502, 'broadcast failed: the network did not accept the proceeds payment', 'broadcast_failed');
+    }
+
+    return this.db.transaction(() => {
+      const stamp = this.db.prepare(
+        `UPDATE sell_proceeds SET status='paid', pkh=?, derivation_prefix=?, derivation_suffix=?,
+           sender_identity_key=?, txid=?, output_index=?, paid_at=datetime('now')
+         WHERE market_id=? AND order_seq=? AND status='owed'`,
+      );
+      payment.paid.forEach((p, i) => {
+        const seq = seqs[i]!;
+        const done = stamp.run(
+          p.pkh, p.remittance.derivationPrefix, p.remittance.derivationSuffix, p.remittance.senderIdentityKey,
+          payment.txid, p.outputIndex, marketId, seq,
+        );
+        // If a debt was already settled we have just sent money for it twice. Fail the transaction so the whole
+        // thing rolls back and it is loud, rather than silently recording a second payment as if it were fine.
+        if (done.changes !== 1) {
+          throw new ServiceError(500, `sell ${seq} of market ${marketId} was not owed — refusing to record a double payment`);
+        }
+      });
+      // Spending a stake consumes it; without this the next proceeds payment would try the same inputs again.
+      const spend = this.db.prepare('UPDATE payment_intents SET spent=1 WHERE txid=? AND output_index=?');
+      for (const s of plan.effects.proceeds.spent ?? []) spend.run(s.txid, s.vout);
+      this.db.prepare(
+        "UPDATE broadcasts SET status='broadcast', txid=?, size_bytes=?, fee_sats=?, decided_at=datetime('now') WHERE id=?",
+      ).run(payment.txid, payment.sizeBytes, payment.feeSats, row.id);
+      return {
+        id: row.id, status: 'broadcast' as const, txid: payment.txid, market_id: marketId,
+        // Paying sellers moves money without touching the covenant, so there is no new pool version. Reported
+        // as null rather than omitted, so one broadcast-result shape covers every kind.
+        pool_version: null as number | null,
+        explorer: explorerTxUrl(payment.txid),
+        size_bytes: payment.sizeBytes as number | undefined,
+        fee_sats: payment.feeSats as number | undefined,
+      };
+    })();
+  }
+
   /** Rows recording winners actually paid on-chain for a market (migration 011). */
   private paidRows(id: number) {
     return this.db
@@ -724,6 +880,10 @@ export class MarketService {
     const row = this.broadcastRow(bid);
     if (row.status !== 'pending') throw conflict(`broadcast ${bid} is '${row.status}', not pending`);
     const plan = JSON.parse(row.plan) as TxPlan;
+
+    // Paying sellers is an ordinary P2PKH spend the daemon built and signed, not a covenant call the engine
+    // rebuilds — so it takes its own path rather than being forced through a shape that does not fit it.
+    if (plan.kind === 'proceeds') return this.authorizeProceeds(row, plan);
 
     let result: BroadcastResult;
     try {
@@ -856,7 +1016,9 @@ export class MarketService {
     // size/fee are what this actually cost on chain — the number that matters on mainnet, and the one that
     // decides whether the next tx still fits the ~101 KB unconfirmed-ancestor budget.
     return {
-      id: row.id, status: 'broadcast' as const, txid: result.txid, market_id: marketId, pool_version: toVersion,
+      id: row.id, status: 'broadcast' as const, txid: result.txid, market_id: marketId,
+      pool_version: toVersion as number | null,
+      explorer: explorerTxUrl(result.txid),
       size_bytes: result.sizeBytes, fee_sats: result.feeSats,
     };
   }

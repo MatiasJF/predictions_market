@@ -5,3 +5,4 @@
 export * from './brc29.js';
 export * from './verify.js';
 export * from './beef.js';
+export * from './payer.js';

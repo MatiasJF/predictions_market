@@ -64,6 +64,13 @@ only; signing material is injected from env at runtime.
   the market id and the key they traded with (ADR-041). Rows written before FUND-001 have NULLs here and paid a
   bare `hash160(identity key)`; the API reports `remittance: null` for them rather than inventing one.
 
+- **sell_proceeds** (`015`, FUND-001 step 7b) — what the market OWES sellers, and whether it has paid. A sell has
+  always been the market owing a trader money; before this the debt was computed, displayed, and owed by nothing
+  (mainnet market #7 closed 998 sat short). `status` is `owed` → `paid`, and the BRC-29 columns record where the
+  money went so the seller's wallet can internalize it. Unique on `(market_id, order_seq)`: paying one sell twice
+  is real money twice. Migration 015 backfills pre-existing sells, and adds `payment_intents.spent` — a stake is
+  a live UTXO until something spends it, and without that flag the next payment would reuse the same input.
+
 ## Market lifecycle (markets.state)
 `imported → reviewed → deployed → trading → closed → awaiting_result → resolved → settled`
 Exceptional overrides: `voided`, `refunded`. (Mirrors the source roadmap's lifecycle, adapted to on-chain.)
@@ -109,6 +116,11 @@ key_refs 1──* trades (buyer_key_id)   key_refs 1──* tokens (owner_key_id
   `payouts += derivation_prefix, derivation_suffix, sender_identity_key`. Until this, a trader signed a message,
   `cost_sats` was recorded, and **nothing collected it** — every trader held a free option. The unique index on
   `(txid, output_index)` means one payment output can fund at most one fill.
+- `015_sell_proceeds.sql` — **FUND-001 step 7b, the market pays what it owes.** New `sell_proceeds` (the debt
+  register: market, `order_seq`, trader, sats, `owed|paid`, plus the BRC-29 destination and txid once paid),
+  `payment_intents += spent` (a stake is a UTXO; paying sellers spends it), `broadcasts.kind += 'proceeds'` via
+  the same table rebuild 011 used — this time preserving 013's `size_bytes`/`fee_sats`. Backfills debts from
+  existing sell fills, because sells that predate the table are still owed.
 - Runner: `packages/persistence/src/db.ts` (`migrate()`); creates `schema_migrations`, applies each
   unapplied `NNN_*.sql` in order, records the version. Apply with `pnpm db:migrate`
   (`packages/persistence/src/migrate-cli.ts`, `PM_DB_PATH` or default `data/spike.db`). Verified this commit

@@ -32,6 +32,9 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
   const marketId = sel ?? markets?.[markets.length - 1]?.id;
   const [audit] = usePoll<any>(() => (marketId ? api.audit(marketId) : Promise.resolve(null)), [marketId], 5000);
   const [payout] = usePoll<any>(() => (marketId ? api.payoutPreview(marketId) : Promise.resolve(null)), [marketId], 5000);
+  // What the market owes sellers. Polled alongside the payout preview because both answer the same question —
+  // "who is this market still on the hook to?" — and an operator should not have to go looking for the answer.
+  const [debts] = usePoll<any>(() => (marketId ? api.sellDebts(marketId) : Promise.resolve(null)), [marketId], 5000);
   const market = markets?.find((m) => m.id === marketId);
   const pending = (queue ?? []).filter((b) => b.status === 'pending');
   const failed = (queue ?? []).filter((b) => b.status === 'failed').slice(-3).reverse();
@@ -182,7 +185,23 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
                 onClick={() => void act('resolve NO', () => api.resolve(market.id, 'no'))}>resolve NO</button>
               <button className="primary" disabled={!!busy || blocked || stranded || !payout?.winners?.length}
                 onClick={() => void act('payout', () => api.payout(market.id))}>pay winners</button>
+              {/*
+                Sellers are owed money the moment they sell. Not gated on `stranded`: this pays out of the stake
+                pot with ordinary transactions and has nothing to do with the covenant, so a pool this build
+                cannot spend is no reason to keep owing people money.
+              */}
+              <button className="primary" disabled={!!busy || blocked || !debts?.owed?.length}
+                onClick={() => void act('proceeds', () => api.payProceeds(market.id))}>
+                pay sellers{debts?.owed_sats ? ` (${debts.owed_sats} sat)` : ''}
+              </button>
             </div>
+
+            {debts?.owed?.length > 0 && (
+              <p className="warnText tiny">
+                This market owes <b>{debts.owed_sats} sat</b> to {debts.owed.length} seller(s). Until that is
+                paid it is a real liability, not a rounding detail.
+              </p>
+            )}
             {msg && <p className={msg.startsWith('✗') ? 'err' : 'ok'}>{msg}</p>}
           </>
         )}

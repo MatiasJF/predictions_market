@@ -45,6 +45,9 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Receipt → payout derivation (winningPayouts, PAYOUT-001)** | `packages/execution/src/payout.ts` |
 | **BRC-29 payment derivation + scoped payout nonces (FUND-001)** | `packages/wallet/src/brc29.ts` |
 | **Payment verification + the never-broadcast check (`ChainCheck`)** | `packages/wallet/src/verify.ts` |
+| **Paying sellers out of the stake pot (`buildProceedsPayment`)** | `packages/wallet/src/payer.ts` |
+| **Sell debts: booked at fill, cleared via sign-off** (`sellDebts`, `enqueueProceeds`) | `apps/daemon/src/service.ts` |
+| **A seller actually gets paid (end-to-end)** | `apps/daemon/test/proceeds.test.ts` |
 | **AtomicBEEF for a payout + the toolbox dotenv containment (`BeefSource`)** | `packages/wallet/src/beef.ts` |
 | **Claim winnings into a wallet (`internalizeAction`)** | `claim()` in `apps/web/src/signer/walletSigner.ts` |
 | **Where a winner's money goes + the claim they need** (`payoutDestination`, `payoutClaims`) | `apps/daemon/src/service.ts` |

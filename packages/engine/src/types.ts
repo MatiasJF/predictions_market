@@ -42,7 +42,12 @@ export interface PoolRef {
   state: PoolState;
 }
 
-export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem' | 'settle' | 'payout';
+export type BroadcastKind = 'deploy' | 'buy' | 'sell' | 'resolve' | 'redeem' | 'settle' | 'payout'
+  /**
+   * FUND-001 step 7b — paying sellers from the stake pot. Not a covenant spend: an ordinary P2PKH payment the
+   * daemon builds and signs itself, which is why `authorize` routes it down its own path.
+   */
+  | 'proceeds';
 
 /** One winner of a resolved market, derived from the audited receipts (PAYOUT-001). */
 export interface WinnerPayoutRef {
