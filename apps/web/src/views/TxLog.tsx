@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button, Card, EmptyState, Pill } from '../ui';
 
 /**
  * Every transaction this daemon has put on chain, with the FULL txid.
@@ -26,41 +27,42 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
   }
 
   return (
-    <div className="card">
-      <h3>
-        On-chain transactions <span className="dim">({sent.length})</span>
-        {sent.length > 0 && (
-          <span className="dim tiny">
-            {' '}· {(totalSize / 1024).toFixed(1)} KB · {totalFee.toLocaleString()} sat in fees
-          </span>
-        )}
-      </h3>
+    <Card
+      title="On-chain transactions"
+      subtitle={sent.length > 0
+        ? `${(totalSize / 1024).toFixed(1)} KB · ${totalFee.toLocaleString()} sat in fees`
+        : undefined}
+      aside={<Pill tone="neutral">{sent.length}</Pill>}
+      testId="panel-txlog"
+    >
       {sent.length === 0 ? (
-        <p className="dim">Nothing broadcast yet.</p>
+        <EmptyState icon="◇" title="Nothing broadcast yet"
+          hint="Authorized actions appear here with their full transaction id." />
       ) : (
         <>
           {!isMainnet && (
-            <p className="dim tiny">
+            <p className="tiny muted">
               Local run — these were built and Script-verified exactly as on mainnet, but never broadcast, so they
               have no explorer entry.
             </p>
           )}
-          <div className="txlog">
+          <div>
             {sent.map((b) => (
               <div key={b.id} className="txrow">
                 <div className="txhead">
                   <b>#{b.id} {b.kind}</b>
-                  <span className="dim tiny">
+                  <span className="tiny muted">
                     {b.size_bytes ? `${(b.size_bytes / 1024).toFixed(1)} KB` : '—'} ·{' '}
                     {b.fee_sats ? `${b.fee_sats.toLocaleString()} sat` : '—'} · {b.decided_at ?? ''}
                   </span>
                 </div>
-                <div className="dim tiny">{b.summary}</div>
-                <div className="txid">
+                <div className="tiny muted">{b.summary}</div>
+                <div className="txid-row">
                   <code>{b.txid}</code>
-                  <button className="link" onClick={() => void copy(b.txid)}>
+                  <Button variant="link" size="sm" onClick={() => void copy(b.txid)}
+                    aria-label={`Copy transaction id ${b.txid}`}>
                     {copied === b.txid ? 'copied ✓' : 'copy'}
-                  </button>
+                  </Button>
                   {isMainnet && (
                     <a href={`https://whatsonchain.com/tx/${b.txid}`} target="_blank" rel="noreferrer">
                       WhatsOnChain ↗
@@ -72,6 +74,6 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
           </div>
         </>
       )}
-    </div>
+    </Card>
   );
 }

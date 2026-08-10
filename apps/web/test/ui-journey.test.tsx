@@ -161,7 +161,10 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
       return Math.max(...after.map((m) => m.id as number));
     }, WAIT);
     await waitFor(() => {
-      const sel = screen.getByLabelText(/^market$/i) as HTMLSelectElement;
+      // By ROLE and name, not by label text alone: the panel is now a landmark also called "Market",
+      // so a bare label query is ambiguous. This says which THING is meant — the selector — which is
+      // how a screen-reader user would reach it too.
+      const sel = screen.getByRole('combobox', { name: /market/i }) as HTMLSelectElement;
       expect(Number(sel.value), 'console must target the market it just created').toBe(newest);
     }, WAIT);
 

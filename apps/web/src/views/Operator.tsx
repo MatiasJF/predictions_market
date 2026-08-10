@@ -2,14 +2,29 @@ import { useState } from 'react';
 import { api, operatorToken, usePoll } from '../api';
 import { TxLog } from './TxLog';
 import { previewPrice, maxLossSats } from '../curve';
+import {
+  Button, Callout, Card, EmptyState, Field, Pill, SlideToConfirm, StatusMessage, type Status,
+} from '../ui';
+import './Operator.css';
 
 const WAD = 10n ** 18n;
 const shares = (s: string) => Number(BigInt(s) / WAD);
+const sats = (n: number) => Number(n).toLocaleString();
+
+/** Where a market is in its life. Derived from state rather than tracked, so it cannot go stale. */
+const STEPS = ['deploy', 'trade', 'settle', 'resolve', 'pay'] as const;
 
 /**
- * The operator console. Every state-changing action lands in the SIGN-OFF QUEUE first — nothing reaches the
- * chain until a human authorizes it here. That is the safety property the whole system is built around, so the
+ * The operator console.
+ *
+ * Every state-changing action lands in the SIGN-OFF QUEUE first — nothing reaches the chain until a
+ * human authorizes it here. That is the safety property the whole system is built around, so the
  * queue is the centrepiece rather than a footnote.
+ *
+ * This surface is deliberately denser and more cautionary than the trader's. It is also where
+ * slide-to-confirm belongs: a trader's spend is approved in their own wallet, but here the daemon
+ * signs with its own key, so on mainnet a single click is the only thing between an operator and an
+ * irreversible broadcast. Twice now that has cost real money.
  */
 export function Operator({ network, authRequired }: { network?: string; authRequired?: boolean }) {
   const [markets] = usePoll<any[]>(() => api.markets(), []);
@@ -18,295 +33,331 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
   const [sel, setSel] = useState<number | undefined>();
   const [token, setToken] = useState(operatorToken.get());
   const [busy, setBusy] = useState('');
-  const [msg, setMsg] = useState('');
-  const [confirming, setConfirming] = useState<number | undefined>();
-  // Verified against the daemon, not merely "is the box non-empty" — a wrong token looks identical otherwise.
-  const [tokenOk] = usePoll<boolean>(
-    () => api.operatorCheck().then(() => true).catch(() => false),
-    [token],
-    5000,
-  );
+  const [msg, setMsg] = useState<Status | undefined>();
+  const [tokenOk] = usePoll<boolean>(() => api.operatorCheck().then(() => true).catch(() => false), [token], 5000);
   const blocked = authRequired && tokenOk !== true;
 
-  // Default to the NEWEST market, not the oldest: a DB accumulates markets across runs, and silently pointing
-  // the console at a months-old one is how you end up acting on the wrong market.
+  // Default to the NEWEST market, not the oldest: a DB accumulates markets across runs, and silently
+  // pointing the console at a months-old one is how you end up acting on the wrong market.
   const marketId = sel ?? markets?.[markets.length - 1]?.id;
   const [audit] = usePoll<any>(() => (marketId ? api.audit(marketId) : Promise.resolve(null)), [marketId], 5000);
   const [payout] = usePoll<any>(() => (marketId ? api.payoutPreview(marketId) : Promise.resolve(null)), [marketId], 5000);
-  // What the market owes sellers. Polled alongside the payout preview because both answer the same question —
-  // "who is this market still on the hook to?" — and an operator should not have to go looking for the answer.
   const [debts] = usePoll<any>(() => (marketId ? api.sellDebts(marketId) : Promise.resolve(null)), [marketId], 5000);
 
-  // New-market parameters. `b` especially: it is the shape of the bonding curve, and leaving it hard-coded is
-  // what made every price in market #7 read 500 sat.
   const [question, setQuestion] = useState('');
   const [bUnits, setBUnits] = useState(20);
   const [payoutUnit, setPayoutUnit] = useState(1000);
-
-  // What the curve will actually do, shown before the market exists rather than discovered after trading it.
-  // Pinned against the engine's exact integer math by `curve.test.ts`, so the number an operator picks `b` from
-  // is the number the market will honour.
   const preview = [1, 5, 20].map((n) => ({ n, price: previewPrice(bUnits, payoutUnit, n) }));
   const maxLoss = maxLossSats(bUnits, payoutUnit);
+
   const market = markets?.find((m) => m.id === marketId);
   const pending = (queue ?? []).filter((b) => b.status === 'pending');
   const failed = (queue ?? []).filter((b) => b.status === 'failed').slice(-3).reverse();
   const isMainnet = network === 'mainnet';
-  // A pool deployed by an earlier build of the contract cannot be spent by this one. Say so, and don't offer
-  // actions that are guaranteed to fail at authorize time.
   const stranded = market?.pool && market.pool.spendable === false;
 
+  const step = !market?.pool ? 'deploy'
+    : market.pool.resolved === 1 ? 'pay'
+    : (queue ?? []).some((b) => b.kind === 'settle' && b.status === 'broadcast') ? 'resolve'
+    : 'settle';
+
   async function act(label: string, fn: () => Promise<any>) {
-    setBusy(label); setMsg('');
+    setBusy(label); setMsg(undefined);
     try {
       const r = await fn();
       const cost = r.size_bytes
-        ? ` · ${(r.size_bytes / 1024).toFixed(1)} KB, fee ${Number(r.fee_sats ?? 0).toLocaleString()} sat`
+        ? ` · ${(r.size_bytes / 1024).toFixed(1)} KB, fee ${sats(r.fee_sats ?? 0)} sat`
         : '';
-      setMsg(`${label}: ${r.txid ? `broadcast${cost} — see the transaction log below` : `queued #${r.broadcast_id ?? ''}`}`);
+      setMsg({
+        tone: 'positive',
+        text: `${label}: ${r.txid ? `broadcast${cost} — see the transaction log below` : `queued #${r.broadcast_id ?? ''}`}`,
+      });
       if (r.id && r.question) setSel(r.id); // a market we just created — select it
       await refreshQueue();
     } catch (e) {
-      setMsg(`✗ ${label}: ${e instanceof Error ? e.message : e}`);
+      setMsg({ tone: 'danger', text: `${label}: ${e instanceof Error ? e.message : e}` });
     } finally {
       setBusy('');
     }
   }
 
   return (
-    <div>
-      <div className={`card${blocked ? ' danger' : ''}`} data-testid="panel-token">
-        <h3>
-          Operator token{' '}
-          {authRequired
-            ? tokenOk === true
-              ? <span className="pill good">accepted</span>
-              : <span className="pill bad">{token ? 'rejected' : 'required'}</span>
-            : <span className="pill dev">not required by this daemon</span>}
-        </h3>
-        <p className="dim tiny">
-          Operator actions spend real money, so they require this token. It is a shared secret over loopback —
-          fine locally, never a reason to expose the daemon to a network.
-        </p>
-        <div className="row">
-          <input type="password" value={token} placeholder="PM_OPERATOR_TOKEN"
-            onChange={(e) => { setToken(e.target.value); operatorToken.set(e.target.value); }} />
-          {balance && <span className="dim">wallet {balance.balance_sats.toLocaleString()} sat</span>}
+    <div className="stack">
+      {/* --- status strip: what an operator needs to know BEFORE acting, in one place ------------- */}
+      <div className="opstrip">
+        <div className="opstat">
+          <span className="opstat-label">network</span>
+          {isMainnet
+            ? <Pill tone="danger" icon="⚠">mainnet · real money</Pill>
+            : <Pill tone="neutral" icon="○">{network ?? '—'}</Pill>}
         </div>
-        {blocked && (
-          <p className="err tiny">
-            This daemon requires an operator token and {token ? 'the one entered was rejected' : 'none is set'}.
-            Paste the value you started it with — the same <code>PM_OPERATOR_TOKEN=…</code> from the daemon's
-            command line. Until it is accepted, nothing here can be queued or authorized.
-          </p>
-        )}
+        <div className="opstat">
+          <span className="opstat-label">operator token</span>
+          {!authRequired ? <Pill tone="neutral">not required</Pill>
+            : tokenOk === true ? <Pill tone="positive" icon="✓">accepted</Pill>
+            : <Pill tone="danger" icon="✕">{token ? 'rejected' : 'required'}</Pill>}
+        </div>
+        <div className="opstat">
+          <span className="opstat-label">funding wallet</span>
+          <span className="num strong">{balance ? `${sats(balance.balance_sats)} sat` : '—'}</span>
+        </div>
+        <div className="opstat">
+          <span className="opstat-label">awaiting sign-off</span>
+          <span className="num strong">{pending.length}</span>
+        </div>
       </div>
 
-      <div className="card" data-testid="panel-signoff">
-        <h3>Sign-off queue <span className="dim">({pending.length} pending)</span></h3>
-        {pending.length === 0 && <p className="dim">Nothing awaiting authorization.</p>}
+      <Card
+        title="Operator token"
+        subtitle="Operator actions spend real money, so they require this token. It is a shared secret over loopback — fine locally, never a reason to expose the daemon to a network."
+        tone={blocked ? 'danger' : 'neutral'}
+        testId="panel-token"
+      >
+        <Field label="token">
+          {(id) => (
+            <input id={id} className="control" type="password" value={token} placeholder="PM_OPERATOR_TOKEN"
+              onChange={(e) => { setToken(e.target.value); operatorToken.set(e.target.value); }} />
+          )}
+        </Field>
+        {blocked && (
+          <Callout tone="danger" title="Nothing here can be queued or authorized.">
+            This daemon requires an operator token and {token ? 'the one entered was rejected' : 'none is set'}.
+            Paste the value you started it with — the same <code>PM_OPERATOR_TOKEN=…</code> from the daemon's
+            command line.
+          </Callout>
+        )}
+      </Card>
+
+      {/* --- the human gate --------------------------------------------------------------------- */}
+      <Card title="Sign-off queue" aside={<Pill tone={pending.length ? 'warning' : 'neutral'}>{pending.length} pending</Pill>}
+        testId="panel-signoff">
+        {pending.length === 0 && (
+          <EmptyState icon="✓" title="Nothing awaiting authorization"
+            hint="Actions you queue below appear here before anything reaches the chain." />
+        )}
+
         {pending.map((b) => (
-          <div key={b.id} className="queue" data-testid="queue-row" data-kind={b.kind}>
-            <div>
-              <b>#{b.id} {b.kind}</b>
-              <div className="dim">{b.summary}</div>
-              <div className={isMainnet ? 'warnText tiny' : 'dim tiny'}>
-                spends ~{b.spend_sats} sat{isMainnet ? ' of REAL money on mainnet' : ' (local — nothing is broadcast)'}
+          <div key={b.id} className="queue-row" data-testid="queue-row" data-kind={b.kind}>
+            <div className="grow">
+              <div className="row">
+                <b>#{b.id} {b.kind}</b>
+                <Pill tone={isMainnet ? 'danger' : 'neutral'} icon={isMainnet ? '⚠' : '○'}>
+                  {isMainnet ? `spends ~${sats(b.spend_sats)} sat of REAL money` : `~${sats(b.spend_sats)} sat · nothing is broadcast`}
+                </Pill>
               </div>
+              <div className="tiny muted">{b.summary}</div>
             </div>
-            <div className="row">
-              {confirming === b.id ? (
-                <>
-                  <button className="danger" disabled={!!busy || blocked}
-                    onClick={() => { setConfirming(undefined); void act(`authorize #${b.id}`, () => api.authorize(b.id)); }}>
-                    confirm — spend {b.spend_sats} sat
-                  </button>
-                  <button disabled={!!busy} onClick={() => setConfirming(undefined)}>cancel</button>
-                </>
+
+            <div className="queue-actions">
+              {/*
+                On mainnet, authorizing is irreversible and there is no wallet dialog behind it — the
+                daemon signs with its own key. So it takes a deliberate drag, gated behind an
+                acknowledgement, with the amount written on the control itself. Off mainnet nothing is
+                broadcast, so a plain button is honest and quicker.
+              */}
+              {isMainnet ? (
+                <SlideToConfirm
+                  label={`slide to spend ${sats(b.spend_sats)} sat`}
+                  requireAck={`I understand this broadcasts to mainnet and spends ~${sats(b.spend_sats)} sat that cannot be recovered.`}
+                  disabled={!!busy || blocked}
+                  busy={busy === `authorize #${b.id}`}
+                  onConfirm={() => void act(`authorize #${b.id}`, () => api.authorize(b.id))}
+                />
               ) : (
-                <>
-                  <button className="primary" disabled={!!busy || blocked}
-                    onClick={() => (isMainnet
-                      ? setConfirming(b.id)
-                      : void act(`authorize #${b.id}`, () => api.authorize(b.id)))}>
-                    authorize
-                  </button>
-                  <button disabled={!!busy || blocked}
-                    onClick={() => void act(`reject #${b.id}`, () => api.reject(b.id))}>reject</button>
-                </>
+                <Button variant="primary" disabled={!!busy || blocked}
+                  onClick={() => void act(`authorize #${b.id}`, () => api.authorize(b.id))}>authorize</Button>
               )}
+              <Button variant="ghost" tone="neutral" disabled={!!busy || blocked}
+                onClick={() => void act(`reject #${b.id}`, () => api.reject(b.id))}>reject</Button>
             </div>
           </div>
         ))}
+
         {failed.length > 0 && (
-          <div className="failed">
-            <b className="err">recently failed</b>
+          <div className="failed-block">
+            <span className="section-label danger-text">recently failed</span>
             {failed.map((b) => (
               <div key={b.id} className="tiny">
-                <span className="dim">#{b.id} {b.kind} — </span><span className="err">{b.error}</span>
+                <span className="muted">#{b.id} {b.kind} — </span>
+                <span className="danger-text break-all">{b.error}</span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       <TxLog broadcasts={queue ?? []} isMainnet={isMainnet} />
 
-      <div className="card" data-testid="panel-market">
-        <h3>Market</h3>
+      {/* --- market lifecycle -------------------------------------------------------------------- */}
+      <Card title="Market" testId="panel-market">
         <div className="row">
-          <select aria-label="market" value={marketId ?? ''} onChange={(e) => setSel(Number(e.target.value))}>
-            {(markets ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                #{m.id} · {m.payoutUnit} sat/share · b={m.bUnits} · {m.question.slice(0, 40)}
-              </option>
-            ))}
-          </select>
-          <button disabled={!!busy || blocked} onClick={() => void act('create market', () => api.createMarket({
-            question: question.trim() || `Market ${new Date().toISOString().slice(0, 16)}`,
-            bUnits, payoutUnit,
-          }))}>new market</button>
+          <Field label="market">
+            {(id) => (
+              <select id={id} className="control" value={marketId ?? ''}
+                onChange={(e) => setSel(Number(e.target.value))}>
+                {(markets ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    #{m.id} · {m.payoutUnit} sat/share · b={m.bUnits} · {m.question.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Button disabled={!!busy || blocked}
+            onClick={() => void act('create market', () => api.createMarket({
+              question: question.trim() || `Market ${new Date().toISOString().slice(0, 16)}`, bUnits, payoutUnit,
+            }))}>new market</Button>
         </div>
 
-        {/*
-          `b` is the LMSR liquidity parameter, and it was hard-coded to 1000 — which, against trades of a few
-          shares, pinned every price at 500 sat and made the bonding curve look like a fixed price. It is the
-          single number that decides how much a bet moves the market, so it belongs in front of the operator
-          rather than buried in a call site.
-        */}
-        <div className="row wrapping newmarket">
-          <label className="grow">
-            question
-            <input value={question} placeholder="Will X happen by …?"
-              onChange={(e) => setQuestion(e.target.value)} />
-          </label>
-          <label>
-            b (liquidity)
-            <input type="number" min={1} max={100000} value={bUnits}
-              onChange={(e) => setBUnits(Math.max(1, Number(e.target.value) || 1))} />
-          </label>
-          <label>
-            sat per winning share
-            <input type="number" min={1} max={1000000} value={payoutUnit}
-              onChange={(e) => setPayoutUnit(Math.max(1, Number(e.target.value) || 1))} />
-          </label>
+        <div className="newmarket-grid">
+          <Field label="question">
+            {(id) => (
+              <input id={id} className="control" value={question} placeholder="Will X happen by …?"
+                onChange={(e) => setQuestion(e.target.value)} />
+            )}
+          </Field>
+          <Field label="b (liquidity)">
+            {(id) => (
+              <input id={id} className="control" type="number" min={1} max={100000} value={bUnits}
+                onChange={(e) => setBUnits(Math.max(1, Number(e.target.value) || 1))} />
+            )}
+          </Field>
+          <Field label="sat per winning share">
+            {(id) => (
+              <input id={id} className="control" type="number" min={1} max={1000000} value={payoutUnit}
+                onChange={(e) => setPayoutUnit(Math.max(1, Number(e.target.value) || 1))} />
+            )}
+          </Field>
         </div>
-        <p className="dim tiny">
+        <p className="tiny muted">
           Lower <b>b</b> = a steeper curve: each bet moves the price more.{' '}
           <b>{preview.map((p) => `${p.n} buys → ${p.price}`).join(' · ')}</b> (out of {payoutUnit} sat).{' '}
           It is also your exposure — the most this market can lose is <b>b · ln2 · payout</b> ≈{' '}
-          <b>{maxLoss.toLocaleString()} sat</b>, which you underwrite.
+          <b>{sats(maxLoss)} sat</b>, which you underwrite.
         </p>
 
         {market && (
           <>
-            <div className="row dim">
-              <span className={`state ${market.state}`}>{market.state}</span>
+            {/* Where this market actually is. Six loose buttons never said that. */}
+            <ol className="stepper" aria-label="Market lifecycle">
+              {STEPS.map((s) => (
+                <li key={s} className={`stepper-step${s === step ? ' is-now' : ''}${STEPS.indexOf(s) < STEPS.indexOf(step as any) ? ' is-done' : ''}`}>
+                  <span className="stepper-dot" aria-hidden="true" />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ol>
+
+            <div className="row tiny muted">
+              <Pill tone="neutral">{market.state}</Pill>
               <span>{market.payoutUnit} sat per winning share</span>
               <span>b={market.bUnits}</span>
               <span>pool v{market.pool?.version ?? '—'}</span>
-              {market.resolution && <span className="pill good">resolved {market.resolution.toUpperCase()}</span>}
+              {market.resolution && <Pill tone="positive" icon="✓">resolved {market.resolution.toUpperCase()}</Pill>}
             </div>
 
             {stranded && (
-              <div className="card err">
-                <b>This pool cannot be spent by the current build.</b>
-                <p className="dim">
-                  Its locking script <i>is</i> the compiled contract, and the contract has changed since this pool
-                  was deployed — so every action below would fail at authorize time. Create a fresh market instead.
-                </p>
-              </div>
+              <Callout tone="danger" title="This pool cannot be spent by the current build.">
+                Its locking script <i>is</i> the compiled contract, and the contract has changed since this pool
+                was deployed — so every action below would fail at authorize time. Create a fresh market instead.
+              </Callout>
             )}
-
-            <div className="row wrapping">
-              <button disabled={!!busy || blocked || !!market.pool}
-                onClick={() => void act('deploy', () => api.deploy(market.id))}>deploy pool</button>
-              <button disabled={!!busy || blocked || !market.pool || stranded}
-                onClick={() => void act('settle', () => api.settle(market.id))}>settle batch</button>
-              <button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
-                onClick={() => void act('resolve YES', () => api.resolve(market.id, 'yes'))}>resolve YES</button>
-              <button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
-                onClick={() => void act('resolve NO', () => api.resolve(market.id, 'no'))}>resolve NO</button>
-              <button className="primary" disabled={!!busy || blocked || stranded || !payout?.winners?.length}
-                onClick={() => void act('payout', () => api.payout(market.id))}>pay winners</button>
-              {/*
-                Sellers are owed money the moment they sell. Not gated on `stranded`: this pays out of the stake
-                pot with ordinary transactions and has nothing to do with the covenant, so a pool this build
-                cannot spend is no reason to keep owing people money.
-              */}
-              <button className="primary" disabled={!!busy || blocked || !debts?.owed?.length}
-                onClick={() => void act('proceeds', () => api.payProceeds(market.id))}>
-                pay sellers{debts?.owed_sats ? ` (${debts.owed_sats} sat)` : ''}
-              </button>
-            </div>
 
             {debts?.owed?.length > 0 && (
-              <p className="warnText tiny">
-                This market owes <b>{debts.owed_sats} sat</b> to {debts.owed.length} seller(s). Until that is
-                paid it is a real liability, not a rounding detail.
-              </p>
+              <Callout tone="warning" title={`This market owes ${sats(debts.owed_sats)} sat to ${debts.owed.length} seller(s).`}>
+                Until that is paid it is a real liability, not a rounding detail.
+              </Callout>
             )}
-            {msg && <p className={msg.startsWith('✗') ? 'err' : 'ok'}>{msg}</p>}
+
+            <div className="row">
+              <Button disabled={!!busy || blocked || !!market.pool}
+                onClick={() => void act('deploy', () => api.deploy(market.id))}>deploy pool</Button>
+              <Button disabled={!!busy || blocked || !market.pool || stranded}
+                onClick={() => void act('settle', () => api.settle(market.id))}>settle batch</Button>
+              <Button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
+                onClick={() => void act('resolve YES', () => api.resolve(market.id, 'yes'))}>resolve YES</Button>
+              <Button disabled={!!busy || blocked || !market.pool || stranded || market.pool?.resolved === 1}
+                onClick={() => void act('resolve NO', () => api.resolve(market.id, 'no'))}>resolve NO</Button>
+              <Button variant="primary" disabled={!!busy || blocked || stranded || !payout?.winners?.length}
+                onClick={() => void act('payout', () => api.payout(market.id))}>pay winners</Button>
+              {/*
+                Sellers are owed money the moment they sell. Not gated on `stranded`: this pays out of the
+                stake pot with ordinary transactions and has nothing to do with the covenant, so a pool this
+                build cannot spend is no reason to keep owing people money.
+              */}
+              <Button variant="primary" tone="warning" disabled={!!busy || blocked || !debts?.owed?.length}
+                onClick={() => void act('proceeds', () => api.payProceeds(market.id))}>
+                pay sellers{debts?.owed_sats ? ` (${sats(debts.owed_sats)} sat)` : ''}
+              </Button>
+            </div>
+
+            <StatusMessage status={msg} />
           </>
         )}
-      </div>
+      </Card>
 
       <div className="cols">
-        <div className="card" data-testid="panel-audit">
-          <h3>Audit</h3>
-          <p className="dim tiny">Does the on-chain settlement match the receipts traders actually signed?</p>
-          {!audit ? <p className="dim">—</p> : audit.batches === 0 ? <p className="dim">nothing settled yet</p> : (
-            <>
-              <p className={audit.ok ? 'ok' : 'err'}>
-                {audit.ok ? '✅ settlements match the signed receipts' : '❌ MISMATCH'}
-              </p>
-              {audit.reports.map((r: any) => (
-                <div key={r.batchId} className="dim tiny">
-                  batch #{r.batchId}: {r.receiptCount} receipts · {r.violations.length} violations ·
-                  {r.rabinAttested ? ' attested' : ' not attested'}
-                  {r.violations.map((v: any, i: number) => <div key={i} className="err">❌ {v.check}: {v.detail}</div>)}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
+        <Card title="Audit" subtitle="Does the on-chain settlement match the receipts traders actually signed?"
+          testId="panel-audit">
+          {!audit ? <p className="muted">—</p>
+            : audit.batches === 0 ? <EmptyState icon="○" title="Nothing settled yet" hint="Settle a batch to create something to audit." />
+            : (
+              <>
+                <StatusMessage status={audit.ok
+                  ? { tone: 'positive', text: 'settlements match the signed receipts' }
+                  : { tone: 'danger', text: 'MISMATCH — the chain does not match the receipts' }} />
+                {audit.reports.map((r: any) => (
+                  <div key={r.batchId} className="tiny muted">
+                    batch #{r.batchId}: {r.receiptCount} receipts · {r.violations.length} violations ·
+                    {r.rabinAttested ? ' attested' : ' not attested'}
+                    {r.violations.map((v: any, i: number) => (
+                      <div key={i} className="danger-text">✕ {v.check}: {v.detail}</div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+        </Card>
 
-        <div className="card" data-testid="panel-winners">
-          <h3>Winners</h3>
-          {!payout?.resolved ? <p className="dim">market not resolved</p> : (
+        <Card title="Winners" testId="panel-winners">
+          {!payout?.resolved ? <EmptyState icon="○" title="Market not resolved" hint="Resolve it to see who is owed what." /> : (
             <>
               {payout.winners.length > 0 && (
                 <>
-                  {payout.winners.map((w: any) => (
-                    <div key={w.trader} className="receipt">
-                      <code title={w.trader}>{w.trader.slice(0, 16)}…</code>
-                      <span>{shares(w.shares)} shares</span>
-                      <b>{w.sats} sat</b>
-                    </div>
-                  ))}
-                  <p className="dim tiny">total {payout.total_sats} sat — paid to the key each trader signed with</p>
+                  <div className="list">
+                    {payout.winners.map((w: any) => (
+                      <div key={w.trader} className="list-row">
+                        <code className="truncate grow" title={w.trader}>{w.trader.slice(0, 16)}…</code>
+                        <span className="tiny muted">{shares(w.shares)} shares</span>
+                        <b className="num">{w.sats} sat</b>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="tiny muted">total {sats(payout.total_sats)} sat — paid to the key each trader signed with</p>
                 </>
               )}
               {(payout.paid ?? []).length > 0 && (
                 <>
-                  <p className="ok tiny">
-                    ✅ already paid {payout.paid_sats} sat on chain — paying again would send REAL money twice
-                  </p>
-                  {payout.paid.map((p: any) => (
-                    <div key={p.trader} className="receipt dim">
-                      <code title={p.trader}>{p.trader.slice(0, 16)}…</code>
-                      <span>{p.sats} sat</span>
-                      <code title={p.txid}>{String(p.txid).slice(0, 12)}…</code>
-                    </div>
-                  ))}
+                  <Callout tone="positive" title={`Already paid ${sats(payout.paid_sats)} sat on chain`}>
+                    Paying again would send REAL money twice.
+                  </Callout>
+                  <div className="list">
+                    {payout.paid.map((p: any) => (
+                      <div key={p.trader} className="list-row muted">
+                        <code className="truncate grow" title={p.trader}>{p.trader.slice(0, 16)}…</code>
+                        <span className="num">{p.sats} sat</span>
+                        <code className="tiny" title={p.txid}>{String(p.txid).slice(0, 12)}…</code>
+                      </div>
+                    ))}
+                  </div>
                 </>
               )}
               {payout.winners.length === 0 && (payout.paid ?? []).length === 0 && (
-                <p className="dim">no winning positions</p>
+                <EmptyState icon="○" title="No winning positions" />
               )}
             </>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

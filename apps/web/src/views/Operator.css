@@ -1,0 +1,103 @@
+/* Operator console (UI-010). Denser than the trader surface, and more cautionary. */
+
+/* --- status strip: the four facts to check before acting ---------------------------------------- */
+.opstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.opstat { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.opstat-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+}
+
+/* --- sign-off queue ------------------------------------------------------------------------------ */
+.queue-row {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.queue-row:first-of-type { border-top: none; }
+.queue-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+
+.failed-block {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-1);
+}
+
+/* --- new-market parameters ------------------------------------------------------------------------ */
+.newmarket-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.newmarket-grid .control { width: 100%; }
+@media (max-width: 640px) {
+  .newmarket-grid { grid-template-columns: 1fr; }
+}
+
+/* --- lifecycle stepper ------------------------------------------------------------------------------
+   Six loose buttons never said where a market actually was. This does, and it costs one row. */
+.stepper {
+  display: flex;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.stepper-step {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+}
+.stepper-dot {
+  width: 8px; height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}
+.stepper-step.is-done { color: var(--positive); }
+.stepper-step.is-done .stepper-dot { background: var(--positive); }
+.stepper-step.is-now {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+.stepper-step.is-now .stepper-dot { background: var(--text-on-accent); }
+
+/* --- transaction log ---------------------------------------------------------------------------------- */
+.txrow { border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3); }
+.txrow:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+.txhead { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; align-items: baseline; }
+.txid-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-top: var(--space-2); }
+.txid-row code {
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+}
