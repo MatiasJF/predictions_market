@@ -1100,3 +1100,39 @@ transient or uninitialised condition recorded as a permanent verdict.**
   tests, typecheck and web build clean.
 - **Not yet proven on mainnet.** Everything else in FUND-001 has been; this has not. Market #7's 998 sat is the
   intended first real run, and costs roughly 1 satoshi in fees to settle.
+
+## ADR-045 · The bonding curve is a setting, not a constant · Accepted · 2026-08-10
+- **The observation.** After the mainnet run the operator asked how to make prices "vary as a bonding curve".
+  They already do — LMSR *is* a bonding curve, and it is the core of this project. But market #7 was created
+  with a **hard-coded `b = 1000`** against trades of two shares, so every displayed price read `500` and the
+  curve looked like a fixed price. The curve was working perfectly and communicating nothing.
+- The `cost_sats` column had the truth all along: 2 shares cost **1,002 sat**, i.e. 501 each. The price moved by
+  0.2%, and `price_sats` rounded it away.
+- Decision: `b` and the payout unit become **inputs on the create-market form**, with the resulting curve
+  previewed next to them. A market's most consequential parameter should not be a literal in a call site.
+- **Numbers, for the record** — YES price out of 1,000 sat after N one-share buys from a fresh market:
+
+  | b | n=1 | n=5 | n=10 | n=20 | n=50 |
+  |---|---|---|---|---|---|
+  | 1000 (what shipped) | 500 | 501 | 502 | 504 | 512 |
+  | 50 | 504 | 524 | 549 | 598 | 731 |
+  | 20 (new default) | 512 | 562 | 622 | 731 | 924 |
+  | 10 | 524 | 622 | 731 | 880 | 993 |
+
+- **`b` is liquidity and exposure at once, and they point the same way.** Maximum loss is `b · ln2 · payoutUnit`
+  — 693,000 sat at `b=1000`, 13,900 at `b=20`. A smaller `b` makes prices move more *and* risks less; the only
+  cost is that a large trade moves the price against itself. That figure is shown beside the input, because the
+  instinct is to raise `b` for "more liquidity" without noticing what is being underwritten.
+- **The preview is a float, and that is deliberate but bounded.** `previewPrice` uses
+  `payout / (1 + e^(-n/b))`; every satoshi that actually changes hands is computed by `@pm/lmsr` in exact
+  integer arithmetic. Two implementations of one curve is exactly the setup where silent divergence hurts — an
+  operator choosing `b` from a number the market will not honour — so `curve.test.ts` pins the approximation
+  **within 1 satoshi of the engine** across `b ∈ {5…1000}` and `n ∈ {1…50}`, and pins the shown exposure against
+  `maxLossSats` too.
+- **On "the logic is off-chain, so it is only the registry of operations":** half right, and the other half is
+  the point of the design. Prices are *computed* off-chain by `ExecutionEngine` from the `exec_orders` ledger,
+  which is what makes fills instant. But the curve's state lives on-chain as `e_yes`/`e_no`, and at every
+  settlement the contract independently recomputes the transition with `powFixed` and rejects a batch that does
+  not match, after which the off-chain engine re-adopts the chain's values (CONC-006). **The registry is
+  authoritative between settlements; the chain is authoritative at them.** A daemon that lied about a price
+  would produce a settlement that fails to verify — which is what makes this a market rather than a spreadsheet.

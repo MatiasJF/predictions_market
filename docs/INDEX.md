@@ -46,6 +46,8 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **BRC-29 payment derivation + scoped payout nonces (FUND-001)** | `packages/wallet/src/brc29.ts` |
 | **Payment verification + the never-broadcast check (`ChainCheck`)** | `packages/wallet/src/verify.ts` |
 | **Paying sellers out of the stake pot (`buildProceedsPayment`)** | `packages/wallet/src/payer.ts` |
+| **Bonding-curve preview + operator exposure (`b`)** | `apps/web/src/curve.ts` |
+| **Preview pinned against the exact integer engine** | `apps/web/test/curve.test.ts` |
 | **Sell debts: booked at fill, cleared via sign-off** (`sellDebts`, `enqueueProceeds`) | `apps/daemon/src/service.ts` |
 | **A seller actually gets paid (end-to-end)** | `apps/daemon/test/proceeds.test.ts` |
 | **AtomicBEEF for a payout + the toolbox dotenv containment (`BeefSource`)** | `packages/wallet/src/beef.ts` |

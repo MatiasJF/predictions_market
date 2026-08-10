@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, operatorToken, usePoll } from '../api';
 import { TxLog } from './TxLog';
+import { previewPrice, maxLossSats } from '../curve';
 
 const WAD = 10n ** 18n;
 const shares = (s: string) => Number(BigInt(s) / WAD);
@@ -35,6 +36,18 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
   // What the market owes sellers. Polled alongside the payout preview because both answer the same question —
   // "who is this market still on the hook to?" — and an operator should not have to go looking for the answer.
   const [debts] = usePoll<any>(() => (marketId ? api.sellDebts(marketId) : Promise.resolve(null)), [marketId], 5000);
+
+  // New-market parameters. `b` especially: it is the shape of the bonding curve, and leaving it hard-coded is
+  // what made every price in market #7 read 500 sat.
+  const [question, setQuestion] = useState('');
+  const [bUnits, setBUnits] = useState(20);
+  const [payoutUnit, setPayoutUnit] = useState(1000);
+
+  // What the curve will actually do, shown before the market exists rather than discovered after trading it.
+  // Pinned against the engine's exact integer math by `curve.test.ts`, so the number an operator picks `b` from
+  // is the number the market will honour.
+  const preview = [1, 5, 20].map((n) => ({ n, price: previewPrice(bUnits, payoutUnit, n) }));
+  const maxLoss = maxLossSats(bUnits, payoutUnit);
   const market = markets?.find((m) => m.id === marketId);
   const pending = (queue ?? []).filter((b) => b.status === 'pending');
   const failed = (queue ?? []).filter((b) => b.status === 'failed').slice(-3).reverse();
@@ -150,9 +163,40 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
             ))}
           </select>
           <button disabled={!!busy || blocked} onClick={() => void act('create market', () => api.createMarket({
-            question: `Market ${new Date().toISOString().slice(0, 16)}`, bUnits: 1000, payoutUnit: 1000,
+            question: question.trim() || `Market ${new Date().toISOString().slice(0, 16)}`,
+            bUnits, payoutUnit,
           }))}>new market</button>
         </div>
+
+        {/*
+          `b` is the LMSR liquidity parameter, and it was hard-coded to 1000 — which, against trades of a few
+          shares, pinned every price at 500 sat and made the bonding curve look like a fixed price. It is the
+          single number that decides how much a bet moves the market, so it belongs in front of the operator
+          rather than buried in a call site.
+        */}
+        <div className="row wrapping newmarket">
+          <label className="grow">
+            question
+            <input value={question} placeholder="Will X happen by …?"
+              onChange={(e) => setQuestion(e.target.value)} />
+          </label>
+          <label>
+            b (liquidity)
+            <input type="number" min={1} max={100000} value={bUnits}
+              onChange={(e) => setBUnits(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+          <label>
+            sat per winning share
+            <input type="number" min={1} max={1000000} value={payoutUnit}
+              onChange={(e) => setPayoutUnit(Math.max(1, Number(e.target.value) || 1))} />
+          </label>
+        </div>
+        <p className="dim tiny">
+          Lower <b>b</b> = a steeper curve: each bet moves the price more.{' '}
+          <b>{preview.map((p) => `${p.n} buys → ${p.price}`).join(' · ')}</b> (out of {payoutUnit} sat).{' '}
+          It is also your exposure — the most this market can lose is <b>b · ln2 · payout</b> ≈{' '}
+          <b>{maxLoss.toLocaleString()} sat</b>, which you underwrite.
+        </p>
 
         {market && (
           <>

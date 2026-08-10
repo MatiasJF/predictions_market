@@ -465,6 +465,11 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     operator-derived address with nothing to show for them (1,002 sat at `17WV463R…` from this run). Pressing
     "buy" again mints a *new* intent and pays *again*: an intent whose address is already funded must be reused,
     not re-quoted.
+  - ● **CURVE-001 — `b` is an operator setting now (ADR-045).** Prices always were a bonding curve (LMSR), but
+    `b` was hard-coded to 1000, which against 2-share trades pinned every displayed price at 500 sat and made
+    the curve look flat. `b` and the payout unit are now inputs on the create-market form, with the resulting
+    curve and the operator's maximum loss (`b·ln2·payout`) shown beside them; default `b` is 20, not 1000.
+    The float preview is pinned within 1 sat of the exact integer engine by `apps/web/test/curve.test.ts`.
   - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
     during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 

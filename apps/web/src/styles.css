@@ -67,6 +67,13 @@ button.danger { background:var(--err); border-color:var(--err); color:#fff; }
 .failed { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
 .failed .err { overflow-wrap:anywhere; }
 
+/* --- new-market parameters: the bonding curve is a setting, not a constant ------------------------------ */
+.newmarket { align-items:flex-end; gap:12px; margin-top:10px; }
+.newmarket label { display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:var(--dim); }
+.newmarket input { width:9rem; }
+.newmarket .grow { flex:1 1 14rem; }
+.newmarket .grow input { width:100%; }
+
 /* --- a winner's payout + how they claim it (FUND-001) --------------------------------------------------- */
 .paid { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
 .paid summary { cursor:pointer; }
