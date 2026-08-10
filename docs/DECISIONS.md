@@ -1136,3 +1136,24 @@ transient or uninitialised condition recorded as a permanent verdict.**
   not match, after which the off-chain engine re-adopts the chain's values (CONC-006). **The registry is
   authoritative between settlements; the chain is authoritative at them.** A daemon that lied about a price
   would produce a settlement that fails to verify — which is what makes this a market rather than a spreadsheet.
+
+## ADR-046 · The displayed price was reading the wrong state (CURVE-001b) · Accepted · 2026-08-10
+- **The report.** After ADR-045 shipped `b` as a setting, a market created with `b=20` still showed a price that
+  would not move. The knob was not the problem, and neither was the curve.
+- **Cause.** `getMarket` priced from `poolStateToMarketState(pool)` — the ON-CHAIN pool, which only advances
+  when a batch **settles**. Fills are instant and off-chain, so the headline price sat frozen through every
+  trade and then jumped at settlement. With the old `b=1000` that jump was ~2 sat, so the market read as having
+  a fixed price; lowering `b` changed nothing, because the display was never looking at the trades.
+- **This is the second time this exact defect has been fixed.** ADR-040 records it for payment intents: quoting
+  from the pool under-priced every buy after the first in a batch. It survived here because **the quote path and
+  the display path each computed a price of their own** — the fix was applied to one and not the other. Worth
+  naming as a pattern: the same question ("what is the price right now?") answered in two places will drift, and
+  the one nobody tests is the one that is wrong.
+- Decision: `getMarket` prices from the execution engine's live state, exactly as `createPaymentIntent` does.
+  The pool's price is still reported, as `settled_prices` — **the gap between the two IS the unsettled batch**,
+  and the trader UI now shows it rather than implying the chain has already agreed to the live price.
+- Verified: 6 new tests, and confirmed to be real by reverting the fix — **4 of the 6 fail against the old
+  behaviour**. They cover: an even 50/50 start; a buy moving the price up *before* any settlement (with
+  `pool.version` still 0); each further buy moving it again; `b=1000` staying nearly flat while `b=20` moves
+  200+ sat, so the knob demonstrably does something; `settled_prices` lagging as expected; and a restarted
+  service resuming the live price from the fill ledger. 195 workspace tests, typecheck and web build clean.

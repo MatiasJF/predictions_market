@@ -139,6 +139,17 @@ export function Market({
             <div className="no"><b>{market.prices.no_sats}</b><span>NO</span></div>
           </div>
           <p className="dim">out of {market.payoutUnit} sat per winning share</p>
+          {/*
+            Fills are instant and off-chain; the pool only catches up when a batch settles. So between
+            settlements the live price and the chain's price genuinely differ, and that gap is the unsettled
+            batch. Showing it beats implying the chain has already agreed to this price.
+          */}
+          {market.settled_prices && market.settled_prices.yes_sats !== market.prices.yes_sats && (
+            <p className="dim tiny">
+              Last settled on chain: YES {market.settled_prices.yes_sats} · NO {market.settled_prices.no_sats}.
+              The difference is trades not yet written to the chain.
+            </p>
+          )}
         </div>
 
         <div className="card">

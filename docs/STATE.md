@@ -470,6 +470,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     the curve look flat. `b` and the payout unit are now inputs on the create-market form, with the resulting
     curve and the operator's maximum loss (`b·ln2·payout`) shown beside them; default `b` is 20, not 1000.
     The float preview is pinned within 1 sat of the exact integer engine by `apps/web/test/curve.test.ts`.
+  - ● **CURVE-001b — the displayed price was reading the pool, not the trades (ADR-046).** `b=20` still looked
+    frozen because `getMarket` priced from the on-chain pool, which only advances at settlement — so the
+    headline price ignored every fill and jumped at the batch. Now priced from the execution engine's live
+    state, with the pool's price reported alongside as `settled_prices`; the gap between them is the unsettled
+    batch, and the trader UI shows it. **Second occurrence of this exact defect** (ADR-040 fixed it for payment
+    quotes): the same question answered in two places, and the untested one was wrong. 6 tests, 4 of which
+    fail against the old behaviour.
   - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
     during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 

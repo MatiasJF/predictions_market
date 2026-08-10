@@ -131,7 +131,24 @@ export class MarketService {
     const cfg = cfgOf(m);
     const p = paramsOf(cfg);
     const pool = this.currentPool(id);
-    const state: MarketState = pool ? poolStateToMarketState(pool) : initState(p);
+    const settled: MarketState = pool ? poolStateToMarketState(pool) : initState(p);
+
+    /**
+     * Price from the EXECUTION engine's live state, not the pool's.
+     *
+     * The pool only advances when a batch settles, so pricing the display from it means the headline price does
+     * not move when someone trades — it jumps at settlement instead. That made the market look like it had a
+     * fixed price no matter what `b` was set to, which is exactly how CURVE-001 was first mis-diagnosed as "the
+     * bonding curve is not working".
+     *
+     * This is the same defect ADR-040 already fixed for payment intents. It was fixed there and not here,
+     * because the quote path and the display path each computed a price of their own.
+     */
+    let state = settled;
+    if (this.exec) {
+      this.ensureExecOpen(m);
+      state = this.exec.stateOf(id);
+    }
     const pos = this.positions(id);
     return {
       id: m.id,
@@ -142,7 +159,14 @@ export class MarketService {
       network: m.network,
       state: m.state,
       resolution: m.resolution,
+      /** What you would trade at right now — moves with every fill. */
       prices: { yes_sats: Number(priceYesSats(state, p)), no_sats: Number(priceNoSats(state, p)) },
+      /**
+       * What the chain last agreed to. Between settlements these two diverge, and that gap IS the unsettled
+       * batch — worth exposing rather than hiding, since it is the difference between what the market thinks
+       * and what it has proved.
+       */
+      settled_prices: { yes_sats: Number(priceYesSats(settled, p)), no_sats: Number(priceNoSats(settled, p)) },
       positions: { yes_net_shares: pos.yes.net_shares, no_net_shares: pos.no.net_shares },
       pool: pool
         ? {
