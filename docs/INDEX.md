@@ -51,6 +51,10 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **UI primitives (Card, Button, Pill, Callout, EmptyState…)** | `apps/web/src/ui/primitives.tsx` |
 | **The bonding curve made visible (`PriceBar`)** | `apps/web/src/ui/PriceBar.tsx` |
 | **Slide-to-confirm on irreversible spends** | `apps/web/src/ui/SlideToConfirm.tsx` |
+| **App chassis: tabs/rail, quick actions, sheet, amount pad** | `apps/web/src/ui/chassis.tsx` |
+| **Swipe deck (Discover) — a market as a yes/no call** | `apps/web/src/ui/SwipeDeck.tsx` |
+| **The one place a stake is placed** | `apps/web/src/views/StakeSheet.tsx` |
+| **Positions across every market** | `apps/web/src/views/Positions.tsx` |
 | **Theme: follow the system, or override and remember** | `apps/web/src/theme.ts` |
 | **Token contract tests (theme drift, NO≠danger)** | `apps/web/test/tokens.test.ts` |
 | **Preview pinned against the exact integer engine** | `apps/web/test/curve.test.ts` |

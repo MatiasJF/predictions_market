@@ -486,6 +486,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     operator rather than the trader (the trader's wallet already confirms; the operator has nothing else).
     **Still unverified: how it LOOKS** — the headless browser here cannot execute localhost bundles, so nobody
     has seen it in a browser yet. Remaining: keyboard pass, three widths, both themes by eye.
+  - ◐ **UI-011 — the chassis (ADR-048).** ADR-047 was judged "just a little improvement", and rightly: it
+    restyled a dashboard. Rebuilt on the fintech shape — bottom tabs (a left rail when wide), circular Buy
+    YES / Buy NO actions on each card, a stake **bottom sheet** with preset chips, avatar list rows, filter
+    chips, search, and a new **Positions** tab. **Discover** is a swipe card stack, one market per card:
+    a swipe picks a side and opens the sheet, it never places a bet. One shared `StakeSheet` for every route
+    into a trade. **Appearance still unverified** — the headless browser here cannot run localhost bundles.
   - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
     during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 

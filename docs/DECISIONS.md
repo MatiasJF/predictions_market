@@ -1197,3 +1197,37 @@ transient or uninitialised condition recorded as a permanent verdict.**
   no `var()` referencing a token nothing declares, and the full journey through the real components.
   **Someone still has to look at it in a browser.**
 - 213 workspace tests (up from 195), typecheck and build clean, journey green after every stage.
+
+## ADR-048 · The app chassis: it was a dashboard, and a dashboard is the wrong shape (UI-011) · Accepted · 2026-08-10
+- ADR-047 rebuilt the styling and the operator's verdict on it was fair: *"the actual UX is not bad but it is
+  just a little improvement of what we already had."* Correct. It restyled a dashboard. Consumer fintech is not
+  a dashboard, and no amount of border-radius converts one into the other.
+- **The diagnosis, from taking Revolut's home apart rather than glancing at it.** That screen is ONE OBJECT with
+  ACTIONS ARRANGED AROUND IT: a balance, circular quick actions beneath it, a transaction list with a coloured
+  avatar per row, filter chips, search, and primary navigation in a bottom bar. Ours was a list with forms
+  attached. Every one of those elements was simply absent.
+- **The translation is direct once seen.** Balance → the **probability**. Add money / Exchange → **Buy YES /
+  Buy NO**, placed *on* each market card. Accounts / Cards / Vaults → **Open / Resolved / All**. Transaction
+  rows → receipts with a **YES/NO avatar**. Home / Transfer / Hub → **Discover / Markets / Positions /
+  Operator**.
+- **Discover is the part that is ours.** A prediction market is a yes/no question, and the interface that solved
+  presenting a yes/no call is a card stack, not a form — it maps onto this product more naturally than onto what
+  it was invented for. **A swipe picks a side and opens the stake sheet; it never places a bet.** A gesture that
+  spends satoshis is a defect waiting for a jostled elbow, and this system has already paid twice for actions
+  that were easier to take than to understand. Buttons do the same job for anyone not using a pointer.
+- **Exactly one `StakeSheet`**, shared by the deck, the market cards and the market detail. A buy is the only
+  action that spends a trader's own money; three implementations of it would drift, and the one that drifted
+  would be the one nobody tested.
+- Responsive **by structure**: identical nav markup is a bottom bar below 720px and a left rail above it. Same
+  order, same accessible names, one breakpoint, nothing duplicated and nothing hidden.
+- **A note on tooling, since it shaped the work.** Mobbin returns screenshots and flows — it ships no components
+  and no code; everything here is hand-built. Its real value was showing what the category has converged on, and
+  the first pass under-used it: four screen searches, no flow searches, and the result was a tidier dashboard.
+  One flow search later changed three decisions.
+- **The contract cost two edits, not the one predicted.** The tab rename was foreseen. The second was
+  structural: a market card now carries its own buttons, so **the card can no longer BE a button** — nesting
+  buttons is invalid HTML — and the affordance that opens a market became a named element inside it. Both are
+  annotated in the test rather than absorbed silently; every other assertion is untouched and the journey is
+  green.
+- 213 workspace tests, typecheck and build clean. **Still unverified: the appearance.** The headless browser
+  available here does not execute localhost bundles, so no one has seen any of this in a browser yet.
