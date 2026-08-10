@@ -9,7 +9,7 @@ import { Operator } from './views/Operator';
 import { Discover } from './views/Discover';
 import { Positions } from './views/Positions';
 import { Button, Callout, Card, Pill, TabBar } from './ui';
-import { effectiveTheme, useTheme } from './theme';
+import { effectiveTheme, useSurface, useTheme } from './theme';
 import './App.css';
 
 type Tab = 'discover' | 'markets' | 'positions' | 'operator';
@@ -33,6 +33,7 @@ export function App() {
   const [marketId, setMarketId] = useState<number | undefined>();
   const [health, healthErr] = usePoll<any>(() => api.health(), [], 5000);
   const [theme, setTheme] = useTheme();
+  const [surface, setSurface] = useSurface();
   const network: string | undefined = health?.network;
   const isMainnet = network === 'mainnet';
 
@@ -64,6 +65,8 @@ export function App() {
 
   return (
     <div className="app-shell has-tabbar">
+      {/* Something for the blur to work on. Inert, behind everything, glass mode only. */}
+      <div className="ambient" aria-hidden="true" />
       <header className="topbar">
         <div className="wrap topbar-inner">
           <div className="row grow">
@@ -92,6 +95,14 @@ export function App() {
               onClick={() => setTheme(theme === null ? (shown === 'dark' ? 'light' : 'dark') : theme === 'dark' ? 'light' : null)}
             >
               {theme === null ? '◐ auto' : theme === 'dark' ? '● dark' : '○ light'}
+            </Button>
+            <Button
+              variant="link" tone="neutral" size="sm"
+              aria-label={`Surface: ${surface}. Switch.`}
+              title={surface === 'glass' ? 'Frosted surfaces' : 'Solid surfaces'}
+              onClick={() => setSurface(surface === 'glass' ? 'solid' : 'glass')}
+            >
+              {surface === 'glass' ? '◈ glass' : '◇ solid'}
             </Button>
           </nav>
         </div>

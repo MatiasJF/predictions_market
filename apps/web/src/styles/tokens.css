@@ -190,3 +190,58 @@
 
   --hero-gradient: linear-gradient(135deg, #4b3fd6 0%, #6b32c9 55%, #8b25b0 100%);
 }
+
+/* =============================================================================================
+   GLASS — a surface style, not a third theme.
+   =============================================================================================
+   `data-surface="glass"` composes with either palette, so there are two modes and not four to keep
+   in step: light-glass and dark-glass are the same overrides applied over different bases.
+
+   Only SURFACES change. Text, positive/negative/danger and every spacing token stay exactly as they
+   are, because the readable-contrast decisions were made once and glass is not a reason to revisit
+   them.
+
+   Opacity stays high (≈78%). The references that work — Revolut Business, Replika — are restrained
+   enough that the effect reads as depth; the ones that fail put text over a photograph at 40% and
+   become unreadable in sunlight. This is a money interface, so the amounts win over the effect.
+   ============================================================================================= */
+:root[data-surface="glass"] {
+  --surface-raised: color-mix(in srgb, #ffffff 78%, transparent);
+  --surface-overlay: color-mix(in srgb, #ffffff 86%, transparent);
+  --surface-sunken: color-mix(in srgb, #ffffff 46%, transparent);
+  --border: color-mix(in srgb, #14161a 10%, transparent);
+  --border-strong: color-mix(in srgb, #14161a 20%, transparent);
+  --glass-blur: blur(20px) saturate(1.5);
+  --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 45%);
+  --shadow-1: 0 2px 10px rgb(20 22 26 / 0.07);
+  --shadow-2: 0 8px 28px rgb(20 22 26 / 0.10);
+  --ambient-1: #8b7dff;
+  --ambient-2: #38bdf8;
+  --ambient-3: #fb7185;
+  --ambient-alpha: 0.30;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-surface="glass"]:not([data-theme="light"]) {
+    --surface-raised: color-mix(in srgb, #191d25 76%, transparent);
+    --surface-overlay: color-mix(in srgb, #1c2028 88%, transparent);
+    --surface-sunken: color-mix(in srgb, #0d0f13 55%, transparent);
+    --border: color-mix(in srgb, #ffffff 12%, transparent);
+    --border-strong: color-mix(in srgb, #ffffff 22%, transparent);
+    --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0) 45%);
+    --shadow-1: 0 2px 10px rgb(0 0 0 / 0.45);
+    --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+    --ambient-alpha: 0.38;
+  }
+}
+:root[data-surface="glass"][data-theme="dark"] {
+  --surface-raised: color-mix(in srgb, #191d25 76%, transparent);
+  --surface-overlay: color-mix(in srgb, #1c2028 88%, transparent);
+  --surface-sunken: color-mix(in srgb, #0d0f13 55%, transparent);
+  --border: color-mix(in srgb, #ffffff 12%, transparent);
+  --border-strong: color-mix(in srgb, #ffffff 22%, transparent);
+  --glass-sheen: linear-gradient(160deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0) 45%);
+  --shadow-1: 0 2px 10px rgb(0 0 0 / 0.45);
+  --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+  --ambient-alpha: 0.38;
+}

@@ -94,6 +94,30 @@ describe('design tokens', () => {
     }
   });
 
+  /**
+   * Glass duplicates its dark block for the same reason the base palette does — follow-the-OS and
+   * explicit-choice need separate selectors — so it carries the same drift risk and gets the same check.
+   */
+  it('keeps the two dark GLASS blocks in step, name and value', () => {
+    const auto = blockOf(tokensCss, ':root[data-surface="glass"]:not([data-theme="light"])');
+    const explicit = blockOf(tokensCss, ':root[data-surface="glass"][data-theme="dark"]');
+    const decls = (body: string) => {
+      const m = new Map<string, string>();
+      for (const d of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) m.set(d[1]!, d[2]!.trim());
+      return m;
+    };
+    const a = decls(auto); const b = decls(explicit);
+    expect([...a.keys()].sort()).toEqual([...b.keys()].sort());
+    for (const [k, v] of a) expect(b.get(k), `${k} differs between the dark glass blocks`).toBe(v);
+  });
+
+  it('changes only SURFACES in glass — never text or meaning colours', () => {
+    const glass = declaredIn(tokensCss, ':root[data-surface="glass"]');
+    // Readable-contrast decisions were made once. Glass is a finish, not a reason to revisit them.
+    const forbidden = [...glass].filter((v) => /^--(text|positive|negative|danger|warning|accent)/.test(v));
+    expect(forbidden, 'glass must not redefine text or meaning colours').toEqual([]);
+  });
+
   it('uses only tokens that exist — a typo in a var() name fails silently in the browser', () => {
     const cssFiles: string[] = [];
     const walk = (dir: string) => {

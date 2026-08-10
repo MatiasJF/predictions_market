@@ -48,3 +48,35 @@ export function effectiveTheme(mode: ThemeMode): 'light' | 'dark' {
   if (mode) return mode;
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
+
+
+/* ---------------------------------------------------------------------------------------------
+   Surface style — glass or solid.
+
+   Kept ORTHOGONAL to light/dark on purpose. Making "glass" a third theme would have meant four
+   palettes to keep in step and, inevitably, one of them drifting. As a surface attribute it is a
+   handful of token overrides that compose with whichever palette is active.
+
+   Solid stays the default. Glass costs GPU on every scroll, and it is a preference rather than an
+   improvement — some people find it harder to read, which is reason enough not to impose it.
+   --------------------------------------------------------------------------------------------- */
+export type SurfaceMode = 'solid' | 'glass';
+
+const SURFACE_KEY = 'pm.surface';
+
+export function readSurface(): SurfaceMode {
+  return localStorage.getItem(SURFACE_KEY) === 'glass' ? 'glass' : 'solid';
+}
+
+export function applySurface(mode: SurfaceMode): void {
+  const root = document.documentElement;
+  if (mode === 'glass') root.setAttribute('data-surface', 'glass');
+  else root.removeAttribute('data-surface');
+}
+
+export function useSurface(): [SurfaceMode, (m: SurfaceMode) => void] {
+  const [mode, setMode] = useState<SurfaceMode>(() => readSurface());
+  useEffect(() => { applySurface(mode); }, [mode]);
+  const set = (m: SurfaceMode) => { localStorage.setItem(SURFACE_KEY, m); setMode(m); };
+  return [mode, set];
+}

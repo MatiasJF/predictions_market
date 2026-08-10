@@ -1262,3 +1262,27 @@ transient or uninitialised condition recorded as a permanent verdict.**
   accepted payment into the payer's own pocket. **Market #7's 998 sat therefore remains unpaid** until stakes
   accumulate under the corrected derivation. That is the honest state: the sell path is now correct and still
   unproven on mainnet.
+
+## ADR-050 · Glass is a surface style, not a third theme (UI-012) · Accepted · 2026-08-10
+- Requested: a glassy look. Built as `data-surface="glass"`, **orthogonal to light/dark**. Making it a third
+  theme would have meant four palettes to keep in step and, inevitably, one drifting; as a surface attribute it
+  is a dozen token overrides that compose with whichever palette is active.
+- **Glass needs something behind it.** Blur over flat grey produces flat grey, which is why a naive
+  glassmorphism pass looks like nothing happened. An ambient layer of three soft radial blobs sits behind
+  everything, fixed so it does not swim while scrolling.
+- **Deliberately a gradient, not a photograph.** Photos are what make glass beautiful in a meditation app and
+  unreadable in a money one — see TIDE, where the labels sit on whatever the sea happens to be doing. Blobs give
+  the blur something to work on while keeping luminance nearly uniform, so text contrast is the same wherever a
+  card lands. Opacity stays ≈78%: the references that work (Revolut Business, Replika) are restrained enough
+  that the effect reads as depth rather than as an effect.
+- **Only surfaces change.** Text and the positive/negative/danger colours are untouched — those contrast
+  decisions were made once and a finish is not a reason to revisit them. Pinned by a test that fails if glass
+  redefines any `--text-*` or meaning token.
+- Applied to surfaces only (cards, sheet, bars, deck, search) and never to pills, chips or buttons: a dozen
+  stacked `backdrop-filter`s is a real cost on a laptop GPU, and the effect stops reading as depth once
+  everything has it. Behind `@supports`, with an opaque fallback — without `backdrop-filter` the translucent
+  tokens would put text over an unblurred wash, so the fallback is solid rather than unreadable.
+- **Solid remains the default.** Glass costs GPU on every scroll and some people find it harder to read; it is a
+  preference, not an improvement, and imposing it would be a worse default than offering it.
+- Verified by mutation, as with the base palette: drifting a value between the two dark-glass blocks fails, and
+  so does letting glass touch a text colour. 220 workspace tests, typecheck and build clean.
