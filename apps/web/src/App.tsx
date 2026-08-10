@@ -6,17 +6,30 @@ import type { Signer } from './signer';
 import { Markets } from './views/Markets';
 import { Market } from './views/Market';
 import { Operator } from './views/Operator';
-import { Button, Callout, Card, Pill } from './ui';
+import { Discover } from './views/Discover';
+import { Positions } from './views/Positions';
+import { Button, Callout, Card, Pill, TabBar } from './ui';
 import { effectiveTheme, useTheme } from './theme';
 import './App.css';
 
-type Tab = 'trade' | 'operator';
+type Tab = 'discover' | 'markets' | 'positions' | 'operator';
+
+/**
+ * Primary navigation. A bottom bar on a phone, a rail on a desktop — see chassis.css; the markup is
+ * identical either way. Four destinations is the ceiling for a tab bar and we are exactly at it.
+ */
+const TABS = [
+  { value: 'discover' as const, label: 'Discover', icon: '◈' },
+  { value: 'markets' as const, label: 'Markets', icon: '◉' },
+  { value: 'positions' as const, label: 'Positions', icon: '◎' },
+  { value: 'operator' as const, label: 'Operator', icon: '⚙' },
+];
 
 export function App() {
   const [signer, setSigner] = useState<Signer | undefined>();
   const [identity, setIdentity] = useState<string>('');
   const [walletAvailable, setWalletAvailable] = useState<boolean | undefined>();
-  const [tab, setTab] = useState<Tab>('trade');
+  const [tab, setTab] = useState<Tab>('discover');
   const [marketId, setMarketId] = useState<number | undefined>();
   const [health, healthErr] = usePoll<any>(() => api.health(), [], 5000);
   const [theme, setTheme] = useTheme();
@@ -50,7 +63,7 @@ export function App() {
   const shown = effectiveTheme(theme);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell has-tabbar">
       <header className="topbar">
         <div className="wrap topbar-inner">
           <div className="row grow">
@@ -67,11 +80,7 @@ export function App() {
             )}
           </div>
 
-          <nav className="row" aria-label="Sections">
-            <Button variant={tab === 'trade' ? 'ghost' : 'link'} tone="accent" onClick={() => setTab('trade')}
-              aria-current={tab === 'trade' ? 'page' : undefined}>Trade</Button>
-            <Button variant={tab === 'operator' ? 'ghost' : 'link'} tone="accent" onClick={() => setTab('operator')}
-              aria-current={tab === 'operator' ? 'page' : undefined}>Operator</Button>
+          <nav className="row" aria-label="Utilities">
             {/*
               Three states, not two: "follow the system" is a real choice, so cycling returns to it
               rather than stranding the user in whichever mode they last tapped.
@@ -117,15 +126,24 @@ export function App() {
           {health && <span className="tiny subtle"> · daemon ok</span>}
         </div>
 
-        {tab === 'trade' &&
-          (marketId === undefined ? (
-            <Markets onOpen={setMarketId} />
-          ) : (
-            <Market id={marketId} signer={signer} identity={identity} onBack={() => setMarketId(undefined)} />
-          ))}
-
-        {tab === 'operator' && <Operator network={network} authRequired={health?.operator_auth === true} />}
+        {/*
+          A market opened from any tab takes over the content area, and closing it returns you to the
+          tab you came from. Keeping `marketId` outside the tab state is what makes that work without
+          a router.
+        */}
+        {marketId !== undefined ? (
+          <Market id={marketId} signer={signer} identity={identity} onBack={() => setMarketId(undefined)} />
+        ) : (
+          <>
+            {tab === 'discover' && <Discover signer={signer} onOpen={setMarketId} />}
+            {tab === 'markets' && <Markets onOpen={setMarketId} signer={signer} />}
+            {tab === 'positions' && <Positions identity={identity} onOpen={setMarketId} />}
+            {tab === 'operator' && <Operator network={network} authRequired={health?.operator_auth === true} />}
+          </>
+        )}
       </main>
+
+      <TabBar value={tab} onChange={(t) => { setMarketId(undefined); setTab(t); }} tabs={TABS} />
     </div>
   );
 }

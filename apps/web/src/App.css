@@ -96,3 +96,44 @@
 
 .claim-box { border-top: 1px solid var(--border); padding-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
 .claim-box pre { margin: var(--space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* --- tab-bar clearance ---------------------------------------------------------------------------
+   The bar is fixed, so content needs room to scroll past it — at the bottom on a phone, on the left
+   once it becomes a rail. */
+.has-tabbar main { padding-bottom: calc(var(--space-8) + 64px); }
+@media (min-width: 720px) {
+  .has-tabbar main, .has-tabbar .topbar-inner { padding-left: calc(96px + var(--space-4)); }
+  .has-tabbar main { padding-bottom: var(--space-8); }
+}
+
+/* --- search ---------------------------------------------------------------------------------------- */
+.searchbar {
+  display: flex; align-items: center; gap: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+}
+.searchbar-input {
+  flex: 1 1 auto; min-width: 0;
+  font: inherit; border: none; background: none; color: var(--text-strong);
+}
+.searchbar-input:focus { outline: none; }
+.searchbar:focus-within { box-shadow: var(--focus-ring); }
+
+/* --- market card actions ------------------------------------------------------------------------------ */
+.market-actions { justify-content: flex-start; gap: var(--space-5); padding: var(--space-2) 0; }
+.market-open {
+  font: inherit; font-weight: var(--weight-semibold); line-height: 1.35;
+  text-align: left; background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--text-strong);
+}
+.market-open:hover { color: var(--accent); }
+
+/* --- positions rows ------------------------------------------------------------------------------------- */
+.position-link {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: none; border: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--text-strong); text-align: left; min-width: 0;
+}
+.position-link:hover .strong { color: var(--accent); }

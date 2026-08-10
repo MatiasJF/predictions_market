@@ -1,36 +1,40 @@
+import { useState } from 'react';
 import { api, usePoll } from '../api';
-import { Card, EmptyState, Pill, PriceBar, Skeleton } from '../ui';
+import type { Signer } from '../signer';
+import { ActionCircle, Card, Chips, EmptyState, Pill, PriceBar, Skeleton } from '../ui';
+import { StakeSheet } from './StakeSheet';
+
+type Filter = 'open' | 'resolved' | 'all';
 
 /**
- * The trader's home: a hero stating the shape of the venue, then one card per market.
+ * The full list of markets, with the odds as a bar and the two actions that matter attached to each
+ * card.
  *
- * The odds are a BAR rather than two satoshi figures. "YES 620 · NO 380" requires the reader to do
- * arithmetic against a payout unit before it means anything; a bar filled 62% of the way does not.
- * It is also the thing that visibly MOVES when someone trades, which is the whole point of an LMSR
- * market and was invisible until this morning (ADR-045/046).
+ * Putting Buy YES / Buy NO ON the card is the difference between a directory and an app. It also
+ * costs nothing in safety: the circles open the stake sheet with a side chosen, and the sheet still
+ * routes through the wallet's own approval.
  */
-export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
+export function Markets({ onOpen, signer }: { onOpen: (id: number) => void; signer?: Signer }) {
   const [markets, err] = usePoll<any[]>(() => api.markets(), []);
+  const [filter, setFilter] = useState<Filter>('open');
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<{ market: any; side: 'yes' | 'no' } | undefined>();
 
-  // Only facts that this one call actually supports.
-  //
-  // A first draft showed "you hold a position" from `m.positions`, which is the MARKET's aggregate
-  // across every trader, not this trader's — it would have told everyone they held a position in
-  // every traded market. The per-trader figure needs a query per market, so rather than show a
-  // plausible-looking wrong number, the home screen shows none. `identity` stays a prop because the
-  // header states who you are; repeating it here added nothing and made the page ambiguous.
-  const open = (markets ?? []).filter((m) => m.pool && m.pool.resolved !== 1).length;
-  const resolved = (markets ?? []).filter((m) => m.resolution).length;
+  const all = markets ?? [];
+  const shown = all
+    .filter((m) => (filter === 'all' ? true : filter === 'resolved' ? !!m.resolution : !m.resolution))
+    .filter((m) => (q ? String(m.question).toLowerCase().includes(q.toLowerCase()) : true))
+    .slice()
+    .reverse(); // newest first: the market someone just created is the one they want
+
+  const open = all.filter((m) => m.pool && m.pool.resolved !== 1).length;
 
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <div className="hero-label">Prediction markets on BSV</div>
-          <div className="hero-value">
-            {markets ? markets.length : '—'}
-            <small>{markets?.length === 1 ? 'market' : 'markets'}</small>
-          </div>
+          <div className="hero-value">{markets ? all.length : '—'}<small>{all.length === 1 ? 'market' : 'markets'}</small></div>
         </div>
         <div className="hero-stats">
           <div>
@@ -38,11 +42,29 @@ export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
             <div className="hero-stat-label">open for trading</div>
           </div>
           <div>
-            <div className="hero-stat-value">{markets ? resolved : '—'}</div>
+            <div className="hero-stat-value">{markets ? all.filter((m) => m.resolution).length : '—'}</div>
             <div className="hero-stat-label">resolved</div>
           </div>
         </div>
       </section>
+
+      <div className="stack-sm">
+        <label className="searchbar">
+          <span aria-hidden="true">🔍</span>
+          <input
+            type="search" className="searchbar-input" value={q} placeholder="Search markets"
+            aria-label="Search markets" onChange={(e) => setQ(e.target.value)}
+          />
+        </label>
+        <Chips
+          label="Filter markets" value={filter} onChange={setFilter}
+          options={[
+            { value: 'open', label: 'Open' },
+            { value: 'resolved', label: 'Resolved' },
+            { value: 'all', label: 'All' },
+          ]}
+        />
+      </div>
 
       {err && <Card tone="danger" title="Could not load markets">{err}</Card>}
 
@@ -50,57 +72,68 @@ export function Markets({ onOpen }: { onOpen: (id: number) => void }) {
         <div className="grid-cards" aria-busy="true" aria-label="Loading markets">
           {[0, 1, 2].map((i) => (
             <div key={i} className="market-card">
-              <Skeleton height={18} />
-              <Skeleton height={34} />
-              <Skeleton height={14} width="60%" />
+              <Skeleton height={18} /><Skeleton height={34} /><Skeleton height={14} width="60%" />
             </div>
           ))}
         </div>
       )}
 
-      {markets?.length === 0 && (
+      {markets && shown.length === 0 && (
         <Card>
           <EmptyState
             icon="◎"
-            title="No markets yet"
-            hint="Create one from the Operator tab — it takes a question, a liquidity setting and a payout per share."
+            title={all.length === 0 ? 'No markets yet' : q ? 'Nothing matches that search' : `No ${filter} markets`}
+            hint={all.length === 0
+              ? 'Create one from the Operator tab — it takes a question, a liquidity setting and a payout per share.'
+              : 'Try another filter, or clear the search.'}
           />
         </Card>
       )}
 
-      {markets && markets.length > 0 && (
-        <div className="grid-cards">
-          {/* Newest first: the market someone just created is the one they want. */}
-          {markets.slice().reverse().map((m) => {
-            const stale = m.pool && m.pool.spendable === false;
-            return (
-              <button key={m.id} className="market-card" data-testid="market-card" onClick={() => onOpen(m.id)}>
-                <div className="market-meta">
-                  <span className="tiny subtle">#{m.id}</span>
-                  {m.resolution && <Pill tone="positive" icon="✓">resolved {m.resolution.toUpperCase()}</Pill>}
-                  {stale && <Pill tone="danger" icon="⚠">stale build — unspendable</Pill>}
-                  {!m.pool && <Pill tone="neutral" icon="○">not deployed</Pill>}
-                </div>
+      <div className="grid-cards">
+        {shown.map((m) => {
+          const stale = m.pool && m.pool.spendable === false;
+          const tradable = m.pool && m.pool.resolved !== 1 && !stale;
+          return (
+            <article key={m.id} className="market-card" data-testid="market-card">
+              <div className="market-meta">
+                <span className="tiny subtle">#{m.id}</span>
+                {m.resolution && <Pill tone="positive" icon="✓">resolved {m.resolution.toUpperCase()}</Pill>}
+                {stale && <Pill tone="danger" icon="⚠">stale build — unspendable</Pill>}
+                {!m.pool && <Pill tone="neutral" icon="○">not deployed</Pill>}
+              </div>
 
-                <div className="market-question">{m.question}</div>
-
-                <PriceBar
-                  yesSats={m.prices.yes_sats}
-                  noSats={m.prices.no_sats}
-                  payoutUnit={m.payoutUnit}
-                  size="sm"
-                />
-
-                <div className="market-meta tiny subtle">
-                  <span>b={m.bUnits}</span>
-                  <span>·</span>
-                  <span>pool v{m.pool?.version ?? '—'}</span>
-                </div>
+              {/* The question is the link into the market — the whole card is not clickable, because
+                  the card now contains its own buttons and nesting those inside a button is invalid. */}
+              <button type="button" className="market-question market-open" data-testid="market-open"
+                onClick={() => onOpen(m.id)}>
+                {m.question}
               </button>
-            );
-          })}
-        </div>
-      )}
+
+              <PriceBar yesSats={m.prices.yes_sats} noSats={m.prices.no_sats} payoutUnit={m.payoutUnit} size="sm" />
+
+              <div className="circle-row market-actions">
+                <ActionCircle icon="↑" label="YES" tone="positive" disabled={!tradable}
+                  title={tradable ? `Back YES at ${m.prices.yes_sats} sat` : 'Trading is closed on this market'}
+                  onClick={() => setPicked({ market: m, side: 'yes' })} />
+                <ActionCircle icon="↓" label="NO" tone="negative" disabled={!tradable}
+                  title={tradable ? `Back NO at ${m.prices.no_sats} sat` : 'Trading is closed on this market'}
+                  onClick={() => setPicked({ market: m, side: 'no' })} />
+                <ActionCircle icon="↗" label="Details" tone="neutral" onClick={() => onOpen(m.id)} />
+              </div>
+
+              <div className="market-meta tiny subtle">
+                <span>b={m.bUnits}</span><span>·</span><span>pool v{m.pool?.version ?? '—'}</span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <StakeSheet
+        open={!!picked} onClose={() => setPicked(undefined)}
+        market={picked?.market} side={picked?.side ?? 'yes'} signer={signer}
+      />
     </div>
   );
 }

@@ -172,13 +172,21 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
     await authorizeQueue('deploy');
 
     // ---- TRADER: sign and place an order ----------------------------------------------------------------
-    fireEvent.click(screen.getByRole('button', { name: /^Trade$/ }));
-    const card = await waitFor(() => {
-      const [first] = screen.getAllByTestId('market-card');
+    // UI-011 renamed the tabs: primary navigation is now Discover / Markets / Positions / Operator.
+    // This is the ONLY change the chassis rebuild was allowed to make to this file — a destination
+    // was renamed, so the test names the new destination. Every structural assertion below is
+    // untouched, which is the point of it being a contract.
+    fireEvent.click(screen.getByRole('button', { name: /^Markets$/ }));
+    // SECOND permitted change, and the reason is structural rather than cosmetic: a market card now
+    // carries its own Buy YES / Buy NO buttons, so the card itself can no longer BE a button —
+    // nesting buttons is invalid HTML. The affordance that opens a market is now a named element
+    // inside the card, and the test clicks that instead of the card.
+    const openBtn = await waitFor(() => {
+      const [first] = screen.getAllByTestId('market-open');
       if (!first) throw new Error('no market card');
       return first as HTMLElement;
     }, WAIT);
-    fireEvent.click(card);
+    fireEvent.click(openBtn);
 
     await waitFor(() => expect(panel('order')).toBeTruthy(), WAIT);
     fireEvent.change(screen.getByLabelText(/^shares$/i), { target: { value: '5' } });

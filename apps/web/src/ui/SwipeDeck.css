@@ -1,0 +1,99 @@
+/* Swipe deck. The card follows the finger with no transition (it must track exactly); only the
+   fly-out and the snap-back are animated. Reduced motion is handled globally in base.css. */
+
+.deck { display: flex; flex-direction: column; gap: var(--space-5); align-items: center; }
+
+.deck-stack {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  min-height: 380px;
+}
+
+.deck-card {
+  position: absolute; inset: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-6) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-4);
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.deck-card:active { cursor: grabbing; }
+
+/* The card underneath, peeking. Slightly smaller and pushed down — the whole trick. */
+.deck-card.is-behind {
+  transform: scale(0.95) translateY(14px);
+  opacity: 0.6;
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+}
+
+.deck-card.is-flying-yes,
+.deck-card.is-flying-no {
+  transition: transform var(--dur-base) var(--ease), opacity var(--dur-base) var(--ease);
+  opacity: 0;
+}
+.deck-card.is-flying-yes { transform: translateX(120%) rotate(18deg); }
+.deck-card.is-flying-no { transform: translateX(-120%) rotate(-18deg); }
+
+/* The stamp that appears mid-drag, so the gesture announces itself before it commits. */
+.deck-stamp {
+  position: absolute; top: var(--space-5);
+  font-size: var(--text-xl); font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 3px solid currentColor;
+}
+.deck-stamp-yes { right: var(--space-5); color: var(--positive); transform: rotate(12deg); }
+.deck-stamp-no { left: var(--space-5); color: var(--negative); transform: rotate(-12deg); }
+
+/* --- the twin buttons: the non-gesture route, equal in weight ------------------------------------- */
+.deck-actions { display: flex; gap: var(--space-5); align-items: center; }
+.deck-btn {
+  width: 64px; height: 64px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-2);
+  font-size: 24px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.deck-btn:hover { transform: translateY(-2px); }
+.deck-btn:active { transform: scale(0.94); }
+.deck-btn-no { color: var(--negative); }
+.deck-btn-yes { color: var(--positive); }
+.deck-btn-skip { width: 48px; height: 48px; font-size: 18px; color: var(--text-subtle); }
+
+.deck-hint { text-align: center; max-width: 34ch; }
+
+.deck-empty {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-4);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+/* --- what a market card looks like inside the deck ------------------------------------------------- */
+.deck-question {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.deck-odds {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--positive);
+}
+.deck-odds-label { font-size: var(--text-xs); color: var(--text-subtle); }
+.deck-foot { margin-top: auto; display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }

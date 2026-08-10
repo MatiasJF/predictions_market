@@ -1,0 +1,154 @@
+/* Chassis (UI-011). The responsive rule lives here and nowhere else: one breakpoint, --nav-wide. */
+
+/* --- circular quick actions ------------------------------------------------------------------- */
+.circle-action {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--text-muted);
+  min-width: 64px;
+}
+.circle-action-dot {
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--tone-soft);
+  color: var(--tone);
+  font-size: 22px; font-weight: var(--weight-bold);
+  transition: transform var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+.circle-action:hover:not(:disabled) .circle-action-dot { transform: translateY(-2px); filter: brightness(1.04); }
+.circle-action:active:not(:disabled) .circle-action-dot { transform: translateY(0) scale(0.96); }
+.circle-action:disabled { opacity: 0.4; cursor: not-allowed; }
+.circle-action-label { font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.circle-row { display: flex; gap: var(--space-4); justify-content: center; flex-wrap: wrap; }
+
+/* --- avatar --------------------------------------------------------------------------------------- */
+.avatar {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--tone-soft); color: var(--tone);
+  font-weight: var(--weight-bold);
+}
+.avatar-md { width: 38px; height: 38px; font-size: var(--text-xs); }
+.avatar-sm { width: 28px; height: 28px; font-size: 10px; }
+
+/* --- chips ------------------------------------------------------------------------------------------ */
+.chips {
+  display: flex; gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  font: inherit; font-size: var(--text-sm); font-weight: var(--weight-medium);
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.chip:hover:not(.is-on) { color: var(--text-strong); border-color: var(--border-strong); }
+.chip.is-on { background: var(--text-strong); border-color: var(--text-strong); color: var(--surface-raised); }
+
+/* --- bottom sheet -------------------------------------------------------------------------------------- */
+.sheet-scrim {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgb(0 0 0 / 0.45);
+  display: flex; align-items: flex-end; justify-content: center;
+  animation: sheet-fade var(--dur-base) var(--ease);
+}
+.sheet {
+  width: min(520px, 100%);
+  background: var(--surface-overlay);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--space-3) var(--space-5) var(--space-6);
+  box-shadow: var(--shadow-3);
+  max-height: 92vh; overflow-y: auto;
+  animation: sheet-rise var(--dur-base) var(--ease);
+}
+.sheet:focus { outline: none; }
+.sheet-grip { width: 40px; height: 4px; border-radius: var(--radius-full); background: var(--border-strong); margin: 0 auto var(--space-4); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.sheet-head h2 { font-size: var(--text-lg); }
+.sheet-close {
+  border: none; background: var(--surface-sunken); color: var(--text-muted);
+  width: 32px; height: 32px; border-radius: var(--radius-full); cursor: pointer; font-size: 14px;
+}
+.sheet-body { display: flex; flex-direction: column; gap: var(--space-4); }
+.sheet-foot { margin-top: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+
+@keyframes sheet-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* On a wide screen a sheet glued to the bottom edge looks like a mistake; centre it. */
+@media (min-width: 720px) {
+  .sheet-scrim { align-items: center; }
+  .sheet { border-radius: var(--radius-xl); }
+}
+
+/* --- amount pad ------------------------------------------------------------------------------------------- */
+.amountpad { display: flex; flex-direction: column; gap: var(--space-3); align-items: center; }
+.amountpad-value {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-3xl); font-weight: var(--weight-bold);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.amountpad-unit { font-size: var(--text-lg); color: var(--text-subtle); font-weight: var(--weight-medium); }
+.amountpad-hint { text-align: center; }
+.amountpad-presets { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
+.amountpad-field { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-subtle); }
+.amountpad-field input { width: 5.5rem; }
+
+/* --- tab bar / rail ---------------------------------------------------------------------------------------
+   Below the breakpoint it is a bottom bar under the thumb; above it, a left rail. Same DOM. */
+.tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 20;
+  display: flex;
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border);
+  padding: var(--space-2) var(--space-2) max(var(--space-2), env(safe-area-inset-bottom));
+}
+.tab {
+  flex: 1 1 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: none; cursor: pointer;
+  font: inherit; font-size: var(--text-xs);
+  color: var(--text-subtle);
+  padding: var(--space-2) 0;
+  border-radius: var(--radius-md);
+  transition: color var(--dur-fast) var(--ease);
+}
+.tab.is-on { color: var(--accent); font-weight: var(--weight-semibold); }
+.tab-icon { position: relative; font-size: 19px; line-height: 1; }
+.tab-badge {
+  position: absolute; top: -4px; right: -10px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: var(--weight-bold);
+  display: flex; align-items: center; justify-content: center;
+}
+
+@media (min-width: 720px) {
+  .tabbar {
+    top: 0; bottom: 0; right: auto;
+    width: 96px;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    border-top: none;
+    border-right: 1px solid var(--border);
+    padding: var(--space-6) var(--space-2);
+  }
+  .tab { flex: 0 0 auto; gap: var(--space-1); padding: var(--space-3) 0; }
+  .tab.is-on { background: var(--accent-soft); }
+}
