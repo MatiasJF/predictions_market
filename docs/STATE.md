@@ -477,6 +477,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     batch, and the trader UI shows it. **Second occurrence of this exact defect** (ADR-040 fixed it for payment
     quotes): the same question answered in two places, and the untested one was wrong. 6 tests, 4 of which
     fail against the old behaviour.
+  - ◐ **UI-010 — a real design system, both surfaces (ADR-047).** Tokens + primitives, light and dark, no new
+    runtime deps. Fixed two defects hiding in the old stylesheet: `--no` and `--err` were the same hex (NO is
+    now orange; red belongs to danger alone), and `msg.startsWith('✗')` was deciding success from failure.
+    Stage 0 re-anchored the journey test on roles/labels **before** any pixel moved, so it could act as the
+    contract — and it caught a bug where the home screen showed the market's aggregate position as the
+    viewer's. The journey test now also refuses to run against a mainnet daemon. Slide-to-confirm went to the
+    operator rather than the trader (the trader's wallet already confirms; the operator has nothing else).
+    **Still unverified: how it LOOKS** — the headless browser here cannot execute localhost bundles, so nobody
+    has seen it in a browser yet. Remaining: keyboard pass, three widths, both themes by eye.
   - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
     during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 

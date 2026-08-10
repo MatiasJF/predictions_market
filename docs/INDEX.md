@@ -47,6 +47,12 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Payment verification + the never-broadcast check (`ChainCheck`)** | `packages/wallet/src/verify.ts` |
 | **Paying sellers out of the stake pot (`buildProceedsPayment`)** | `packages/wallet/src/payer.ts` |
 | **Bonding-curve preview + operator exposure (`b`)** | `apps/web/src/curve.ts` |
+| **Design tokens (colour/space/type/motion, light+dark)** | `apps/web/src/styles/tokens.css` |
+| **UI primitives (Card, Button, Pill, Callout, EmptyState…)** | `apps/web/src/ui/primitives.tsx` |
+| **The bonding curve made visible (`PriceBar`)** | `apps/web/src/ui/PriceBar.tsx` |
+| **Slide-to-confirm on irreversible spends** | `apps/web/src/ui/SlideToConfirm.tsx` |
+| **Theme: follow the system, or override and remember** | `apps/web/src/theme.ts` |
+| **Token contract tests (theme drift, NO≠danger)** | `apps/web/test/tokens.test.ts` |
 | **Preview pinned against the exact integer engine** | `apps/web/test/curve.test.ts` |
 | **Sell debts: booked at fill, cleared via sign-off** (`sellDebts`, `enqueueProceeds`) | `apps/daemon/src/service.ts` |
 | **A seller actually gets paid (end-to-end)** | `apps/daemon/test/proceeds.test.ts` |

@@ -1157,3 +1157,43 @@ transient or uninitialised condition recorded as a permanent verdict.**
   `pool.version` still 0); each further buy moving it again; `b=1000` staying nearly flat while `b=20` moves
   200+ sat, so the knob demonstrably does something; `settled_prices` lagging as expected; and a restarted
   service resuming the live price from the fill ledger. 195 workspace tests, typecheck and web build clean.
+
+## ADR-047 · A design system, and the two defects hiding in the old stylesheet (UI-010) · Accepted · 2026-08-10
+- The web app worked and had been driven on mainnet, but its styling was a 90-line file grown one feature at a
+  time: ten variables, no spacing scale, **no focus styles at all**, one media query, and zero `aria-*`. Rebuilt
+  on tokens + primitives, light and dark, both surfaces. No new runtime dependencies.
+- **Two real defects were hiding in the palette, not the layout.**
+  - `--no` and `--err` were the **same hex**, so a market's NO side and an error state were indistinguishable.
+    YES/NO are now green/**orange** — also the colour-blind-safe pair, where green/red is the one that fails —
+    and red belongs to danger alone, so red always means "this can lose you money".
+  - `msg.startsWith('✗')` decided success from failure in two views: **a glyph inside a string was
+    load-bearing logic.** Status is now `{ tone, text }`, and errors finally get an assertive live region.
+- **Stage 0 is the part worth copying.** `ui-journey.test.tsx` was the only UI regression coverage and it
+  identified elements by CSS class. Rewriting the UI and its only test together proves nothing, so the selectors
+  were moved to roles/labels/test-ids **first and proved green against the unchanged UI**. It then caught three
+  genuine problems during the rebuild, including one where the hero displayed "you hold a position" from
+  `m.positions` — the MARKET's aggregate across all traders, not the viewer's. It would have told everyone they
+  held a position in every traded market. The home screen now shows nothing rather than something plausible.
+- Also added to that test: it **refuses to run against a daemon reporting `network: mainnet`**. It creates
+  markets and authorizes broadcasts, and the default port is the one a real operator daemon uses. Verified
+  against a fake server claiming to be mainnet — never against the real one.
+- **Slide-to-confirm went to the operator, not the trader** — a deviation from the approved plan, made because
+  building it showed the plan was wrong. A trader's spend is already approved in their own BRC-100 wallet; a
+  sheet plus a slider in front of that is a confirmation of a confirmation, which trains people to click through
+  dialogs without reading them. The operator has no such dialog — the daemon signs with its own key — so that is
+  where a deliberate drag, gated behind an acknowledgement naming the amount, actually buys safety.
+- **Two tests found bugs the moment they were written, which is the argument for writing them.**
+  - `SlideToConfirm.commit()` trusted the input's `disabled` attribute to stop events. A programmatically
+    dispatched event reaches the handler anyway, so the acknowledgement gate and the disabled/busy states were
+    **all bypassable**. A guard on spending money does not belong in the DOM's willingness to emit an event.
+  - `tokens.test.ts` passed five green tests while **testing nothing**: it located CSS blocks with
+    `indexOf(selector)`, and tokens.css opens with a comment that quotes every selector it describes, so each
+    lookup matched the prose and compared the light palette against itself. Found by deliberately drifting a
+    dark value and noticing the suite stayed green. Both mutations now fail as they should.
+- **Not verified: the visual result.** The headless browser available here does not execute localhost
+  subresources — the bundle never runs — so no screenshot, no layout check, no side-by-side of the two themes.
+  What is verified is structural: token drift between the duplicated dark palettes, every dark token also
+  present on bare `:root` (a colour defined only inside a media query can never be overridden by the toggle),
+  no `var()` referencing a token nothing declares, and the full journey through the real components.
+  **Someone still has to look at it in a browser.**
+- 213 workspace tests (up from 195), typecheck and build clean, journey green after every stage.
