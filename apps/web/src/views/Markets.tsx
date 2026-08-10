@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
-import { ActionCircle, Card, Chips, EmptyState, Pill, PriceBar, Skeleton } from '../ui';
+import { ActionCircle, Card, Chips, EmptyState, Pill, PriceBar, Skeleton, Sparkline } from '../ui';
+import { useHistories } from '../useHistories';
 import { StakeSheet } from './StakeSheet';
 
 type Filter = 'open' | 'resolved' | 'all';
@@ -19,6 +20,7 @@ export function Markets({ onOpen, signer }: { onOpen: (id: number) => void; sign
   const [filter, setFilter] = useState<Filter>('open');
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<{ market: any; side: 'yes' | 'no' } | undefined>();
+  const histories = useHistories(markets);
 
   const all = markets ?? [];
   const shown = all
@@ -111,6 +113,9 @@ export function Markets({ onOpen, signer }: { onOpen: (id: number) => void; sign
               </button>
 
               <PriceBar yesSats={m.prices.yes_sats} noSats={m.prices.no_sats} payoutUnit={m.payoutUnit} size="sm" />
+
+              <Sparkline values={histories[m.id] ?? []} payoutUnit={m.payoutUnit} height={40}
+                label={`YES price history for market ${m.id}`} />
 
               <div className="circle-row market-actions">
                 <ActionCircle icon="↑" label="YES" tone="positive" disabled={!tradable}

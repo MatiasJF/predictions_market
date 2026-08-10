@@ -5,3 +5,4 @@ export * from './chassis';
 export { PriceBar } from './PriceBar';
 export { SlideToConfirm } from './SlideToConfirm';
 export { SwipeDeck } from './SwipeDeck';
+export { Sparkline, yesSeries, type Fill } from './Sparkline';

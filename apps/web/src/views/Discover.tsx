@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
-import { EmptyState, Pill, PriceBar, SwipeDeck } from '../ui';
+import { EmptyState, Pill, PriceBar, Sparkline, SwipeDeck } from '../ui';
+import { useHistories } from '../useHistories';
 import { StakeSheet } from './StakeSheet';
 
 /**
@@ -14,6 +15,7 @@ import { StakeSheet } from './StakeSheet';
 export function Discover({ signer, onOpen }: { signer?: Signer; onOpen: (id: number) => void }) {
   const [markets] = usePoll<any[]>(() => api.markets(), []);
   const [picked, setPicked] = useState<{ market: any; side: 'yes' | 'no' } | undefined>();
+  const histories = useHistories(markets);
 
   // Only markets you could actually trade. A resolved or unspendable market in a deck is a card you
   // are invited to act on and then refused, which is worse than not showing it.
@@ -50,6 +52,9 @@ export function Discover({ signer, onOpen }: { signer?: Signer; onOpen: (id: num
             </div>
 
             <PriceBar yesSats={m.prices.yes_sats} noSats={m.prices.no_sats} payoutUnit={m.payoutUnit} />
+
+            <Sparkline values={histories[m.id] ?? []} payoutUnit={m.payoutUnit} height={56}
+              label={`YES price history for market ${m.id}`} />
 
             <div className="deck-foot tiny subtle">
               <span>{m.payoutUnit} sat per winning share</span>

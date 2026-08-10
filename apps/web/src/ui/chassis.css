@@ -109,25 +109,37 @@
    Below the breakpoint it is a bottom bar under the thumb; above it, a left rail. Same DOM. */
 .tabbar {
   position: fixed;
-  bottom: 0; left: 0; right: 0;
+  bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  left: var(--space-3); right: var(--space-3);
   z-index: 20;
   display: flex;
-  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
-  backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border);
-  padding: var(--space-2) var(--space-2) max(var(--space-2), env(safe-area-inset-bottom));
+  gap: var(--space-1);
+  /* Floating pill, not a full-width slab — the single change that stops a bottom bar reading as
+     browser chrome and starts it reading as part of the app. */
+  background: color-mix(in srgb, var(--surface-inverse) 82%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-3);
+  padding: var(--space-2);
 }
 .tab {
   flex: 1 1 0;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   background: none; border: none; cursor: pointer;
   font: inherit; font-size: var(--text-xs);
-  color: var(--text-subtle);
+  color: color-mix(in srgb, var(--text-inverse) 60%, transparent);
   padding: var(--space-2) 0;
   border-radius: var(--radius-md);
   transition: color var(--dur-fast) var(--ease);
 }
-.tab.is-on { color: var(--accent); font-weight: var(--weight-semibold); }
+/* The active tab gets its own pill, the way Revolut marks Home. */
+.tab.is-on {
+  color: var(--text-inverse);
+  font-weight: var(--weight-semibold);
+  background: color-mix(in srgb, #ffffff 14%, transparent);
+}
 .tab-icon { position: relative; font-size: 19px; line-height: 1; }
 .tab-badge {
   position: absolute; top: -4px; right: -10px;
@@ -140,15 +152,14 @@
 
 @media (min-width: 720px) {
   .tabbar {
-    top: 0; bottom: 0; right: auto;
-    width: 96px;
+    top: var(--space-4); bottom: var(--space-4); right: auto;
+    left: var(--space-3);
+    width: 88px;
     flex-direction: column;
     justify-content: flex-start;
     gap: var(--space-2);
-    border-top: none;
-    border-right: 1px solid var(--border);
-    padding: var(--space-6) var(--space-2);
+    padding: var(--space-4) var(--space-2);
   }
   .tab { flex: 0 0 auto; gap: var(--space-1); padding: var(--space-3) 0; }
-  .tab.is-on { background: var(--accent-soft); }
+  .tab.is-on { background: color-mix(in srgb, #ffffff 14%, transparent); }
 }

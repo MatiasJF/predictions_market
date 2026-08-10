@@ -138,27 +138,30 @@
 }
 .position-link:hover .strong { color: var(--accent); }
 
-/* --- ambient backdrop ------------------------------------------------------------------------------
-   Glass needs something behind it. Blur over flat grey produces flat grey, which is why a naive
-   glassmorphism pass looks like nothing happened.
+/* --- the page wash -----------------------------------------------------------------------------
+   Modelled on Revolut's home rather than on generic glassmorphism: ONE vertical gradient anchored at
+   the TOP of the page, brightest behind the header and falling away to near-black by the fold, with
+   a soft glow bloom at the top centre. Content sits directly on it.
 
-   Deliberately a gradient and NOT a photograph. Photos are what make glass beautiful in a meditation
-   app and unreadable in a money one — see TIDE, where the labels sit on whatever the sea is doing.
-   Three soft blobs give the blur something to chew on while keeping luminance nearly uniform, so
-   text contrast is the same wherever a card lands. Fixed, so it does not move while scrolling.
-   Rendered only in glass mode. */
+   The earlier version scattered three radial blobs around the viewport, which reads as decoration.
+   A single directional wash reads as light coming from somewhere, which is why theirs looks like a
+   surface and mine looked like a wallpaper. It also keeps the bottom of the page dark, so the tab
+   bar and the lower cards stay high-contrast wherever you scroll to.
+
+   `--ambient-alpha` still scales the whole thing, so solid gets a whisper and glass turns it up. */
 .ambient {
   display: block;
   position: fixed;
-  inset: -20vmax;
+  inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38vmax 38vmax at 18% 12%, color-mix(in srgb, var(--ambient-1) calc(var(--ambient-alpha) * 100%), transparent), transparent 60%),
-    radial-gradient(34vmax 34vmax at 84% 26%, color-mix(in srgb, var(--ambient-2) calc(var(--ambient-alpha) * 100%), transparent), transparent 60%),
-    radial-gradient(40vmax 40vmax at 62% 88%, color-mix(in srgb, var(--ambient-3) calc(var(--ambient-alpha) * 100%), transparent), transparent 60%);
-  filter: blur(40px);
-  /* Glass raises --ambient-alpha, so the same layer serves both modes and there is only one of it. */
+    radial-gradient(120vw 60vh at 50% -18vh,
+      color-mix(in srgb, var(--ambient-1) calc(var(--ambient-alpha) * 165%), transparent), transparent 70%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--ambient-1) calc(var(--ambient-alpha) * 120%), transparent) 0%,
+      color-mix(in srgb, var(--ambient-2) calc(var(--ambient-alpha) * 45%), transparent) 38%,
+      transparent 72%);
   transition: opacity var(--dur-base) var(--ease);
 }
 

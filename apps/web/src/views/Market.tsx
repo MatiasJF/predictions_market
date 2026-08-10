@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
 import {
-  Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented, StatusMessage, type Status,
+  Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented, Sparkline,
+  StatusMessage, yesSeries, type Status,
 } from '../ui';
 
 const WAD = 10n ** 18n;
@@ -31,6 +32,8 @@ export function Market({
   const [receipts] = usePoll<any>(() => api.receipts(id, identity || undefined), [id, identity]);
   const [payout] = usePoll<any>(() => api.payoutPreview(id), [id]);
   const [claims] = usePoll<any>(() => api.payoutClaims(id, identity || undefined), [id, identity]);
+  // Every fill, not just this trader's — the market's own history is what the graph is about.
+  const [allFills] = usePoll<any>(() => api.receipts(id), [id], 5000);
 
   const [side, setSide] = useState<'yes' | 'no'>('yes');
   const [units, setUnits] = useState(1);
@@ -141,6 +144,12 @@ export function Market({
             noSats={market.prices.no_sats}
             payoutUnit={market.payoutUnit}
             size="lg"
+          />
+          <Sparkline
+            values={yesSeries(allFills?.receipts ?? [], market.payoutUnit)}
+            payoutUnit={market.payoutUnit}
+            height={64}
+            label={`YES price across ${allFills?.count ?? 0} fills in this market`}
           />
           {/*
             Fills are instant and off-chain; the pool only catches up when a batch settles. Between
