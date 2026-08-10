@@ -115,11 +115,16 @@
   display: flex;
   gap: var(--space-1);
   /* Floating pill, not a full-width slab — the single change that stops a bottom bar reading as
-     browser chrome and starts it reading as part of the app. */
-  background: color-mix(in srgb, var(--surface-inverse) 82%, transparent);
+     browser chrome and starts it reading as part of the app.
+
+     It follows the THEME, using the ordinary raised surface. An earlier version reached for
+     `--surface-inverse` to get a dark bar like Revolut's, which is inverted by definition: it gave a
+     dark bar in light mode and a light bar in dark mode — precisely backwards in both. Revolut's bar
+     looks dark because their whole page is; ours should look like the app it is sitting on. */
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-3);
   padding: var(--space-2);
@@ -129,16 +134,16 @@
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   background: none; border: none; cursor: pointer;
   font: inherit; font-size: var(--text-xs);
-  color: color-mix(in srgb, var(--text-inverse) 60%, transparent);
+  color: var(--text-muted);
   padding: var(--space-2) 0;
   border-radius: var(--radius-md);
   transition: color var(--dur-fast) var(--ease);
 }
 /* The active tab gets its own pill, the way Revolut marks Home. */
 .tab.is-on {
-  color: var(--text-inverse);
+  color: var(--accent);
   font-weight: var(--weight-semibold);
-  background: color-mix(in srgb, #ffffff 14%, transparent);
+  background: var(--accent-soft);
 }
 .tab-icon { position: relative; font-size: 19px; line-height: 1; }
 .tab-badge {
@@ -161,5 +166,5 @@
     padding: var(--space-4) var(--space-2);
   }
   .tab { flex: 0 0 auto; gap: var(--space-1); padding: var(--space-3) 0; }
-  .tab.is-on { background: color-mix(in srgb, #ffffff 14%, transparent); }
+  .tab.is-on { background: var(--accent-soft); }
 }

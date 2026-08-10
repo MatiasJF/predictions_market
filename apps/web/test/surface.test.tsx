@@ -40,3 +40,22 @@ describe('surface mode', () => {
     expect(screen.getByRole('button', { name: /Surface:/ }).textContent).toMatch(/glass/);
   });
 });
+
+/**
+ * The floating bar must belong to the theme it is sitting on.
+ *
+ * Reported as "theme of the left sidebar is inverted, on light is dark and on dark is light" — and
+ * it was exactly that: the bar was painted with `--surface-inverse`, which is by definition the
+ * opposite of the current theme. It gave a dark bar in light mode and a light bar in dark mode.
+ * Revolut's bar looks dark because their whole page is dark, not because it inverts.
+ */
+describe('the floating nav bar', () => {
+  it('never paints itself with an inverted token', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, '..', 'src', 'ui', 'chassis.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ''); // comments explain the bug; they are not the bug
+    const bar = css.slice(css.indexOf('.tabbar {'), css.indexOf('.tab-icon'));
+    expect(bar, 'the bar must follow the theme, not oppose it').not.toMatch(/--surface-inverse|--text-inverse/);
+  });
+});

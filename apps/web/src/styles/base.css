@@ -110,3 +110,98 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
   border: 0;
 }
+
+/* =============================================================================================
+   FORM CONTROLS — every one of them ours, none of them the browser's.
+   =============================================================================================
+   Native controls carry the operating system's design, not this one: a macOS select is grey with a
+   blue chevron, a Windows number input has stepper arrows glued to its edge, and both ignore the
+   palette entirely. In a dark theme they stay stubbornly light. Painting the surrounding app and
+   leaving the controls default is what makes an interface look half-finished.
+
+   `appearance: none` is the switch that hands control over; everything after it is rebuilding what
+   that removed — including the parts that are easy to forget, like a focus ring and a disabled
+   state, which the native control gave us for free.
+   ============================================================================================= */
+
+input, select, textarea, button { font: inherit; color: inherit; }
+
+/* --- text, number, search, password ---------------------------------------------------------- */
+input[type="text"], input[type="search"], input[type="number"], input[type="password"], select, textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface-app);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--border-strong); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+input::placeholder { color: var(--text-subtle); }
+
+/* Steppers are a fiddly 12px target that changes a money amount. The presets and the keyboard do
+   the same job better, so they go. */
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Safari draws its own clear button and magnifier inside a search field; we already provide both. */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button { -webkit-appearance: none; display: none; }
+
+/* --- select: our own chevron, since `appearance: none` removes theirs --------------------------- */
+select {
+  padding-right: var(--space-7);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+                    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+/* The dropdown list itself is drawn by the OS and cannot be styled; at least make its rows legible
+   in dark mode rather than black-on-black. */
+select option { background: var(--surface-raised); color: var(--text-strong); }
+
+/* --- checkbox ------------------------------------------------------------------------------------ */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px; height: 20px;
+  flex: none;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-app);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+input[type="checkbox"]::before {
+  content: "";
+  width: 10px; height: 10px;
+  transform: scale(0);
+  transition: transform var(--dur-fast) var(--ease);
+  box-shadow: inset 1em 1em var(--text-on-accent);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+input[type="checkbox"]:checked::before { transform: scale(1); }
+input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* --- range: the confirm slider styles its own thumb; this is the track underneath --------------- */
+input[type="range"] { appearance: none; -webkit-appearance: none; background: transparent; }
+input[type="range"]::-webkit-slider-runnable-track { background: transparent; }
+input[type="range"]::-moz-range-track { background: transparent; }
+
+/* Autofill repaints the field white in every browser; force it back to the app's own surface. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-strong);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface-app) inset;
+}
