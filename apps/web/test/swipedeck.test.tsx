@@ -64,3 +64,28 @@ describe('SwipeDeck', () => {
     expect(screen.getByText(/Nothing is bought until you approve the amount/)).toBeTruthy();
   });
 });
+
+/**
+ * A layout contract, checked in the stylesheet because jsdom does not lay anything out.
+ *
+ * The card used to be `position: absolute; inset: 0` inside a fixed-height stack, so it was pinned to
+ * 380px regardless of what it held — and once the price graph was added, every card held more than
+ * that and spilled out of the bottom. Overlaying via grid keeps the cards stacked while letting the
+ * container take the height of the tallest one.
+ */
+describe('deck layout', () => {
+  it('does not pin a card to a fixed box — it must grow to hold its content', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, '..', 'src', 'ui', 'SwipeDeck.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+
+    const card = css.slice(css.indexOf('.deck-card {'), css.indexOf('.deck-card:active'));
+    expect(card, 'a card pinned with inset:0 cannot grow past its container').not.toMatch(/position:\s*absolute/);
+    expect(card, 'cards overlay by sharing one grid cell').toMatch(/grid-area:\s*1\s*\/\s*1/);
+    expect(card, 'the height rule must be a floor, not a ceiling').toMatch(/min-height/);
+
+    const stack = css.slice(css.indexOf('.deck-stack {'), css.indexOf('.deck-card {'));
+    expect(stack, 'the stack must size to its tallest card').not.toMatch(/min-height|height:\s*\d/);
+  });
+});

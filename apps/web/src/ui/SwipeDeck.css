@@ -3,15 +3,24 @@
 
 .deck { display: flex; flex-direction: column; gap: var(--space-5); align-items: center; }
 
+/* The stack is a single grid CELL that every card shares.
+   
+   Cards used to be `position: absolute; inset: 0` inside a `min-height` box, which pinned each one
+   to exactly 380px: a card taller than that — and adding the price graph made every card taller than
+   that — spilled its content out of the bottom instead of growing. Overlaying with `grid-area: 1/1`
+   keeps them stacked while letting the container take the height of the tallest card, so the card
+   always contains what is in it, however long the question or however busy the graph. */
 .deck-stack {
   position: relative;
   width: 100%;
   max-width: 460px;
-  min-height: 380px;
+  display: grid;
 }
 
 .deck-card {
-  position: absolute; inset: 0;
+  grid-area: 1 / 1;
+  position: relative;   /* the drag stamp is positioned against the card */
+  min-height: 340px;    /* a floor for a sparse card, not a ceiling for a full one */
   /* OPAQUE, deliberately, even in glass mode. A translucent card in a stack shows the card behind it
      straight through the one you are reading — the effect is only ever a pleasure when there is a
      page behind it, not another card. */
@@ -86,6 +95,7 @@
 
 /* --- what a market card looks like inside the deck ------------------------------------------------- */
 .deck-question {
+  overflow-wrap: break-word;   /* a long question wraps rather than widening the card */
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: 1.25;
@@ -101,4 +111,4 @@
   color: var(--positive);
 }
 .deck-odds-label { font-size: var(--text-xs); color: var(--text-subtle); }
-.deck-foot { margin-top: auto; display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.deck-foot { margin-top: auto; flex: none; display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
