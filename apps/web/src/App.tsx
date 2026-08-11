@@ -143,7 +143,8 @@ export function App() {
           a router.
         */}
         {marketId !== undefined ? (
-          <Market id={marketId} signer={signer} identity={identity} onBack={() => setMarketId(undefined)} />
+          <Market id={marketId} signer={signer} identity={identity} isMainnet={isMainnet}
+              onBack={() => setMarketId(undefined)} />
         ) : (
           <>
             {tab === 'discover' && <Discover signer={signer} onOpen={setMarketId} />}

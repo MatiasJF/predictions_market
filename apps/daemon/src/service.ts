@@ -527,10 +527,28 @@ export class MarketService {
   listReceipts(id: number, trader?: string) {
     this.execOrThrow();
     this.marketRow(id);
+    // Joined, so a receipt can name the TWO transactions a trader cares about: the payment they made
+    // for it, and the settlement that wrote it to the chain. Without these the app can tell someone
+    // their money moved but not show them where — which is most of what a block explorer is for.
+    const sql = `
+      SELECT o.*, pi.txid AS payment_txid, b.txid AS settle_txid
+        FROM exec_orders o
+        LEFT JOIN payment_intents pi ON pi.id = o.payment_intent_id
+        LEFT JOIN exec_batches b     ON b.id  = o.batch_id
+       WHERE o.market_id = ?${trader ? ' AND o.trader_pubkey = ?' : ''}
+       ORDER BY o.seq`;
     const rows = (trader
-      ? this.db.prepare('SELECT * FROM exec_orders WHERE market_id=? AND trader_pubkey=? ORDER BY seq').all(id, trader)
-      : this.db.prepare('SELECT * FROM exec_orders WHERE market_id=? ORDER BY seq').all(id)) as ExecOrderRow[];
-    return { market_id: id, count: rows.length, receipts: rows.map(execOrderView) };
+      ? this.db.prepare(sql).all(id, trader)
+      : this.db.prepare(sql).all(id)) as (ExecOrderRow & { payment_txid: string | null; settle_txid: string | null })[];
+    return {
+      market_id: id,
+      count: rows.length,
+      receipts: rows.map((r) => ({
+        ...execOrderView(r),
+        payment_txid: r.payment_txid,
+        settle_txid: r.settle_txid,
+      })),
+    };
   }
 
   execPositions(id: number, trader?: string) {

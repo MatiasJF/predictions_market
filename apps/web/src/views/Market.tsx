@@ -3,7 +3,7 @@ import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
 import {
   ActionCircle, Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented,
-  Sparkline, StatusMessage, yesSeries, type Status,
+  Sparkline, StatusMessage, TxLink, yesSeries, type Status,
 } from '../ui';
 import { StakeSheet } from './StakeSheet';
 
@@ -24,8 +24,8 @@ const sats = (n: number) => n.toLocaleString();
  * so there is no wallet approval to route and nothing to confirm twice.
  */
 export function Market({
-  id, signer, identity, onBack,
-}: { id: number; signer?: Signer; identity: string; onBack: () => void }) {
+  id, signer, identity, isMainnet, onBack,
+}: { id: number; signer?: Signer; identity: string; isMainnet: boolean; onBack: () => void }) {
   const [market, mErr] = usePoll<any>(() => api.market(id), [id]);
   const [positions] = usePoll<any>(() => api.execPositions(id, identity || undefined), [id, identity]);
   const [receipts] = usePoll<any>(() => api.receipts(id, identity || undefined), [id, identity]);
@@ -234,9 +234,7 @@ export function Market({
             <div className="claim-box">
               <div className="row-between">
                 <span className="strong">Paid {sats(myClaim.sats)} sat</span>
-                <a href={`https://whatsonchain.com/tx/${myClaim.txid}`} target="_blank" rel="noreferrer" className="tiny">
-                  {myClaim.txid.slice(0, 12)}… ↗
-                </a>
+                <TxLink txid={myClaim.txid} isMainnet={isMainnet} label="See the payout" />
               </div>
 
               {myClaim.remittance ? (
@@ -294,6 +292,9 @@ export function Market({
                   {r.settled
                     ? <Pill tone="positive" icon="✓">settled</Pill>
                     : <Pill tone="warning" icon="◷">not yet on chain</Pill>}
+                  {/* Your money, and where it went. The settlement link appears once the batch lands. */}
+                  <TxLink txid={r.payment_txid} isMainnet={isMainnet} label="your payment" compact />
+                  <TxLink txid={r.settle_txid} isMainnet={isMainnet} label="settlement" compact />
                 </div>
               ))}
             </div>

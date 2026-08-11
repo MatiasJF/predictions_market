@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, EmptyState, Pill } from '../ui';
+import { Button, Card, EmptyState, Pill, TxLink } from '../ui';
 
 /**
  * Every transaction this daemon has put on chain, with the FULL txid.
@@ -63,11 +63,7 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
                     aria-label={`Copy transaction id ${b.txid}`}>
                     {copied === b.txid ? 'copied ✓' : 'copy'}
                   </Button>
-                  {isMainnet && (
-                    <a href={`https://whatsonchain.com/tx/${b.txid}`} target="_blank" rel="noreferrer">
-                      WhatsOnChain ↗
-                    </a>
-                  )}
+                  <TxLink txid={b.txid} isMainnet={isMainnet} />
                 </div>
               </div>
             ))}
