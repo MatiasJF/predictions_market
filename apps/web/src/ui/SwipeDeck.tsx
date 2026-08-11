@@ -40,6 +40,11 @@ export function SwipeDeck({
     // Let the card leave before the sheet arrives, or the animation is wasted behind a scrim.
     setTimeout(() => {
       onPick(top, side);
+      // ADVANCE. Without this the card flew out and then snapped straight back, because `flying`
+      // reset while `top` still pointed at the same market. The deck moves on whether or not the
+      // stake is completed — the sheet already holds its own reference to the market that was
+      // picked, so cancelling it does not need the card back.
+      setTop((t) => Math.min(t + 1, items.length));
       setFlying(null);
       setDx(0);
     }, 180);
@@ -64,10 +69,16 @@ export function SwipeDeck({
   return (
     <div className="deck">
       <div className="deck-stack">
-        {/* One card behind the top one, to read as a stack rather than a single card. */}
-        {items[top + 1] && (
-          <article className="deck-card is-behind" aria-hidden="true">{renderCard(items[top + 1], top + 1)}</article>
-        )}
+        {/*
+          An EMPTY shell behind the top card — a silhouette, not a second card.
+          
+          It used to render the next market's full content, which meant the card underneath was
+          legible through and around the one you were meant to be reading: two questions, two sets of
+          odds, two graphs, one of them not yours to act on yet. Reported as cards "piled onto each
+          other". The stack is worth keeping as a hint that more is coming; the content behind it is
+          not, and it was never readable enough to be information anyway.
+        */}
+        {items[top + 1] && <div className="deck-card is-behind" aria-hidden="true" />}
 
         <article
           className={`deck-card${flying ? ` is-flying-${flying}` : ''}`}

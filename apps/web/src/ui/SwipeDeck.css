@@ -12,7 +12,10 @@
 
 .deck-card {
   position: absolute; inset: 0;
-  background: var(--surface-raised);
+  /* OPAQUE, deliberately, even in glass mode. A translucent card in a stack shows the card behind it
+     straight through the one you are reading — the effect is only ever a pleasure when there is a
+     page behind it, not another card. */
+  background: var(--surface-card-solid, var(--surface-raised));
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-2);
@@ -24,12 +27,14 @@
 }
 .deck-card:active { cursor: grabbing; }
 
-/* The card underneath, peeking. Slightly smaller and pushed down — the whole trick. */
+/* The card underneath: an empty silhouette, peeking below the top edge. Slightly narrower and
+   pushed down, so it reads as "there is another one" without competing for attention. */
 .deck-card.is-behind {
-  transform: scale(0.95) translateY(14px);
-  opacity: 0.6;
+  transform: scale(0.94) translateY(18px);
+  opacity: 0.5;
   box-shadow: var(--shadow-1);
   pointer-events: none;
+  padding: 0;
 }
 
 .deck-card.is-flying-yes,

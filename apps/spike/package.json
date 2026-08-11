@@ -10,7 +10,8 @@
     "mainnet": "tsx src/mainnet.ts",
     "keygen:traders": "tsx src/trader-keygen.ts",
     "live": "tsx src/live-market.ts",
-    "measure:journey": "tsx src/measure-journey.ts"
+    "measure:journey": "tsx src/measure-journey.ts",
+    "seed:demo": "tsx src/seed-demo.ts"
   },
   "dependencies": {
     "@bsv/sdk": "^2.3.1",

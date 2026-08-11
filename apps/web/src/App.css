@@ -177,7 +177,6 @@
   :root[data-surface="glass"] .card,
   :root[data-surface="glass"] .market-card,
   :root[data-surface="glass"] .opstrip,
-  :root[data-surface="glass"] .deck-card,
   :root[data-surface="glass"] .sheet,
   :root[data-surface="glass"] .searchbar {
     backdrop-filter: var(--glass-blur);
@@ -191,6 +190,14 @@
 @supports not (backdrop-filter: blur(1px)) {
   :root[data-surface="glass"] { --surface-raised: #ffffff; --surface-overlay: #ffffff; }
   :root[data-surface="glass"][data-theme="dark"] { --surface-raised: #191d25; --surface-overlay: #1c2028; }
+}
+
+/* The deck opts out of translucency: see SwipeDeck.css. It still gets the blur, so it sits on the
+   ambient wash like everything else — it just does not let the card behind it read through. */
+:root[data-surface="glass"] { --surface-card-solid: #ffffff; }
+:root[data-surface="glass"][data-theme="dark"] { --surface-card-solid: #191d25; }
+@media (prefers-color-scheme: dark) {
+  :root[data-surface="glass"]:not([data-theme="light"]) { --surface-card-solid: #191d25; }
 }
 
 /* The hero already carries its own gradient; in glass it becomes a pane over the ambient instead, so
