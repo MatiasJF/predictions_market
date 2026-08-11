@@ -189,17 +189,28 @@ describe.skipIf(!ENABLED)('UI-001 — full journey through the UI', () => {
     fireEvent.click(openBtn);
 
     await waitFor(() => expect(panel('order')).toBeTruthy(), WAIT);
-    fireEvent.change(screen.getByLabelText(/^shares$/i), { target: { value: '5' } });
+
+    // THIRD permitted change. Buying moved out of this panel and into the shared StakeSheet — the
+    // market detail used to carry its own quote/pay/submit, so the one action that spends a trader's
+    // money had two implementations. The journey now takes the route a user takes: back a side, then
+    // set the amount in the sheet.
+    fireEvent.click(within(panel('order')).getByRole('button', { name: /Back YES/i }));
+    const sheet = await waitFor(() => screen.getByRole('dialog'), WAIT);
+    fireEvent.change(within(sheet).getByLabelText(/^shares$/i), { target: { value: '5' } });
 
     // FUND-001 changed what this step means. A buy is now a real payment, and the dev key jsdom falls back to
     // holds no funds — so the UI must REFUSE, clearly, rather than trade for free. That refusal is the correct
     // behaviour and is asserted here; a funded buy needs a real wallet and is covered by the mainnet run.
     expect(
-      within(panel('order')).getByText(/development key holds no funds/i),
+      within(sheet).getByText(/development key holds no funds/i),
       'an unfunded browser must be told it cannot buy',
     ).toBeTruthy();
-    await clickWhenReady(/pay & buy 5 YES/i);
-    await waitFor(() => expect(screen.getByText(/cannot pay for a bet/i)).toBeTruthy(), WAIT);
+    // The dev key holds no funds, so the sheet's own action is disabled rather than failing on press.
+    expect(
+      (within(sheet).getByRole('button', { name: /pay & buy 5 YES/i }) as HTMLButtonElement).disabled,
+      'an unfunded browser must not be offered a payable button',
+    ).toBe(true);
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Close$/i }));
 
     // Fund the fill through the API instead, so the rest of the journey (settle → audit → resolve → payout)
     // is still driven end to end. This is the same two-step the browser performs, minus the wallet.

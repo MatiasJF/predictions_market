@@ -208,3 +208,10 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border-strong);
 }
+
+/* Selling sits below the buy actions and reads as a separate, quieter job. */
+.ticket-sell {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}

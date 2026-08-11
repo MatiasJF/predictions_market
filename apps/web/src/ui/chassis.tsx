@@ -25,8 +25,17 @@ export function ActionCircle({
   disabled?: boolean; onClick?: () => void; title?: string;
 }) {
   return (
-    <button type="button" className={`circle-action tone-${tone}`} disabled={disabled} onClick={onClick}
-      title={title ?? label}>
+    <button
+      type="button"
+      className={`circle-action tone-${tone}`}
+      disabled={disabled}
+      onClick={onClick}
+      title={title ?? label}
+      // The visible label is a fragment — "YES 500" — which reads as nonsense on its own. `title` does
+      // NOT provide an accessible name when there is content, so without this a screen reader
+      // announced "up arrow YES 500 button". The full phrase is the name; the fragment is the caption.
+      aria-label={title ?? label}
+    >
       <span className="circle-action-dot" aria-hidden="true">{icon}</span>
       <span className="circle-action-label">{label}</span>
     </button>

@@ -505,6 +505,10 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     it. Two of these were defects introduced earlier the same session and invisible to 230+ passing tests —
     the graph cache keyed on a rounded integer (the CURVE-001 rounding, reintroduced), and the deck overflow
     caused by adding the graph. Each is now pinned by a contract test verified by re-introducing the bug.
+  - ● **UI-017 — one implementation of paying (ADR-052).** The market detail kept its own quote/pay/submit
+    while the deck and cards used `StakeSheet`, so the single action that spends a trader's money had two
+    implementations — and a commit message claimed it had one, which made it less likely anyone would check.
+    Consolidated; selling stays inline because a sell is a debt, not a payment.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

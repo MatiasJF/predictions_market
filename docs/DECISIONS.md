@@ -1330,3 +1330,21 @@ the stylesheet is the only place a layout invariant can be asserted at all.
 a bug: a daemon older than the fix, then a wedged dev server that had been serving nothing for hours while I
 kept saying "go and look". `apps/daemon`'s `dev` now runs `tsx watch`, and its README says to check process age
 first when a change appears to have no effect.
+
+## ADR-052 · One implementation of paying (UI-017) · Accepted · 2026-08-11
+- The stage-2 commit stated: *"There is exactly one StakeSheet, used by the deck, the market cards and the
+  market detail, because a buy is the only action that spends a trader's own money and it should not have three
+  implementations that can drift."* **That was not true when it was written.** `Market.tsx` kept its own
+  quote → pay → submit; the deck and the cards used the sheet. Two implementations of the one action that spends
+  a trader's money, and the claim that there was one made it less likely anyone would look.
+- Found while scoping the intent-reuse fix, which would have had to land in both — or, worse, in one.
+- Market detail now opens the same `StakeSheet` as everywhere else. **Selling stays inline**, because a sell is
+  not a payment: it is money the market comes to owe you, so there is no wallet approval to route.
+- Third and final edit to the journey contract, for a real reason rather than a cosmetic one: buying moved
+  panels, so the test now takes the route a user takes — back a side, set the amount in the sheet. It also
+  asserts the sheet's pay button is **disabled** for a dev key rather than failing on press, which is the better
+  behaviour and was already what the sheet did.
+- `ActionCircle` gained an `aria-label`. Its visible caption is a fragment — "YES 500" — and `title` does not
+  supply an accessible name when an element has content, so a screen reader announced "up arrow YES 500 button".
+  Caught because the journey could not find the button by the name a user would say.
+- 239 workspace tests, typecheck and build clean, journey green through the consolidated path.

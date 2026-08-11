@@ -2,27 +2,26 @@ import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
 import {
-  Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented, Sparkline,
-  StatusMessage, yesSeries, type Status,
+  ActionCircle, Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented,
+  Sparkline, StatusMessage, yesSeries, type Status,
 } from '../ui';
+import { StakeSheet } from './StakeSheet';
 
 const WAD = 10n ** 18n;
 const shares = (s: string) => Number(BigInt(s) / WAD);
 const sats = (n: number) => n.toLocaleString();
 
 /**
- * Market detail + the order ticket.
+ * Market detail.
  *
- * WHY THERE IS NO SEPARATE REVIEW SHEET. The plan for this rebuild called for a Stake-style
- * review step ending in a slide-to-confirm. Building it made clear that would be wrong HERE: a buy
- * is paid through the trader's own BRC-100 wallet, which presents its own approval dialog with the
- * amount and refuses to spend without it. A review sheet plus a slider in front of that is a second
- * confirmation of a confirmation — friction that teaches people to click through carefully-designed
- * dialogs without reading them.
+ * BUYING LIVES IN ONE PLACE. This view used to carry its own quote → pay → submit, which meant the
+ * single action that spends a trader's own money had two implementations — the sheet used by the
+ * deck and the market cards, and this one. A commit message claimed there was only one; there were
+ * two, and the next fix to the payment path would have landed in one of them. Backing a side here
+ * now opens the same `StakeSheet` as everywhere else.
  *
- * So the cost is stated inline, permanently, before the button is pressed, and the wallet remains
- * the confirmation. The slide-to-confirm belongs on the OPERATOR side, where the daemon signs with
- * its own key and there is no wallet dialog — nothing else stands between a click and a broadcast.
+ * Selling stays inline, because a sell is not a payment: it is money the market comes to owe you,
+ * so there is no wallet approval to route and nothing to confirm twice.
  */
 export function Market({
   id, signer, identity, onBack,
@@ -37,53 +36,37 @@ export function Market({
 
   const [side, setSide] = useState<'yes' | 'no'>('yes');
   const [units, setUnits] = useState(1);
-  const [action, setAction] = useState<'buy' | 'sell'>('buy');
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState<'idle' | 'quoting' | 'approving' | 'filling'>('idle');
   const [msg, setMsg] = useState<Status | undefined>();
+  const [staking, setStaking] = useState<'yes' | 'no' | undefined>();
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState<Status | undefined>();
-  const [quote] = usePoll<any>(() => api.quote(id, side, units), [id, side, units], 4000);
+  const [quote] = usePoll<any>(() => api.quote(id, side, 'sell' === 'sell' ? units : units), [id, side, units], 4000);
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
   const myPayout = payout?.winners?.find((w: any) => w.trader === identity);
   const myClaim = claims?.claims?.find((c: any) => c.trader === identity);
   const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
-  const devKeyCannotPay = action === 'buy' && signer?.kind === 'local';
+  const devKeyCannotPay = signer?.kind === 'local';
 
-  async function place() {
+  /** SELL only. A buy goes through `StakeSheet`, which is the single implementation of paying. */
+  async function sell() {
     if (!signer) return;
     setBusy(true);
     setMsg(undefined);
     try {
       const trader = await signer.identityKey();
       const nonce = Date.now();
-      const { sig, sigScheme } = await signer.signOrder({ marketId: id, trader, side, action, units, nonce });
-
-      let payment: { intentId: number; paymentTx: string } | undefined;
-      if (action === 'buy') {
-        setStep('quoting');
-        const intent = await api.paymentIntent(id, { trader, side, action, units });
-        setStep('approving');
-        const paid = await signer.pay({
-          lockingScript: intent.locking_script,
-          satoshis: intent.satoshis,
-          description: `${units} ${side.toUpperCase()} @ market #${id}`,
-        });
-        payment = { intentId: intent.intent_id, paymentTx: paid.rawTx };
-      }
-
-      setStep('filling');
-      const r = await api.submitOrder(id, { trader, side, action, units, nonce, sig, sigScheme, ...(payment ?? {}) });
+      const { sig, sigScheme } = await signer.signOrder({ marketId: id, trader, side, action: 'sell', units, nonce });
+      const r = await api.submitOrder(id, { trader, side, action: 'sell', units, nonce, sig, sigScheme });
       setMsg({
         tone: 'positive',
-        text: `filled ${action} ${units} ${side.toUpperCase()} @ ${r.receipt.priceSats} sat — receipt #${r.receipt.seq}`
-          + (action === 'buy' ? ` · paid ${r.receipt.costSats} sat` : ''),
+        text: `sold ${units} ${side.toUpperCase()} @ ${r.receipt.priceSats} sat — receipt #${r.receipt.seq}. `
+          + 'The market now owes you the proceeds; the operator pays them from the stake pot.',
       });
     } catch (e) {
       setMsg({ tone: 'danger', text: e instanceof Error ? e.message : String(e) });
     } finally {
-      setStep('idle');
       setBusy(false);
     }
   }
@@ -108,12 +91,6 @@ export function Market({
 
   if (mErr) return <Card tone="danger" title="Could not load this market">{mErr}</Card>;
   if (!market) return <Card><p className="muted">loading…</p></Card>;
-
-  const buyLabel = step === 'quoting' ? 'getting a price…'
-    : step === 'approving' ? 'approve the payment in your wallet…'
-    : step === 'filling' ? 'filling…'
-    : action === 'buy' ? `pay & buy ${units} ${side.toUpperCase()}`
-    : `sign & sell ${units} ${side.toUpperCase()}`;
 
   return (
     <div className="stack">
@@ -175,55 +152,13 @@ export function Market({
             />
           ) : (
             <div className="ticket">
-              <div className="ticket-controls">
-                <Segmented
-                  label="side" value={side} onChange={setSide}
-                  options={[
-                    { value: 'yes', label: 'YES', tone: 'positive' },
-                    { value: 'no', label: 'NO', tone: 'negative' },
-                  ]}
-                />
-                <Segmented
-                  label="action" value={action} onChange={setAction}
-                  options={[{ value: 'buy', label: 'buy' }, { value: 'sell', label: 'sell' }]}
-                />
-                <Field label="shares">
-                  {(fid) => (
-                    <input
-                      id={fid} className="control ticket-shares" type="number" min={1} max={100} value={units}
-                      onChange={(e) => setUnits(Math.max(1, Number(e.target.value) || 1))}
-                    />
-                  )}
-                </Field>
+              {/* Backing a side opens the ONE sheet that takes payments — same as the deck and the cards. */}
+              <div className="circle-row market-actions">
+                <ActionCircle icon="↑" label={`YES ${market.prices.yes_sats}`} tone="positive"
+                  title={`Back YES at ${market.prices.yes_sats} sat`} onClick={() => setStaking('yes')} />
+                <ActionCircle icon="↓" label={`NO ${market.prices.no_sats}`} tone="negative"
+                  title={`Back NO at ${market.prices.no_sats} sat`} onClick={() => setStaking('no')} />
               </div>
-
-              {/* The review, stated inline and permanently — not behind a step you have to reach. */}
-              <div className="review">
-                {action === 'buy' ? (
-                  <>
-                    <KeyValue label={`${units} ${side.toUpperCase()} @ ${market.prices[`${side}_sats`]} sat`}
-                      value={quote ? `${sats(quote.est_buy_charge_sats)} sat` : '…'} />
-                    <KeyValue label="if you are right, you receive"
-                      value={`${sats(units * market.payoutUnit)} sat`} tone="positive" />
-                    <KeyValue label="you pay now" emphasis tone="accent"
-                      value={quote ? `${sats(quote.est_buy_charge_sats)} sat` : '…'} />
-                  </>
-                ) : (
-                  <KeyValue label="proceeds owed to you" emphasis
-                    value={!quote ? '…'
-                      : quote.est_sell_proceeds_sats === null ? 'nothing outstanding to sell'
-                      : `${sats(quote.est_sell_proceeds_sats)} sat`} />
-                )}
-              </div>
-
-              <Button
-                variant="primary" tone={side === 'yes' ? 'positive' : 'negative'} size="lg" full
-                busy={busy} disabled={busy || !signer} onClick={() => void place()}
-              >
-                {buyLabel}
-              </Button>
-
-              <StatusMessage status={msg} />
 
               {devKeyCannotPay ? (
                 <p className="tiny warning-text">
@@ -232,12 +167,46 @@ export function Market({
                 </p>
               ) : (
                 <p className="tiny muted">
-                  {action === 'buy'
-                    ? 'Your wallet will ask you to approve the stake. It leaves your balance and is paid to this market.'
-                    : 'Selling returns your position to the pool; proceeds are owed to you and paid by the operator.'}{' '}
-                  Signed with your {signer?.kind === 'wallet' ? 'wallet' : 'dev key'}; the key never leaves your browser.
+                  Your wallet will ask you to approve the stake. It leaves your balance and is paid to this market.
                 </p>
               )}
+
+              {/* --- selling: not a payment, so it stays here ------------------------------------ */}
+              <div className="ticket-sell">
+                <span className="section-label">close a position</span>
+                <div className="ticket-controls">
+                  <Segmented
+                    label="side to sell" value={side} onChange={setSide}
+                    options={[
+                      { value: 'yes', label: 'YES', tone: 'positive' },
+                      { value: 'no', label: 'NO', tone: 'negative' },
+                    ]}
+                  />
+                  <Field label="shares to sell">
+                    {(fid) => (
+                      <input id={fid} className="control ticket-shares" type="number" min={1} max={100} value={units}
+                        onChange={(e) => setUnits(Math.max(1, Number(e.target.value) || 1))} />
+                    )}
+                  </Field>
+                </div>
+                <div className="review">
+                  <KeyValue label="proceeds owed to you" emphasis
+                    value={!quote ? '…'
+                      : quote.est_sell_proceeds_sats === null ? 'nothing outstanding to sell'
+                      : `${sats(quote.est_sell_proceeds_sats)} sat`} />
+                </div>
+                <Button variant="secondary" tone="neutral" full busy={busy}
+                  disabled={busy || !signer || quote?.est_sell_proceeds_sats === null}
+                  onClick={() => void sell()}>
+                  sign &amp; sell {units} {side.toUpperCase()}
+                </Button>
+                <p className="tiny muted">
+                  Selling returns your position to the pool. Proceeds are owed to you immediately and paid by
+                  the operator from the stake pot — they are a debt until then, not a transfer.
+                </p>
+              </div>
+
+              <StatusMessage status={msg} />
             </div>
           )}
         </Card>
@@ -331,6 +300,11 @@ export function Market({
           )}
         </Card>
       </div>
+
+      <StakeSheet
+        open={!!staking} onClose={() => setStaking(undefined)}
+        market={market} side={staking ?? 'yes'} signer={signer}
+      />
     </div>
   );
 }
