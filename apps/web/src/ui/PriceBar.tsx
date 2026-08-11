@@ -12,6 +12,7 @@
 // Accessibility: the split is also stated in text, and the bar exposes itself as a meter so the
 // value is available without seeing it. Reduced motion is honoured globally in base.css — the bar
 // then snaps rather than slides, which loses the flourish and none of the information.
+import { AnimatedNumber, useCountTo } from './AnimatedNumber';
 import './PriceBar.css';
 
 export function PriceBar({
@@ -24,6 +25,8 @@ export function PriceBar({
   // one, but a loading frame can arrive first.
   const total = yesSats + noSats;
   const pct = total > 0 ? Math.round((yesSats / total) * 100) : 50;
+  // The split animates in CSS; the figures animate here, so both tell the same story at the same speed.
+  const shownPct = useCountTo(pct);
 
   return (
     <div className={`pricebar pricebar-${size}`}>
@@ -36,21 +39,21 @@ export function PriceBar({
         aria-label={`Market odds: YES ${pct} percent, ${yesSats} of ${payoutUnit} satoshis per winning share`}
       >
         <div className="pricebar-yes" style={{ width: `${pct}%` }}>
-          <span className="pricebar-pct num">{pct}%</span>
+          <span className="pricebar-pct num" aria-hidden="true">{shownPct}%</span>
         </div>
         <div className="pricebar-no">
-          <span className="pricebar-pct num">{100 - pct}%</span>
+          <span className="pricebar-pct num" aria-hidden="true">{100 - shownPct}%</span>
         </div>
       </div>
 
       {showLabels && (
         <div className="pricebar-legend">
           <span className="yes-text">
-            <b className="num">{yesSats}</b> YES
+            <AnimatedNumber value={yesSats} className="num strong" /> YES
           </span>
           <span className="subtle tiny">of {payoutUnit} sat per winning share</span>
           <span className="no-text">
-            NO <b className="num">{noSats}</b>
+            NO <AnimatedNumber value={noSats} className="num strong" />
           </span>
         </div>
       )}

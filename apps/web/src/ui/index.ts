@@ -7,3 +7,5 @@ export { SlideToConfirm } from './SlideToConfirm';
 export { SwipeDeck } from './SwipeDeck';
 export { Sparkline, yesSeries, type Fill } from './Sparkline';
 export { TxLink } from './TxLink';
+export { HowItWorks } from './HowItWorks';
+export { AnimatedNumber, useCountTo } from './AnimatedNumber';

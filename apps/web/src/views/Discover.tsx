@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
-import { EmptyState, Pill, PriceBar, Sparkline, SwipeDeck } from '../ui';
+import { AnimatedNumber, EmptyState, HowItWorks, Pill, PriceBar, Sparkline, SwipeDeck } from '../ui';
 import { useHistories } from '../useHistories';
 import { StakeSheet } from './StakeSheet';
 
@@ -25,6 +25,9 @@ export function Discover({ signer, onOpen, isMainnet }: { signer?: Signer; onOpe
 
   return (
     <div className="stack">
+      {/* First thing a stranger sees, until they dismiss it. */}
+      <HowItWorks payoutUnit={tradable[0]?.payoutUnit ?? 1000} />
+
       <SwipeDeck
         items={tradable.map((m) => ({ key: m.id, ...m }))}
         onPick={(i, side) => setPicked({ market: tradable[i], side })}
@@ -47,7 +50,9 @@ export function Discover({ signer, onOpen, isMainnet }: { signer?: Signer; onOpe
             <div className="deck-question">{m.question}</div>
 
             <div>
-              <div className="deck-odds">{Math.round((m.prices.yes_sats / (m.prices.yes_sats + m.prices.no_sats)) * 100)}%</div>
+              <div className="deck-odds">
+                <AnimatedNumber value={Math.round((m.prices.yes_sats / (m.prices.yes_sats + m.prices.no_sats)) * 100)} />%
+              </div>
               <div className="deck-odds-label">the market says YES</div>
             </div>
 

@@ -1429,3 +1429,22 @@ first when a change appears to have no effect.
 - Off mainnet it offers no link and says why, rather than presenting a dead one — the same rule as everywhere
   else, and worth keeping even in the screen most tempted to look impressive.
 - 256 workspace tests, typecheck and build clean.
+
+## ADR-057 · The first five seconds, and a price that visibly moves (UI-020) · Accepted · 2026-08-11
+- **`HowItWorks`.** A stranger landed on Discover and saw a question and a coloured bar, with nothing on screen
+  saying what they were looking at, what backing a side costs, or what happens if they are right. In a demo
+  nobody stops to ask — they nod politely and understand none of it. Three sentences fixes that, and it was the
+  cheapest change in the entire redesign. Dismissible and it stays dismissed: an explainer that cannot be turned
+  off insults the second visit, and one that returns on every reload is worse than none.
+- It states the thing the product is actually about in plain words — *"a YES trading at 620 means the market
+  thinks it is about 62% likely"*, and *"buy in at 300 and you make more, because the market thought you were
+  less likely to be right"*. That is the concept people miss, and no amount of visual polish substitutes for
+  saying it.
+- **`AnimatedNumber`.** The bar slid when a trade landed, but the figure inside it swapped instantly — so the
+  one thing that makes this product different, a price that MOVES because somebody traded, was happening too
+  fast to notice. Counting between values makes the movement legible, and legible movement is the difference
+  between "a number" and "a market".
+- Two disciplines kept: reduced motion **snaps** rather than tweens, and assistive tech is always given the
+  TRUE value rather than whatever frame the count is on — announcing every intermediate value would be worse
+  than announcing none. Animation is emphasis here, never information; the number is correct at rest either way.
+- 261 workspace tests, typecheck and build clean.
