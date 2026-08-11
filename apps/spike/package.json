@@ -11,7 +11,8 @@
     "keygen:traders": "tsx src/trader-keygen.ts",
     "live": "tsx src/live-market.ts",
     "measure:journey": "tsx src/measure-journey.ts",
-    "seed:demo": "tsx src/seed-demo.ts"
+    "seed:demo": "tsx src/seed-demo.ts",
+    "measure:economics": "tsx src/measure-economics.ts"
   },
   "dependencies": {
     "@bsv/sdk": "^2.3.1",

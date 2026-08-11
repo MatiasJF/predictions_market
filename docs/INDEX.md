@@ -56,6 +56,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Price-history graph (from the receipt ledger)** | `apps/web/src/ui/Sparkline.tsx` |
 | **Custom form controls (no native appearance)** | the FORM CONTROLS block in `apps/web/src/styles/base.css` |
 | **Seed a demo database with finished markets** | `apps/spike/src/seed-demo.ts` |
+| **What a fill actually costs (fee vs batch size)** | `apps/spike/src/measure-economics.ts` |
 | **The one place a stake is placed** | `apps/web/src/views/StakeSheet.tsx` |
 | **Positions across every market** | `apps/web/src/views/Positions.tsx` |
 | **Theme: follow the system, or override and remember** | `apps/web/src/theme.ts` |

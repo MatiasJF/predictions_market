@@ -231,6 +231,43 @@ wallet — finally exercised end to end.
 - Fees are the operator's, unchanged at the miner minimum, and dwarf the stake at this scale — which is a real
   statement about where this is economically viable, not a rounding note.
 
+### What a fill actually costs — the economics, measured (ECON-001, 2026-08-11)
+
+The 2026-08-11 run cost **28,601 sat in fees to service a 1,038 sat bet**. Taken at face value that is fatal,
+and it would be dishonest to leave the number without the structure behind it. `pnpm --filter @pm/spike
+measure:economics` reads it off real broadcasts:
+
+| fills cleared | settlement size | fee @0.1 sat/B | fee per fill |
+|---|---|---|---|
+| 2 | 81,536 B | 8,154 sat | 4,077 sat |
+| 4 | 81,536 B | 8,154 sat | 2,039 sat |
+| 9 | 81,543 B | 8,155 sat | 906 sat |
+| 16 | 81,545 B | 8,155 sat | 510 sat |
+
+**Eight times the fills costs nine more bytes.** The marginal cost of one additional fill is **0.64 bytes ≈ 0.06
+satoshis**, because a settlement is priced by the covenant it republishes, not by what it clears — the
+transaction carries the batch's NET position change and a single fixed-size digest, never the individual fills.
+That is ADR-019's net-state settlement showing up directly in the fee.
+
+So a market is a **fixed cost**, and the only thing that makes it cheap is volume through it:
+
+| fills through one market | fee per fill |
+|---|---|
+| 2 | 14,301 sat |
+| 26 | 1,100 sat |
+| 100 | 286 sat |
+| 500 | 57 sat |
+| 2,000 | 14 sat |
+
+**The honest reading.** At demo scale this is uneconomic and the 28,601 sat figure is the right one to quote. It
+becomes reasonable somewhere past a hundred fills per market and cheap past a thousand — and nothing about the
+on-chain shape has to change for that to be true, which is the substantive claim. What has not been measured is
+whether the OFF-chain side holds at that volume: the execution engine benchmarked at 404 signed fills/sec
+(LIVE-001), but no market has ever carried more than 26.
+
+**The real scaling limit is not fees.** `MAX_PAYOUTS = 8` caps how many winners a single payout transaction can
+pay (PAYOUT-002, deferred) — a market with a thousand traders cannot pay them, whatever it costs.
+
 **What the same run also showed does not work.** Two sells were filled and recorded as 998 sat owed to the
 trader, and nothing paid them — sells remain a booked liability with no settlement path. One buy attempt cost
 1,002 sat that bought nothing, stranded by a defect this run exposed (see ADR-043). Neither is fatal here, since
