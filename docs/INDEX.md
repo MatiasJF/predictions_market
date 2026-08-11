@@ -49,6 +49,7 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Bonding-curve preview + operator exposure (`b`)** | `apps/web/src/curve.ts` |
 | **Design tokens (colour/space/type/motion, light+dark)** | `apps/web/src/styles/tokens.css` |
 | **UI primitives (Card, Button, Pill, Callout, EmptyState…)** | `apps/web/src/ui/primitives.tsx` |
+| **Demo runbook: pre-flight, what is on chain, failure modes** | `docs/DEMO.md` |
 | **Icon set (inline SVG, Lucide idiom — no emoji, no dependency)** | `apps/web/src/ui/Icon.tsx` |
 | **The bonding curve made visible (`PriceBar`)** | `apps/web/src/ui/PriceBar.tsx` |
 | **Slide-to-confirm on irreversible spends** | `apps/web/src/ui/SlideToConfirm.tsx` |

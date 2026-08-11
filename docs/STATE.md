@@ -541,6 +541,16 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     blur that lets the page wash through, a gradient fade instead of a border, two-thirds the height, a
     YES/NO split mark, and icon-only toggles. The surface-toggle test moved from `textContent` to the
     accessible name, which is what carries the state now there is no visible word. 278 tests.
+  - ● **DEMO-002 — the rebuilt UI proved end to end, and a runbook (`docs/DEMO.md`).** The journey test
+    had not been run since the UI-011 chassis rebuild — it refuses mainnet by design, so nothing had
+    exercised create → deploy → signed order → settle → audit → resolve → pay winners against the new
+    markup. It **passes in 15.6s**. Getting there caught a THIRD stale-process incident: a five-hour-old
+    daemon held port 8799, the freshly launched one died of `EADDRINUSE`, and the test ran against the
+    old one and failed on a token mismatch — a failure that looked exactly like a UI regression. Also
+    documented: vite binds IPv6 only, so `127.0.0.1:5273` looks dead while `localhost:5273` works.
+    The runbook records what is **provably on chain** (only #7 complete, plus #8's deploy and sell) versus
+    the 58 receipts across #1–#5 that were Script-verified and never broadcast, so nobody promises an
+    audience a WhatsOnChain link that does not exist.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a
