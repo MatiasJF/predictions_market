@@ -1375,3 +1375,21 @@ first when a change appears to have no effect.
   the money. 242 workspace tests, typecheck and build clean.
 - **Not addressed:** the 1,002 sat already stranded at `17WV463R…`. This stops it happening again; it does not
   reach back. That payment is spendable only by the key that made it.
+
+## ADR-054 · You may only sell what you hold (MAINNET-013) · Accepted · 2026-08-11
+- Reported as *"close a position is not working"*. It was worse than a broken button: **the sell path never
+  checked the trader's own holdings.** `applyUnitSell` throws on oversell, but that guard is about the POOL — it
+  stops the market's `q` going negative. Nothing bounded the seller.
+- So a trader with no position could sell into shares somebody else had bought and take the proceeds. Since
+  ADR-044 a sell also books a `sell_proceeds` debt the operator settles from the stake pot, which turns it from
+  a bookkeeping oddity into **real money owed for a position that never existed** — a naked short, paid instantly.
+- Proven before it was claimed: a test where Bob, who never bought anything, sells 3 of Alice's shares
+  **resolved instead of rejecting**. A second case (selling more than you hold) did throw, but only because the
+  pool happened to be empty — an incidental guard, not the right one.
+- Fix: `fill()` compares the trader's net position on that side against the units requested, before any state is
+  computed — the same placement as the funding gate, and for the same reason: a refused order must leave the
+  market exactly as it was.
+- The UI now states what you hold above the sell control and labels the button with the reason it is
+  unavailable (*"nothing to sell on YES"*, *"you only hold 2 YES"*) rather than offering a button that fails.
+- 250 workspace tests, typecheck and build clean. Checked the seeded demo data: no trader ended up net short, so
+  nothing needs unwinding.

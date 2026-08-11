@@ -41,13 +41,17 @@ export function Market({
   const [staking, setStaking] = useState<'yes' | 'no' | undefined>();
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState<Status | undefined>();
-  const [quote] = usePoll<any>(() => api.quote(id, side, 'sell' === 'sell' ? units : units), [id, side, units], 4000);
+  const [quote] = usePoll<any>(() => api.quote(id, side, units), [id, side, units], 4000);
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
   const myPayout = payout?.winners?.find((w: any) => w.trader === identity);
   const myClaim = claims?.claims?.find((c: any) => c.trader === identity);
   const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
   const devKeyCannotPay = signer?.kind === 'local';
+  // What this trader holds, which is the ceiling on what they can close.
+  const heldYes = mine ? shares(mine.netYesShares) : 0;
+  const heldNo = mine ? shares(mine.netNoShares) : 0;
+  const heldSide = side === 'yes' ? heldYes : heldNo;
 
   /** SELL only. A buy goes through `StakeSheet`, which is the single implementation of paying. */
   async function sell() {
@@ -172,8 +176,18 @@ export function Market({
               )}
 
               {/* --- selling: not a payment, so it stays here ------------------------------------ */}
+              {/*
+                What you actually hold, stated before the controls. The sell control used to offer
+                itself regardless, and the engine now refuses a sell larger than the position — so
+                without this the button is simply a button that fails.
+              */}
               <div className="ticket-sell">
                 <span className="section-label">close a position</span>
+                <div className="row tiny muted">
+                  <span>you hold</span>
+                  <b className={heldYes > 0 ? 'yes-text' : undefined}>YES {heldYes}</b>
+                  <b className={heldNo > 0 ? 'no-text' : undefined}>NO {heldNo}</b>
+                </div>
                 <div className="ticket-controls">
                   <Segmented
                     label="side to sell" value={side} onChange={setSide}
@@ -196,9 +210,13 @@ export function Market({
                       : `${sats(quote.est_sell_proceeds_sats)} sat`} />
                 </div>
                 <Button variant="secondary" tone="neutral" full busy={busy}
-                  disabled={busy || !signer || quote?.est_sell_proceeds_sats === null}
+                  disabled={busy || !signer || units > heldSide}
                   onClick={() => void sell()}>
-                  sign &amp; sell {units} {side.toUpperCase()}
+                  {heldSide === 0
+                    ? `nothing to sell on ${side.toUpperCase()}`
+                    : units > heldSide
+                      ? `you only hold ${heldSide} ${side.toUpperCase()}`
+                      : `sign & sell ${units} ${side.toUpperCase()}`}
                 </Button>
                 <p className="tiny muted">
                   Selling returns your position to the pool. Proceeds are owed to you immediately and paid by

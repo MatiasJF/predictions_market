@@ -512,6 +512,10 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     while the deck and cards used `StakeSheet`, so the single action that spends a trader's money had two
     implementations — and a commit message claimed it had one, which made it less likely anyone would check.
     Consolidated; selling stays inline because a sell is a debt, not a payment.
+  - ● **MAINNET-013 — sells were unbounded by the seller's position (ADR-054).** `applyUnitSell` guards the
+    POOL, not the trader, so anyone could sell shares somebody else had bought and be owed real money for a
+    position they never held. Found from a UI report of "close a position is not working". Bounded in `fill()`
+    before any state changes; the UI states what you hold.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

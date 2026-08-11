@@ -198,6 +198,28 @@ export class ExecutionEngine {
       }
     }
     const p = m.params;
+
+    // MAINNET-013 — YOU MAY ONLY SELL WHAT YOU HOLD.
+    //
+    // `applyUnitSell` throws on oversell, but that guard is about the POOL: it stops the market's own
+    // `q` going negative. Nothing checked the TRADER. So anyone could sell into shares somebody else
+    // had bought, take the proceeds, and — now that a sell books a debt the operator settles from the
+    // stake pot — be owed real money for a position they never held. A naked short paid out instantly.
+    //
+    // Checked BEFORE any state is computed, for the same reason the funding gate sits where it does:
+    // a refused order must leave the market exactly as it was.
+    if (o.action === 'sell') {
+      const [held] = this.positionsOf(o.marketId, o.trader);
+      const have = held ? BigInt(o.side === 'yes' ? held.netYesShares : held.netNoShares) : 0n;
+      const want = o.units * p.unit;
+      if (have < want) {
+        const fmt = (v: bigint) => (v / p.unit).toString();
+        throw new Error(
+          `execution: cannot sell ${fmt(want)} ${o.side.toUpperCase()} — you hold ${fmt(have)}`,
+        );
+      }
+    }
+
     let state = m.state;
     let costSats = 0n;
     for (let i = 0n; i < o.units; i++) {
