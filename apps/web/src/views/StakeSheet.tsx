@@ -138,7 +138,7 @@ export function StakeSheet({
           <p className="tiny muted">{market.question}</p>
           <TxLink txid={done.txid} isMainnet={!!isMainnet} label="See your transaction" />
           {!isMainnet && (
-            <p className="tiny subtle">
+            <p className="tiny muted">
               This run is local: the payment was built and verified exactly as on mainnet, but not broadcast,
               so there is nothing to look up.
             </p>

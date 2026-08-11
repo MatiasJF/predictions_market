@@ -33,11 +33,15 @@ describe('surface mode', () => {
   it('the header toggle flips it, and says which state it is in', async () => {
     const { App } = await import('../src/App');
     render(<App />);
-    const btn = await screen.findByRole('button', { name: /Surface:/ });
-    expect(btn.textContent).toMatch(/solid/);
-    fireEvent.click(btn);
+    // Asserted on the ACCESSIBLE NAME, not on textContent. UI-022 made this an icon-only button to
+    // trim the header, so there is no visible word any more — but the state still has to be readable
+    // without seeing the icon, and the accessible name is the thing that actually carries it.
+    const name = () => screen.getByRole('button', { name: /Surface:/ }).getAttribute('aria-label') ?? '';
+    await screen.findByRole('button', { name: /Surface:/ });
+    expect(name()).toMatch(/solid/);
+    fireEvent.click(screen.getByRole('button', { name: /Surface:/ }));
     expect(document.documentElement.getAttribute('data-surface'), 'clicking must reach the DOM').toBe('glass');
-    expect(screen.getByRole('button', { name: /Surface:/ }).textContent).toMatch(/glass/);
+    expect(name()).toMatch(/glass/);
   });
 });
 

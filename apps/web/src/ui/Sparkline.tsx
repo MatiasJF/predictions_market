@@ -30,7 +30,7 @@ export function Sparkline({
   if (values.length < 2) {
     return (
       <div className="spark spark-empty" style={{ height }}>
-        <span className="tiny subtle">{values.length === 0 ? 'no trades yet' : 'one trade so far'}</span>
+        <span className="tiny muted">{values.length === 0 ? 'no trades yet' : 'one trade so far'}</span>
       </div>
     );
   }

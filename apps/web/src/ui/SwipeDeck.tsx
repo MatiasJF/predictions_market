@@ -116,7 +116,7 @@ export function SwipeDeck({
         </button>
       </div>
 
-      <p className="tiny subtle deck-hint">
+      <p className="tiny muted deck-hint">
         Swipe or tap to pick a side — {items.length - top} left. Nothing is bought until you approve the amount.
       </p>
     </div>

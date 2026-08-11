@@ -51,7 +51,7 @@ export function PriceBar({
           <span className="yes-text">
             <AnimatedNumber value={yesSats} className="num strong" /> YES
           </span>
-          <span className="subtle tiny">of {payoutUnit} sat per winning share</span>
+          <span className="muted tiny">of {payoutUnit} sat per winning share</span>
           <span className="no-text">
             NO <AnimatedNumber value={noSats} className="num strong" />
           </span>

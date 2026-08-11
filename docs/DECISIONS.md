@@ -1546,3 +1546,53 @@ is a test contract change, recorded here rather than made quietly. `.sr-only` al
 `clip` to `clip-path`.
 
 **277 workspace tests, typecheck and build clean.** No daemon, API, custody or money-path change.
+
+## ADR-061
+
+**UI-022 — the identity row, the way back, and a header that stops shouting**
+
+**Date:** 2026-08-11 · **Status:** accepted · **Context:** three more reports, continuing ADR-060.
+
+### The reports
+
+1. *"do this also with → real wallet / `03b1b8a7dd0231e0bde4f1ad…` / · daemon ok — on all pages"*
+2. *"and with the ← all markets button"*
+3. *"fix the header, it has very little information to be that big and plain in colour, trim it down and
+   make it look better like the background"*
+
+### Decisions
+
+**The identity row gets the chip treatment.** It was a pill, a bare `<code>`, and a `tiny subtle` fragment
+sitting straight on the page wash with nothing behind them — the same defect as the market fact row, in the
+one place that answers "am I signed in as the right wallet?". Now each fact is a `.meta-chip` on its own
+surface, and the key is **labelled**: `identity 03b1b8a7dd0231…`, not an unexplained hex string. It lives in
+`App.tsx` above the tab content, so this is every page by construction.
+
+**`← all markets` became a control instead of a text link.** It is the only way out of a market detail, and
+it was a bare accent-coloured line of text on the wash. Chip-shaped now, with a surface, a border and a real
+hit area, matching the fact chips beneath it.
+
+**`tiny subtle` is banned outright.** Two reports in a row were the same combination — smallest type at the
+quietest colour. `--text-subtle` clears 3:1 after ADR-060, which makes it legal for decoration, but 3:1 at
+12px is not something a person reads, and **every one of the six uses in the app turned out to be prose**.
+The rule is now structural and enforced by a test: small OR quiet, not both.
+
+**The header lost its plate.** It was 88%-opaque `--surface-app` with a full-width 1px rule and generous
+padding — the visual weight of a toolbar, carrying a wordmark and two toggles. Now:
+
+- roughly two thirds the height, and it paints no surface of its own: a light tint plus
+  `blur(20px) saturate(140%)` lets the page wash through so it reads as the same material;
+- the rule is replaced by a soft gradient fade, because a border announces a boundary and this does not
+  deserve one. **The tint is deliberately not zero** — at full transparency, text scrolling underneath
+  collides with the header text in the moment before the blur resolves;
+- the wordmark is smaller and gained a mark: a circle split YES-green / NO-orange, which is the product;
+- the two toggles became icon-only `.iconbtn` circles. "auto" and "glass" were two words of chrome for a
+  preference.
+
+### Consequences
+
+Making the surface toggle icon-only removed the visible word its test asserted on. Rewritten to assert on the
+**accessible name** rather than `textContent` — which is a stronger check, since that is what actually
+carries the state to assistive tech now that there is no visible label. Test contract change, recorded here.
+
+278 workspace tests, typecheck and build clean. No daemon, API, custody or money-path change.

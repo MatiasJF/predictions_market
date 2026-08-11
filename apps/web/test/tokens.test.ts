@@ -253,3 +253,38 @@ describe('iconography', () => {
     expect(offenders, 'use <Icon name="…" /> instead of a glyph').toEqual([]);
   });
 });
+
+/**
+ * UI-022 — `tiny subtle` is banned outright.
+ *
+ * The smallest type at the lowest-contrast token is the exact combination that got reported twice:
+ * the market fact row, then the identity row on every page. `--text-subtle` now clears 3:1, which
+ * makes it legal for decoration, but 3:1 at 12px is not something a person reads — and every use of
+ * this pair in the app turned out to be prose, not decoration.
+ *
+ * So the rule is structural rather than a matter of remembering: pick one. Small OR quiet, not both.
+ */
+describe('legibility', () => {
+  it('never combines the smallest type with the quietest colour', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(join(dir, e.name));
+        else if (e.name.endsWith('.tsx')) files.push(join(dir, e.name));
+      }
+    };
+    walk(SRC);
+
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+      for (const m of src.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
+        const cls = (m[1] ?? m[2] ?? '').split(/\s+/);
+        if (cls.includes('tiny') && cls.includes('subtle')) {
+          offenders.push(`${f.split('/').pop()}: ${m[0].slice(0, 50)}`);
+        }
+      }
+    }
+    expect(offenders, 'use `tiny muted`, or `subtle` at a larger size').toEqual([]);
+  });
+});

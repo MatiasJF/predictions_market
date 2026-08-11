@@ -1,30 +1,104 @@
 /* App shell (UI-010). */
 
+/* --- header (UI-022) --------------------------------------------------------------------------------
+   It was a flat plate: 88%-opaque --surface-app, a 1px rule across the whole width, and generous
+   padding — the visual weight of a toolbar, holding a wordmark and two toggles. Reported as "very
+   little information to be that big and plain in colour".
+
+   Trimmed to roughly two thirds the height, and it no longer paints its own surface. A light tint
+   plus a strong blur lets the page wash show through and read as the same material, and it ends in a
+   soft fade rather than a hard line — a rule announces a boundary, which is more than this deserves.
+   The tint is not zero on purpose: at full transparency, text scrolling underneath collides with the
+   header text in the moment before the blur resolves. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: color-mix(in srgb, var(--surface-app) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-app) 62%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+/* The fade that replaces the border. Sits below the bar, ignores the pointer, and carries the same
+   tint so the transition is a dissolve rather than an edge. */
+.topbar::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: -14px;
+  height: 14px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface-app) 45%, transparent),
+    transparent
+  );
 }
 .topbar-inner {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding-top: var(--space-3);
-  padding-bottom: var(--space-3);
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
   flex-wrap: wrap;
 }
-.brand { font-weight: var(--weight-bold); letter-spacing: -0.02em; }
+.brand {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+/* A mark, so the wordmark is not the only thing carrying the brand at this smaller size. The split
+   is the product: a YES half and a NO half, the same two colours as every price bar in the app. */
+.brand-mark {
+  width: 16px; height: 16px; flex: none;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--positive) 0%, var(--positive) 50%, var(--negative) 50%, var(--negative) 100%);
+}
+
+/* Icon-only utilities. The theme and surface toggles were text buttons reading "auto"/"glass", which
+   is two words of chrome for a preference. The state is on the icon, and the word is still there for
+   assistive tech and on hover — aria-label and title, both already present. */
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex: none;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.iconbtn:hover { background: var(--surface-sunken); color: var(--text-strong); border-color: var(--border); }
 
 .identity {
   display: flex; align-items: center; gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
   flex-wrap: wrap;
 }
-.identity code { color: var(--text-muted); }
+/* The key is long and the row must not break because of it — the chip shrinks, the label does not. */
+.identity .meta-chip { min-width: 0; }
+.identity .mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: -0.01em;
+}
+
+/* --- back ------------------------------------------------------------------------------------------
+   `← all markets` was a bare text link on the page wash, and it is the only way out of a market, so
+   it earns a surface. Chip-shaped to match the fact chips it sits above, and a real hit area rather
+   than a line of text. */
+.backlink {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.backlink:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
 
 .code-block {
   background: var(--surface-sunken);

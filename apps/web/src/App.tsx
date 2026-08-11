@@ -70,7 +70,10 @@ export function App() {
       <header className="topbar">
         <div className="wrap topbar-inner">
           <div className="row grow">
-            <span className="brand">BSV Prediction Market</span>
+            <span className="brand">
+              <span className="brand-mark" aria-hidden="true" />
+              BSV Prediction Market
+            </span>
             {/*
               A connection state, not a warning (UI-021). This badge was red and said "MAINNET · real
               money", with a matching red banner underneath. The operator's instruction was to drop
@@ -95,24 +98,22 @@ export function App() {
               Three states, not two: "follow the system" is a real choice, so cycling returns to it
               rather than stranding the user in whichever mode they last tapped.
             */}
-            <Button
-              variant="link" tone="neutral" size="sm"
-              aria-label={`Theme: ${theme ?? 'system'}. Switch.`}
+            <button
+              type="button" className="iconbtn"
+              aria-label={`Theme: ${theme ?? 'following your system'}. Switch.`}
               title={`Theme: ${theme ?? 'following your system'}`}
               onClick={() => setTheme(theme === null ? (shown === 'dark' ? 'light' : 'dark') : theme === 'dark' ? 'light' : null)}
             >
-              <Icon name={theme === null ? 'settings' : theme === 'dark' ? 'circle' : 'globe'} size={13} />
-              {theme === null ? 'auto' : theme === 'dark' ? 'dark' : 'light'}
-            </Button>
-            <Button
-              variant="link" tone="neutral" size="sm"
+              <Icon name={theme === null ? 'settings' : theme === 'dark' ? 'circle' : 'globe'} size={16} />
+            </button>
+            <button
+              type="button" className="iconbtn"
               aria-label={`Surface: ${surface}. Switch.`}
               title={surface === 'glass' ? 'Frosted surfaces' : 'Solid surfaces'}
               onClick={() => setSurface(surface === 'glass' ? 'solid' : 'glass')}
             >
-              <Icon name={surface === 'glass' ? 'layers' : 'circle'} size={13} />
-              {surface === 'glass' ? 'glass' : 'solid'}
-            </Button>
+              <Icon name={surface === 'glass' ? 'layers' : 'circle'} size={16} />
+            </button>
           </nav>
         </div>
       </header>
@@ -125,17 +126,32 @@ export function App() {
           </Callout>
         )}
 
+        {/*
+          Who you are and what you are connected to, on every page (UI-022).
+
+          This row was a pill, a bare <code> and a `tiny subtle` fragment sitting straight on the page
+          wash with nothing behind them — the same "not seen" problem as the market fact row, in the
+          one place that answers "am I signed in as the right wallet?". Each fact now sits on its own
+          surface at readable contrast, and says what it is: the key is labelled `identity`, not left
+          as an unexplained hex string.
+        */}
         <div className="identity">
           <Pill tone={signer?.kind === 'wallet' ? 'positive' : 'warning'} icon={signer?.kind === 'wallet' ? <Icon name="check" size={13} /> : <Icon name="alert" size={13} />}>
             {signer?.kind === 'wallet' ? 'real wallet' : 'dev key'}
           </Pill>
-          <code className="truncate" title={identity}>{identity ? `${identity.slice(0, 24)}…` : 'connecting…'}</code>
+          <span className="meta-chip" title={identity}>
+            identity <b className="mono truncate">{identity ? `${identity.slice(0, 16)}…` : 'connecting…'}</b>
+          </span>
+          {health && (
+            <span className="meta-chip">
+              <Icon name="check" size={12} /> daemon ok
+            </span>
+          )}
           {signer?.kind === 'local' && (
             <Button variant="link" size="sm" onClick={() => { LocalSigner.reset(); location.reload(); }}>
               new dev trader
             </Button>
           )}
-          {health && <span className="tiny subtle"> · daemon ok</span>}
         </div>
 
         {/*

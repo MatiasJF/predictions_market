@@ -100,7 +100,9 @@ export function Market({
 
   return (
     <div className="stack">
-      <Button variant="link" onClick={onBack}><Icon name="arrowLeft" size={15} /> all markets</Button>
+      <button type="button" className="backlink" onClick={onBack}>
+        <Icon name="arrowLeft" size={15} /> all markets
+      </button>
 
       <div className="stack-sm">
         <h2>{market.question}</h2>

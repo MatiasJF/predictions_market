@@ -61,7 +61,7 @@ export function HowItWorks({ payoutUnit = 1000 }: { payoutUnit?: number }) {
       </ol>
 
       {/* The honest footnote. The price moving as people trade IS the product, not a side effect. */}
-      <p className="tiny subtle">
+      <p className="tiny muted">
         Prices move with every trade — each bet shifts the odds for the next one. Nothing is bought until you
         approve it in your wallet.
       </p>

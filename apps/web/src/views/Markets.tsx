@@ -99,7 +99,7 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
           return (
             <article key={m.id} className="market-card" data-testid="market-card">
               <div className="market-meta">
-                <span className="tiny subtle">#{m.id}</span>
+                <span className="meta-chip">#{m.id}</span>
                 {m.resolution && <Pill tone="positive" icon={<Icon name="check" size={13} />}>resolved {m.resolution.toUpperCase()}</Pill>}
                 {stale && <Pill tone="danger" icon={<Icon name="alert" size={13} />}>stale build — unspendable</Pill>}
                 {!m.pool && <Pill tone="neutral" icon={<Icon name="circle" size={13} />}>not deployed</Pill>}

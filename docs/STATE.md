@@ -532,6 +532,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     across every `.tsx`, with an auditable `glyph-ok` opt-out for punctuation. `Sparkline` gained an
     `.sr-only` direction word, because a decorative icon would have left a screen reader reading `120` with
     no sign; its two tests moved off the glyph and onto accessible text. 277 tests.
+  - ● **UI-022 — identity, the way back, and the header (ADR-061).** Follow-ups to UI-021. The identity row
+    (`real wallet` / key / `daemon ok`) was a pill, a bare `<code>` and a `tiny subtle` fragment on the bare
+    wash — now labelled chips on their own surfaces, on every page since it lives in `App.tsx`. `← all
+    markets` became a real chip-shaped control rather than a text link, it being the only way out of a
+    market. **`tiny subtle` is now banned by test** — two reports running were that exact pair, and all six
+    uses were prose, not decoration. The header dropped its opaque plate and 1px rule for a light tint plus
+    blur that lets the page wash through, a gradient fade instead of a border, two-thirds the height, a
+    YES/NO split mark, and icon-only toggles. The surface-toggle test moved from `textContent` to the
+    accessible name, which is what carries the state now there is no visible word. 278 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a
