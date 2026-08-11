@@ -52,18 +52,25 @@ function buildPayment(scriptHex: string, sats: number): string {
 }
 
 describe('FUND-001 — the daemon collects the money before it fills', () => {
-  it('issues a priced intent with a one-time destination', () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+  it('issues a priced intent with a one-time destination', async () => {
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     expect(intent.satoshis, 'the intent must be priced').toBeGreaterThan(0);
     expect(intent.locking_script).toMatch(/^76a914[0-9a-f]{40}88ac$/);
     expect(Date.parse(intent.expires_at)).toBeGreaterThan(Date.now());
 
-    const second = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
-    expect(second.locking_script, 'each intent gets its OWN destination').not.toBe(intent.locking_script);
+    // MAINNET-012 changed this deliberately. An IDENTICAL request reuses the destination already
+    // issued, because minting a fresh one is what asks a trader to pay twice for one order.
+    const same = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    expect(same.intent_id, 'an identical request must reuse its quote').toBe(intent.intent_id);
+    expect(same.reused).toBe(true);
+
+    // A DIFFERENT order is a different quote and gets its own one-time destination.
+    const other = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'no', action: 'buy', units: 3 }) as any;
+    expect(other.locking_script, 'a different order gets its own destination').not.toBe(intent.locking_script);
   });
 
   it('ACCEPTS a real payment and fills — the whole point of the ticket', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     const res = await svc.submitOrder(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
       intentId: intent.intent_id, paymentTx: buildPayment(intent.locking_script, intent.satoshis),
@@ -86,7 +93,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   it('REFUSES underpayment, and does not keep the intent open for a retry', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     await expect(svc.submitOrder(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
       intentId: intent.intent_id, paymentTx: buildPayment(intent.locking_script, intent.satoshis - 1),
@@ -111,7 +118,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
     await svc2.authorize(dep.id);
 
-    const intent = svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     const fields = { marketId: m2.id, trader: traderPub, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 1 };
     await expect(svc2.submitOrder(m2.id, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signOrder(trader.toWif(), fields), nonce: 1,
@@ -124,6 +131,66 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     // `16bbde85…` (1,002 sat). Retryable failures leave the quote alive; only permanent ones kill it.
     const after = db2.prepare('SELECT status FROM payment_intents WHERE id=?').get(intent.intent_id) as { status: string };
     expect(after.status, 'a propagation race must not consume a paid quote').toBe('pending');
+  });
+
+  /**
+   * MAINNET-012 — a retry must never be a second payment.
+   *
+   * The sequence that cost 1,002 sat on mainnet: a trader pays, something fails between paying and
+   * filling, they are told to press again — and pressing again minted a NEW intent with a NEW
+   * destination, so the wallet paid a second time while the first payment sat at an address that
+   * bought nothing. These pin the two halves of the fix: reuse the quote, and when the quote is
+   * already funded, say so and hand back the funding transaction instead of asking for money.
+   */
+  it('does NOT ask for a second payment when the quote is already funded', async () => {
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const paymentTx = buildPayment(intent.locking_script, intent.satoshis);
+
+    // The chain now reports that destination as funded — which is what it would say after the
+    // trader's wallet broadcast and the fill failed for any other reason.
+    const funded = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorPayKey,
+      { exists: async () => true, fundedAt: async () => ({ txid: 'a'.repeat(64), rawTx: paymentTx }) },
+    );
+
+    const retry = await funded.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    expect(retry.intent_id, 'the retry must be the same quote').toBe(intent.intent_id);
+    expect(retry.already_paid, 'the client must be told not to pay again').toBe(true);
+    expect(retry.payment_tx, 'and handed the payment that already exists').toBe(paymentTx);
+  });
+
+  it('reuses an EXPIRED quote that has been paid, rather than stranding the money', async () => {
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const paymentTx = buildPayment(intent.locking_script, intent.satoshis);
+    db.prepare("UPDATE payment_intents SET expires_at=? WHERE id=?")
+      .run(new Date(Date.now() - 60_000).toISOString(), intent.intent_id);
+
+    const funded = new MarketService(
+      db, new MockEngine(), new ExecutionEngine(db, makeReceiptSigner()), operatorPayKey,
+      { exists: async () => true, fundedAt: async () => ({ txid: 'b'.repeat(64), rawTx: paymentTx }) },
+    );
+    const retry = await funded.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+
+    expect(retry.intent_id).toBe(intent.intent_id);
+    expect(retry.already_paid).toBe(true);
+    // The clock restarts, or `acceptPayment` would reject a quote the trader has already paid — and
+    // the ANSWER has to carry the new deadline, not the stale one it was read with.
+    expect(Date.parse(retry.expires_at), 'the response must not hand back an expired quote')
+      .toBeGreaterThan(Date.now());
+    const row = db.prepare('SELECT expires_at e FROM payment_intents WHERE id=?').get(intent.intent_id) as any;
+    expect(Date.parse(row.e), 'and the row must agree with it').toBeGreaterThan(Date.now());
+  });
+
+  it('does NOT reuse a quote that has already bought something', async () => {
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    await svc.submitOrder(marketId, {
+      trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
+      intentId: intent.intent_id, paymentTx: buildPayment(intent.locking_script, intent.satoshis),
+    });
+    const next = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    // A settled quote is spent. Reusing it would hand a second order the first order's payment.
+    expect(next.intent_id, 'a paid quote must not be reused for a new order').not.toBe(intent.intent_id);
+    expect(next.already_paid).toBe(false);
   });
 
   /**
@@ -141,7 +208,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     const { P2PKH } = await import('@bsv/sdk');
     const { derivePaymentKey } = await import('@pm/wallet');
 
-    const intent = svc.createPaymentIntent(marketId, {
+    const intent = await svc.createPaymentIntent(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 2,
     }) as any;
 
@@ -189,7 +256,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
     await svc2.authorize(dep.id);
 
-    const intent = svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     const fields = { marketId: m2.id, trader: traderPub, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 7 };
     const paymentTx = buildPayment(intent.locking_script, intent.satoshis);
     const res = await svc2.submitOrder(m2.id, {
@@ -213,7 +280,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
     await svc2.authorize(dep.id);
 
-    const intent = svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     const fields = { marketId: m2.id, trader: traderPub, side: 'yes' as const, action: 'buy' as const, units: 3n, nonce: 8 };
     await expect(svc2.submitOrder(m2.id, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signOrder(trader.toWif(), fields), nonce: 8,
@@ -223,9 +290,9 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     expect(published, 'a transaction that does not pay us must never be relayed').toBe(false);
   });
 
-  it('REFUSES a sell intent — a seller is owed money, not charged', () => {
-    expect(() => svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'sell', units: 1 }))
-      .toThrow(/only buys are paid for/);
+  it('REFUSES a sell intent — a seller is owed money, not charged', async () => {
+    await expect(svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'sell', units: 1 }))
+      .rejects.toThrow(/only buys are paid for/);
   });
 
   it('REFUSES a buy with no payment at all, and records no fill', async () => {
@@ -236,7 +303,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   it('REFUSES a payment that pays someone else', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     const elsewhere = new Transaction();
     elsewhere.addOutput({
       lockingScript: new P2PKH().lock(PrivateKey.fromRandom().toPublicKey().toAddress()),
@@ -251,7 +318,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
 
   it('REFUSES an intent that belongs to a different trader', async () => {
     const other = PrivateKey.fromRandom().toPublicKey().toString();
-    const intent = svc.createPaymentIntent(marketId, { trader: other, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: other, side: 'yes', action: 'buy', units: 3 }) as any;
     await expect(svc.submitOrder(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
       intentId: intent.intent_id, paymentTx: new Transaction().toHex(),
@@ -260,7 +327,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   it('REFUSES an order that does not match what was quoted', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     await expect(svc.submitOrder(marketId, {
       trader: traderPub, side: 'no', action: 'buy', units: 3,
       sig: signOrder(trader.toWif(), { ...orderFields(3, 1), side: 'no' }), nonce: 1,
@@ -270,7 +337,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   it('REFUSES an expired quote — the price moves with every fill', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     db.prepare("UPDATE payment_intents SET expires_at=datetime('now','-1 minute') WHERE id=?").run(intent.intent_id);
     await expect(svc.submitOrder(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
@@ -282,7 +349,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
   });
 
   it('a payment intent is single-use — the same one cannot buy twice', async () => {
-    const intent = svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
+    const intent = await svc.createPaymentIntent(marketId, { trader: traderPub, side: 'yes', action: 'buy', units: 3 }) as any;
     db.prepare("UPDATE payment_intents SET status='paid' WHERE id=?").run(intent.intent_id);
     await expect(svc.submitOrder(marketId, {
       trader: traderPub, side: 'yes', action: 'buy', units: 3, sig: signed(3, 1), nonce: 1,
@@ -307,7 +374,7 @@ describe('FUND-001 — the daemon collects the money before it fills', () => {
     await svc2.enqueueDeploy(m2.id);
     const dep = db2.prepare("SELECT id FROM broadcasts WHERE kind='deploy'").get() as { id: number };
     await svc2.authorize(dep.id);
-    expect(() => svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 1 }))
-      .toThrow(/no payment key/);
+    await expect(svc2.createPaymentIntent(m2.id, { trader: traderPub, side: 'yes', action: 'buy', units: 1 }))
+      .rejects.toThrow(/no payment key/);
   });
 });

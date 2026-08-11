@@ -468,10 +468,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     Fixed with `deriveOwnDestination` (BRC-42 `forSelf`), pinned by a daemon-level test verified by mutation.
     **The old stakes are not recoverable by the operator**, so market #7's 998 sat stays unpaid until new
     stakes accumulate. The sell path is correct and still unproven on mainnet.
-  - ○ **step 9 — recover a stranded payment.** A buy whose intent was burned leaves the trader's satoshis at an
-    operator-derived address with nothing to show for them (1,002 sat at `17WV463R…` from this run). Pressing
-    "buy" again mints a *new* intent and pays *again*: an intent whose address is already funded must be reused,
-    not re-quoted.
+  - ● **MAINNET-012 — a retry is no longer a second payment (ADR-053).** An identical request reuses the quote
+    it already issued, and if that destination is already funded on chain the answer says so and carries the
+    funding transaction, so the client fills **without paying again**. An expired-but-paid quote is reused and
+    its clock restarted — the TTL exists to stop a stale price being honoured, not to strand money that has
+    already moved. The tests found a bug in the fix itself (the reuse path returned a stale expiry, which would
+    have been a silent "quote expired" loop). **The 1,002 sat already stranded at `17WV463R…` is not recovered
+    by this** — it stops recurrence, it does not reach back.
   - ● **CURVE-001 — `b` is an operator setting now (ADR-045).** Prices always were a bonding curve (LMSR), but
     `b` was hard-coded to 1000, which against 2-share trades pinned every displayed price at 500 sat and made
     the curve look flat. `b` and the payout unit are now inputs on the create-market form, with the resulting

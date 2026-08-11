@@ -1348,3 +1348,30 @@ first when a change appears to have no effect.
   supply an accessible name when an element has content, so a screen reader announced "up arrow YES 500 button".
   Caught because the journey could not find the button by the name a user would say.
 - 239 workspace tests, typecheck and build clean, journey green through the consolidated path.
+
+## ADR-053 · A retry must never be a second payment (MAINNET-012) · Accepted · 2026-08-11
+- **The defect, and it was the last way this system could take money and give nothing back.** A trader who paid
+  and then hit any failure before the fill landed was asked to pay again: the client requested a fresh quote,
+  got a fresh one-time destination, and the wallet sent a second payment while the first sat at an address that
+  had bought nothing. **This is how 1,002 sat was lost on 2026-08-10** — and the advice given at the time,
+  *"press it again"*, is precisely what triggers it.
+- Fix, in two halves:
+  - `createPaymentIntent` **reuses** the quote it already issued for an identical
+    `(market, trader, side, action, units)` instead of minting a new one.
+  - If that destination is **already funded on chain**, the answer says `already_paid` and carries the funding
+    transaction, so the client submits the order **without paying again**. `ChainCheck.fundedAt` is the new
+    capability; on WhatsOnChain it is an address-UTXO lookup plus a raw-tx fetch.
+- **An expired-but-paid quote is reused and its clock restarted.** The TTL exists to stop a stale price being
+  honoured, not to strand money that has already moved; refusing here would protect a deadline at the cost of
+  the trader's satoshis. If the price has since moved past what was paid, the execution engine's funding gate
+  refuses the fill — which is the right place for that judgement, and leaves the trader no worse off than a
+  double charge would have.
+- A **paid** quote is never reused. It is spent, and handing a second order the first order's payment would be
+  the same defect pointing the other way.
+- **The tests found a bug in the fix.** The reuse path returned the row's stale `expires_at` while updating the
+  database, so a client received a quote that was already expired the moment it arrived — a silent "your quote
+  expired" loop on every retry. Both the row and the answer now carry the new deadline.
+- Verified by mutation: disabling reuse fails three tests, including the one named for the scenario that cost
+  the money. 242 workspace tests, typecheck and build clean.
+- **Not addressed:** the 1,002 sat already stranded at `17WV463R…`. This stops it happening again; it does not
+  reach back. That payment is spendable only by the key that made it.

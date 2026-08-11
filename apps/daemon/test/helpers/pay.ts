@@ -24,7 +24,7 @@ export async function paidBuy(
   marketId: number,
   order: { trader: string; side: 'yes' | 'no'; units: number; sig: string; nonce: number; sigScheme?: 'ecdsa' | 'brc100' },
 ): Promise<Awaited<ReturnType<MarketService['submitOrder']>>> {
-  const intent = svc.createPaymentIntent(marketId, {
+  const intent = await svc.createPaymentIntent(marketId, {
     trader: order.trader, side: order.side, action: 'buy', units: order.units,
   }) as { intent_id: number; locking_script: string; satoshis: number };
 

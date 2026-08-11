@@ -52,19 +52,37 @@ export function StakeSheet({
 
       setStep('quoting');
       const intent = await api.paymentIntent(market.id, { trader, side, action: 'buy', units });
-      setStep('approving');
-      const paid = await signer.pay({
-        lockingScript: intent.locking_script,
-        satoshis: intent.satoshis,
-        description: `${units} ${side.toUpperCase()} @ market #${market.id}`,
-      });
 
-      setStep('filling');
+      // MAINNET-012 — do not pay twice for one order.
+      //
+      // If this order was already paid and something later failed, the daemon returns the SAME quote
+      // with the funding transaction attached. Asking the wallet again would send a second payment
+      // for one position and strand the first, which is how 1,002 sat was lost on mainnet. The retry
+      // is now free: it reuses what is already on the network.
+      let paymentTx: string;
+      if (intent.already_paid && intent.payment_tx) {
+        setStep('filling');
+        paymentTx = intent.payment_tx;
+      } else {
+        setStep('approving');
+        paymentTx = (await signer.pay({
+          lockingScript: intent.locking_script,
+          satoshis: intent.satoshis,
+          description: `${units} ${side.toUpperCase()} @ market #${market.id}`,
+        })).rawTx;
+        setStep('filling');
+      }
+
       const r = await api.submitOrder(market.id, {
         trader, side, action: 'buy', units, nonce, sig, sigScheme,
-        intentId: intent.intent_id, paymentTx: paid.rawTx,
+        intentId: intent.intent_id, paymentTx,
       });
-      setMsg({ tone: 'positive', text: `filled — receipt #${r.receipt.seq}, paid ${r.receipt.costSats} sat` });
+      setMsg({
+        tone: 'positive',
+        text: intent.already_paid
+          ? `filled — receipt #${r.receipt.seq}, using the ${r.receipt.costSats} sat you had already paid`
+          : `filled — receipt #${r.receipt.seq}, paid ${r.receipt.costSats} sat`,
+      });
       onFilled?.();
     } catch (e) {
       setMsg({ tone: 'danger', text: e instanceof Error ? e.message : String(e) });

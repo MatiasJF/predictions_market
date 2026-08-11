@@ -288,7 +288,7 @@ export class MarketService {
    * every other fill, so a long-lived quote is a free option on the market's direction — the exact defect this
    * whole ticket exists to remove, reintroduced through the back door.
    */
-  createPaymentIntent(id: number, input: { trader: string; side: string; action: string; units?: number }) {
+  async createPaymentIntent(id: number, input: { trader: string; side: string; action: string; units?: number }) {
     this.execOrThrow();
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
@@ -320,6 +320,57 @@ export class MarketService {
       charge += buyChargeApproxSats(sBuy, side, p.unit, p);
     }
     const quoted = Number(charge);
+
+    // MAINNET-012 — REUSE before minting.
+    //
+    // A trader who pays and then hits any failure before the fill lands used to be asked to pay
+    // again: the client requested a fresh quote, got a fresh one-time destination, and the wallet
+    // sent a second payment while the first sat at an address that bought nothing. That is exactly
+    // how 1,002 sat was lost on 2026-08-10 — and the advice given at the time, "press it again", is
+    // what triggers it.
+    //
+    // So an identical request reuses the intent it already issued. If that destination is ALREADY
+    // funded on chain, the answer carries the funding transaction and says `already_paid`, and the
+    // client submits the order without paying a second time.
+    const reusable = this.db.prepare(
+      `SELECT * FROM payment_intents
+        WHERE market_id=? AND trader_pubkey=? AND side=? AND action=? AND units=? AND status='pending'
+        ORDER BY id DESC LIMIT 1`,
+    ).get(id, trader, side, action, units) as PaymentIntentRow | undefined;
+
+    if (reusable) {
+      const funded = await this.chainCheck?.fundedAt?.(reusable.address, reusable.quoted_cost_sats);
+      const fresh = Date.parse(reusable.expires_at) > Date.now();
+      // An expired-but-PAID quote is still reused, and its clock restarted. The money is already at
+      // that address; refusing it would strand the payment to protect a deadline that only exists to
+      // stop a stale price being honoured. If the price has since moved past what was paid, the
+      // execution engine's funding gate refuses the fill anyway — which is the correct place for
+      // that judgement, and leaves the trader no worse off than a double charge would.
+      if (fresh || funded) {
+        let expiresAt = reusable.expires_at;
+        if (funded && !fresh) {
+          // Extend BOTH the row and the answer. Returning the stale timestamp handed the client a
+          // quote that was already expired the moment it arrived — caught by the test below, which
+          // is the only reason this is not a silent "your quote expired" loop on every retry.
+          expiresAt = new Date(Date.now() + MarketService.INTENT_TTL_MS).toISOString();
+          this.db.prepare('UPDATE payment_intents SET expires_at=? WHERE id=?').run(expiresAt, reusable.id);
+        }
+        return {
+          intent_id: reusable.id,
+          market_id: id, side, action, units,
+          satoshis: reusable.quoted_cost_sats,
+          locking_script: reusable.locking_script,
+          address: reusable.address,
+          expires_at: expiresAt,
+          network: m.network,
+          reused: true as const,
+          /** The client MUST NOT pay again when this is set. */
+          already_paid: Boolean(funded),
+          payment_tx: funded?.rawTx,
+        };
+      }
+    }
+
     // MAINNET-011: the destination must be one WE can spend — the trader is paying INTO it.
     // This used `deriveDestination`, which derives the COUNTERPARTY's key: correct for paying a
     // winner, exactly backwards for taking a stake. Every stake accepted before this fix went to an
@@ -349,6 +400,9 @@ export class MarketService {
       address: dest.address,
       expires_at: expiresAt,
       network: m.network,
+      reused: false as const,
+      already_paid: false,
+      payment_tx: undefined as string | undefined,
     };
   }
 

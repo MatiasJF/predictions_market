@@ -43,6 +43,18 @@ export interface ChainCheck {
    * on chain rather than in any wallet we keep.
    */
   rawTx?(txid: string): Promise<string | undefined>;
+  /**
+   * Is this address ALREADY funded, and with which transaction?
+   *
+   * MAINNET-012. Without this a trader who pays and then hits any failure between paying and filling
+   * is asked to pay again: the client requests a fresh quote, gets a fresh one-time destination, and
+   * the wallet dutifully sends a second payment. The first is stranded at an address that bought
+   * nothing. That is how 1,002 sat was lost on 2026-08-10, and the retry advice given at the time —
+   * "press it again" — is exactly what triggers it.
+   *
+   * Answering "you already paid this" is the only way to make a retry safe.
+   */
+  fundedAt?(address: string, minSats: number): Promise<{ txid: string; rawTx: string } | undefined>;
 }
 
 /** WhatsOnChain — the same service the rest of the project uses for chain queries. */
@@ -71,6 +83,22 @@ export class WocChainCheck implements ChainCheck {
       if (!res.ok) return undefined;
       const hex = (await res.text()).trim();
       return /^[0-9a-f]+$/i.test(hex) ? hex : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async fundedAt(address: string, minSats: number): Promise<{ txid: string; rawTx: string } | undefined> {
+    try {
+      const res = await fetch(`https://api.whatsonchain.com/v1/bsv/${this.network}/address/${address}/unspent`);
+      if (!res.ok) return undefined;
+      const utxos = (await res.json()) as { tx_hash: string; value: number }[];
+      // Largest first: if a trader somehow paid twice into the same destination, reuse the one that
+      // actually covers the quote rather than the one that happens to be first.
+      const hit = utxos.filter((u) => u.value >= minSats).sort((a, b) => b.value - a.value)[0];
+      if (!hit) return undefined;
+      const rawTx = await this.rawTx(hit.tx_hash);
+      return rawTx ? { txid: hit.tx_hash, rawTx } : undefined;
     } catch {
       return undefined;
     }
