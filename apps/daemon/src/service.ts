@@ -1022,7 +1022,20 @@ export class MarketService {
   async walletBalance() {
     const address = await this.engine.fundingAddress();
     const utxos = await this.engine.getUtxos(address);
-    return { address, balance_sats: utxos.reduce((s, u) => s + u.satoshis, 0), utxos: utxos.length };
+    const summed = utxos.reduce((s, u) => s + u.satoshis, 0);
+
+    // Prefer the chain's own accounting. Summing unspent outputs double-counts while a spend is in
+    // flight — the inputs are still listed and so is the change — which is exactly when an operator
+    // is looking at this number to decide whether to authorize the next one. See `balanceOf`.
+    const chain = await this.chainCheck?.balanceOf?.(address).catch(() => undefined);
+    return {
+      address,
+      balance_sats: chain ? chain.spendable : summed,
+      utxos: utxos.length,
+      confirmed_sats: chain?.confirmed ?? null,
+      /** Negative while money is on its way out. */
+      pending_sats: chain?.unconfirmed ?? null,
+    };
   }
 
   // ── internals ───────────────────────────────────────────────────────────────────────────────────────

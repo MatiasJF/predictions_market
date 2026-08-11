@@ -55,6 +55,19 @@ export interface ChainCheck {
    * Answering "you already paid this" is the only way to make a retry safe.
    */
   fundedAt?(address: string, minSats: number): Promise<{ txid: string; rawTx: string } | undefined>;
+  /**
+   * What an address is actually worth, counting money already on its way out.
+   *
+   * MAINNET-014. Summing an address's unspent outputs OVERSTATES it the moment anything is pending:
+   * the list still contains the inputs a mempool transaction is spending AND the change it creates,
+   * so both are counted. Right after two deploys costing 8,148 sat the operator's wallet panel read
+   * 405,270 against a real 198,615 — a number that would have been reassuring at exactly the wrong
+   * moment, since an operator checks this balance BEFORE authorizing the next spend.
+   *
+   * `unconfirmed` here is the NET mempool delta (negative while a spend is in flight), so
+   * `confirmed + unconfirmed` is self-correcting without enumerating or de-duplicating anything.
+   */
+  balanceOf?(address: string): Promise<{ confirmed: number; unconfirmed: number; spendable: number }>;
 }
 
 /** WhatsOnChain — the same service the rest of the project uses for chain queries. */
@@ -88,14 +101,27 @@ export class WocChainCheck implements ChainCheck {
     }
   }
 
+  async balanceOf(address: string): Promise<{ confirmed: number; unconfirmed: number; spendable: number }> {
+    const at = async (which: 'confirmed' | 'unconfirmed') => {
+      const res = await fetch(`https://api.whatsonchain.com/v1/bsv/${this.network}/address/${address}/${which}/balance`);
+      if (!res.ok) throw new Error(`balance: ${which} lookup failed (${res.status})`);
+      const body = (await res.json()) as Record<string, number>;
+      return Number(body[which] ?? 0);
+    };
+    const [confirmed, unconfirmed] = await Promise.all([at('confirmed'), at('unconfirmed')]);
+    return { confirmed, unconfirmed, spendable: confirmed + unconfirmed };
+  }
+
   async fundedAt(address: string, minSats: number): Promise<{ txid: string; rawTx: string } | undefined> {
     try {
       const res = await fetch(`https://api.whatsonchain.com/v1/bsv/${this.network}/address/${address}/unspent`);
       if (!res.ok) return undefined;
-      const utxos = (await res.json()) as { tx_hash: string; value: number }[];
-      // Largest first: if a trader somehow paid twice into the same destination, reuse the one that
-      // actually covers the quote rather than the one that happens to be first.
-      const hit = utxos.filter((u) => u.value >= minSats).sort((a, b) => b.value - a.value)[0];
+      const utxos = (await res.json()) as { tx_hash: string; value: number; isSpentInMempoolTx?: boolean }[];
+      // Largest first, and never one already being spent in the mempool — that output is gone, it
+      // just has not been mined away yet.
+      const hit = utxos
+        .filter((u) => u.value >= minSats && u.isSpentInMempoolTx !== true)
+        .sort((a, b) => b.value - a.value)[0];
       if (!hit) return undefined;
       const rawTx = await this.rawTx(hit.tx_hash);
       return rawTx ? { txid: hit.tx_hash, rawTx } : undefined;

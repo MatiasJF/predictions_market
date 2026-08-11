@@ -516,6 +516,10 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     POOL, not the trader, so anyone could sell shares somebody else had bought and be owed real money for a
     position they never held. Found from a UI report of "close a position is not working". Bounded in `fill()`
     before any state changes; the UI states what you hold.
+  - ● **MAINNET-014 — the wallet balance overstated itself while a spend was pending (ADR-055).** Summing
+    unspent outputs counts both the inputs a mempool transaction is spending and the change it creates; the
+    panel read 405,270 against a real 198,615 right after two deploys. Now `confirmed + net unconfirmed` from
+    the chain, with the pending leg shown separately. Verified against the live address, not only a mock.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

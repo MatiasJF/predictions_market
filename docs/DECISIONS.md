@@ -1393,3 +1393,23 @@ first when a change appears to have no effect.
   unavailable (*"nothing to sell on YES"*, *"you only hold 2 YES"*) rather than offering a button that fails.
 - 250 workspace tests, typecheck and build clean. Checked the seeded demo data: no trader ended up net short, so
   nothing needs unwinding.
+
+## ADR-055 · A balance must count money already on its way out (MAINNET-014) · Accepted · 2026-08-11
+- `/wallet/balance` summed the address's unspent outputs. That **overstates it whenever a spend is pending**,
+  because the list still contains the inputs the mempool transaction is spending *and* the change it creates, so
+  both are counted. Immediately after two mainnet deploys costing 8,148 sat the operator's panel read
+  **405,270 sat against a real 198,615** — and it is reassuring at precisely the wrong moment, since an operator
+  reads that number to decide whether to authorize the next spend.
+- Fix: ask the chain rather than re-deriving it. WhatsOnChain reports `unconfirmed` as a **net** delta —
+  negative while a spend is in flight — so `confirmed + unconfirmed` is self-correcting with no enumeration and
+  no de-duplication. `ChainCheck.balanceOf` is the new capability; the engine's UTXO sum remains the fallback
+  when no chain check is configured (a `local` daemon has none).
+- The operator strip now shows the pending leg separately when there is one, so a balance dropping without a
+  confirmation is explained rather than mysterious.
+- `fundedAt` gained the same discipline: it now skips UTXOs flagged `isSpentInMempoolTx`. Selecting one would
+  have built a transaction spending an output that is already gone.
+- Verified twice, because a mock can prove the arithmetic but not that the endpoint paths and field names are
+  real: three offline tests using the actual numbers from this incident, plus a live check behind
+  `PM_CHAIN_E2E=1` that read the operator's own address — confirmed 198,507, pending 0, spendable 198,507,
+  matching the chain.
+- 254 workspace tests, typecheck and build clean.

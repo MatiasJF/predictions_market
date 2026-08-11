@@ -100,6 +100,13 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         <div className="opstat">
           <span className="opstat-label">funding wallet</span>
           <span className="num strong">{balance ? `${sats(balance.balance_sats)} sat` : '—'}</span>
+          {/*
+            Money already committed to a transaction in the mempool. The headline figure nets it out;
+            showing it separately explains why the number just dropped without a confirmation.
+          */}
+          {!!balance?.pending_sats && (
+            <span className="tiny warning-text num">{sats(balance.pending_sats)} sat in flight</span>
+          )}
         </div>
         <div className="opstat">
           <span className="opstat-label">awaiting sign-off</span>
