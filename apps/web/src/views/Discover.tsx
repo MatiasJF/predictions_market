@@ -12,7 +12,7 @@ import { StakeSheet } from './StakeSheet';
  * open and forming a view quickly. Picking a side opens the stake sheet with that side chosen; it
  * does not buy anything.
  */
-export function Discover({ signer, onOpen }: { signer?: Signer; onOpen: (id: number) => void }) {
+export function Discover({ signer, onOpen, isMainnet }: { signer?: Signer; onOpen: (id: number) => void; isMainnet: boolean }) {
   const [markets] = usePoll<any[]>(() => api.markets(), []);
   const [picked, setPicked] = useState<{ market: any; side: 'yes' | 'no' } | undefined>();
   const histories = useHistories(markets);
@@ -71,7 +71,7 @@ export function Discover({ signer, onOpen }: { signer?: Signer; onOpen: (id: num
         onClose={() => setPicked(undefined)}
         market={picked?.market}
         side={picked?.side ?? 'yes'}
-        signer={signer}
+        signer={signer} isMainnet={isMainnet}
       />
     </div>
   );

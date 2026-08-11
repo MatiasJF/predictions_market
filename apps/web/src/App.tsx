@@ -147,8 +147,8 @@ export function App() {
               onBack={() => setMarketId(undefined)} />
         ) : (
           <>
-            {tab === 'discover' && <Discover signer={signer} onOpen={setMarketId} />}
-            {tab === 'markets' && <Markets onOpen={setMarketId} signer={signer} />}
+            {tab === 'discover' && <Discover signer={signer} onOpen={setMarketId} isMainnet={isMainnet} />}
+            {tab === 'markets' && <Markets onOpen={setMarketId} signer={signer} isMainnet={isMainnet} />}
             {tab === 'positions' && <Positions identity={identity} onOpen={setMarketId} />}
             {tab === 'operator' && <Operator network={network} authRequired={health?.operator_auth === true} />}
           </>

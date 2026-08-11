@@ -15,7 +15,7 @@ type Filter = 'open' | 'resolved' | 'all';
  * costs nothing in safety: the circles open the stake sheet with a side chosen, and the sheet still
  * routes through the wallet's own approval.
  */
-export function Markets({ onOpen, signer }: { onOpen: (id: number) => void; signer?: Signer }) {
+export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) => void; signer?: Signer; isMainnet: boolean }) {
   const [markets, err] = usePoll<any[]>(() => api.markets(), []);
   const [filter, setFilter] = useState<Filter>('open');
   const [q, setQ] = useState('');
@@ -137,7 +137,7 @@ export function Markets({ onOpen, signer }: { onOpen: (id: number) => void; sign
 
       <StakeSheet
         open={!!picked} onClose={() => setPicked(undefined)}
-        market={picked?.market} side={picked?.side ?? 'yes'} signer={signer}
+        market={picked?.market} side={picked?.side ?? 'yes'} signer={signer} isMainnet={isMainnet}
       />
     </div>
   );

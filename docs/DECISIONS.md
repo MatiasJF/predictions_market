@@ -1413,3 +1413,19 @@ first when a change appears to have no effect.
   `PM_CHAIN_E2E=1` that read the operator's own address — confirmed 198,507, pending 0, spendable 198,507,
   matching the chain.
 - 254 workspace tests, typecheck and build clean.
+
+## ADR-056 · Show the transaction, not the status word (UI-019) · Accepted · 2026-08-11
+- Direction from the operator, and it is the right one for a demo: *"in receipts do not say not broadcasted,
+  just show the WoC receipt and when settled show the settled batch"*. Nobody watching a demo is going to read
+  about how the settlement layer works; they want to see that their money did something real.
+- **Receipts.** The "not yet on chain" pill is gone. A row now carries its **receipt** link from the moment the
+  trader pays, and a **settled batch** link once the market writes it to the chain. The links *are* the status:
+  their presence says more than the vocabulary did, and neither phrase is internal jargon.
+- **The moment after paying.** The sheet now ends on a success state that REPLACES the form — a tick, the
+  amount that left the wallet, what the trader now holds, and a link to their own transaction on a public
+  explorer. Previously this was a line of text under a form they had to re-read. Someone who has just sent money
+  has exactly one question, and it deserves the whole screen rather than a footnote.
+- The txid is derived from the transaction the client already holds, so the proof costs no extra request.
+- Off mainnet it offers no link and says why, rather than presenting a dead one — the same rule as everywhere
+  else, and worth keeping even in the screen most tempted to look impressive.
+- 256 workspace tests, typecheck and build clean.

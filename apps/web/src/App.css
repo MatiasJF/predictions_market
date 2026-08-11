@@ -215,3 +215,15 @@
   border-top: 1px solid var(--border);
   padding-top: var(--space-4);
 }
+
+/* --- the moment after paying ---------------------------------------------------------------------- */
+.stake-done { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; padding: var(--space-4) 0; }
+.stake-done-mark {
+  width: 64px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--positive-soft); color: var(--positive);
+  font-size: 30px; font-weight: var(--weight-bold);
+}
+.stake-done-amount { font-size: var(--text-3xl); font-weight: var(--weight-bold); letter-spacing: -0.03em; }
+.stake-done-amount small { font-size: 0.34em; color: var(--text-subtle); margin-left: var(--space-1); }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Signer } from '../signer';
-import { AmountPad, Button, KeyValue, Sheet, StatusMessage, type Status } from '../ui';
+import { AmountPad, Button, KeyValue, Sheet, StatusMessage, TxLink, type Status } from '../ui';
 
 /**
  * The one place a stake is entered and placed, used by every route into a trade — the deck, a market
@@ -18,16 +18,18 @@ import { AmountPad, Button, KeyValue, Sheet, StatusMessage, type Status } from '
  * signs with its own key and nothing else stands between a click and a broadcast.
  */
 export function StakeSheet({
-  open, onClose, market, side, signer, onFilled,
+  open, onClose, market, side, signer, isMainnet, onFilled,
 }: {
   open: boolean; onClose: () => void; market: any; side: 'yes' | 'no';
-  signer?: Signer; onFilled?: () => void;
+  signer?: Signer; isMainnet?: boolean; onFilled?: () => void;
 }) {
   const [units, setUnits] = useState(1);
   const [quote, setQuote] = useState<any>();
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<'idle' | 'quoting' | 'approving' | 'filling'>('idle');
   const [msg, setMsg] = useState<Status | undefined>();
+  // The transaction the trader just made. Kept so the success state can point straight at it.
+  const [done, setDone] = useState<{ txid: string; sats: number; units: number } | undefined>();
 
   // Re-price whenever the size or side changes. The LMSR price moves with every other fill, so a
   // quote is a snapshot, not a promise — which is exactly why the daemon re-checks it at fill time.
@@ -38,7 +40,7 @@ export function StakeSheet({
     return () => { live = false; };
   }, [open, market?.id, side, units]);
 
-  useEffect(() => { if (open) { setMsg(undefined); setUnits(1); } }, [open]);
+  useEffect(() => { if (open) { setMsg(undefined); setDone(undefined); setUnits(1); } }, [open]);
 
   const devKey = signer?.kind === 'local';
 
@@ -77,12 +79,10 @@ export function StakeSheet({
         trader, side, action: 'buy', units, nonce, sig, sigScheme,
         intentId: intent.intent_id, paymentTx,
       });
-      setMsg({
-        tone: 'positive',
-        text: intent.already_paid
-          ? `filled — receipt #${r.receipt.seq}, using the ${r.receipt.costSats} sat you had already paid`
-          : `filled — receipt #${r.receipt.seq}, paid ${r.receipt.costSats} sat`,
-      });
+      // The txid comes from the transaction we already hold — no extra request, and it is the one
+      // thing a person wants immediately after paying: proof, that they can go and look at.
+      const { Transaction } = await import('@bsv/sdk');
+      setDone({ txid: Transaction.fromHex(paymentTx).id('hex') as string, sats: r.receipt.costSats, units });
       onFilled?.();
     } catch (e) {
       setMsg({ tone: 'danger', text: e instanceof Error ? e.message : String(e) });
@@ -98,8 +98,10 @@ export function StakeSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title={`Back ${side.toUpperCase()}`}
-      footer={
+      title={done ? 'Done' : `Back ${side.toUpperCase()}`}
+      footer={done ? (
+        <Button variant="primary" tone="accent" size="lg" full onClick={onClose}>Done</Button>
+      ) : (
         <>
           <Button
             variant="primary" tone={side === 'yes' ? 'positive' : 'negative'} size="lg" full
@@ -118,8 +120,32 @@ export function StakeSheet({
             </p>
           )}
         </>
-      }
+      )}
     >
+      {done ? (
+        /*
+          The moment that sells this product. Someone has just paid from their own wallet and the
+          only question in their head is "did that really happen?" — so the answer is a tick, the
+          amount, what they now hold, and a link to their transaction on a public explorer. Not a
+          line of status text under a form they have to re-read.
+        */
+        <div className="stake-done">
+          <span className="stake-done-mark" aria-hidden="true">✓</span>
+          <div className="stake-done-amount num">{done.sats.toLocaleString()}<small> sat</small></div>
+          <p className="muted">
+            You now hold <b>{done.units} {side.toUpperCase()}</b> in this market.
+          </p>
+          <p className="tiny muted">{market.question}</p>
+          <TxLink txid={done.txid} isMainnet={!!isMainnet} label="See your transaction" />
+          {!isMainnet && (
+            <p className="tiny subtle">
+              This run is local: the payment was built and verified exactly as on mainnet, but not broadcast,
+              so there is nothing to look up.
+            </p>
+          )}
+        </div>
+      ) : (
+      <>
       <p className="market-question">{market.question}</p>
 
       <AmountPad
@@ -142,6 +168,8 @@ export function StakeSheet({
         Your wallet will ask you to approve the stake. It leaves your balance and is paid to this market;
         the fill only exists once that payment is on the network.
       </p>
+      </>
+      )}
     </Sheet>
   );
 }

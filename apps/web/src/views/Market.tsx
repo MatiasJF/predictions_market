@@ -307,16 +307,19 @@ export function Market({
                     {r.action} {shares(r.shares)} {r.side.toUpperCase()}
                   </span>
                   <span className="tiny muted num">@{r.price_sats} sat</span>
-                  {r.settled
-                    ? <Pill tone="positive" icon="✓">settled</Pill>
-                    : <Pill tone="warning" icon="◷">not yet on chain</Pill>}
-                  {/* Your money, and where it went. The settlement link appears once the batch lands. */}
                   {/*
-                    Keyed on the TRANSACTION's own network, not the daemon's. One database can hold
-                    both rehearsed and real transactions, and only the real ones exist on an explorer.
+                    The links ARE the status. This row used to carry a "not yet on chain" pill, which
+                    is internal vocabulary for something the trader can simply see: the receipt exists
+                    from the moment they pay, and the settled batch appears when the market writes it
+                    to the chain. Two links tell that story without a word of jargon.
+
+                    Keyed on each TRANSACTION's own network, not the daemon's, because one database
+                    can hold both rehearsed and real ones and only the real ones exist on an explorer.
                   */}
-                  <TxLink txid={r.payment_txid} isMainnet={r.payment_network === 'mainnet'} label="your payment" compact />
-                  <TxLink txid={r.settle_txid} isMainnet={r.settle_network === 'mainnet'} label="settlement" compact />
+                  <TxLink txid={r.payment_txid} isMainnet={r.payment_network === 'mainnet'} label="receipt" compact />
+                  {r.settled && (
+                    <TxLink txid={r.settle_txid} isMainnet={r.settle_network === 'mainnet'} label="settled batch" compact />
+                  )}
                 </div>
               ))}
             </div>
@@ -326,7 +329,7 @@ export function Market({
 
       <StakeSheet
         open={!!staking} onClose={() => setStaking(undefined)}
-        market={market} side={staking ?? 'yes'} signer={signer}
+        market={market} side={staking ?? 'yes'} signer={signer} isMainnet={isMainnet}
       />
     </div>
   );
