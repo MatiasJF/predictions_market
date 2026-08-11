@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, EmptyState, Pill, TxLink } from '../ui';
+import { Button, Card, EmptyState, Pill, TxLink, Icon} from '../ui';
 
 /**
  * Every transaction this daemon has put on chain, with the FULL txid.
@@ -36,7 +36,7 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
       testId="panel-txlog"
     >
       {sent.length === 0 ? (
-        <EmptyState icon="◇" title="Nothing broadcast yet"
+        <EmptyState icon={<Icon name="inbox" size={28} />} title="Nothing broadcast yet"
           hint="Authorized actions appear here with their full transaction id." />
       ) : (
         <>
@@ -61,7 +61,7 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
                   <code>{b.txid}</code>
                   <Button variant="link" size="sm" onClick={() => void copy(b.txid)}
                     aria-label={`Copy transaction id ${b.txid}`}>
-                    {copied === b.txid ? 'copied ✓' : 'copy'}
+                    {copied === b.txid ? <><Icon name="check" size={12} /> copied</> : 'copy'}
                   </Button>
                   {/* Per row: a local rehearsal and a real broadcast look identical apart from this. */}
                   <TxLink txid={b.txid} isMainnet={b.network === 'mainnet'} />

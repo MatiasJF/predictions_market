@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Signer } from '../signer';
-import { AmountPad, Button, KeyValue, Sheet, StatusMessage, TxLink, type Status } from '../ui';
+import { AmountPad, Button, Icon, KeyValue, Sheet, StatusMessage, TxLink, type Status } from '../ui';
 
 /**
  * The one place a stake is entered and placed, used by every route into a trade — the deck, a market
@@ -130,7 +130,7 @@ export function StakeSheet({
           line of status text under a form they have to re-read.
         */
         <div className="stake-done">
-          <span className="stake-done-mark" aria-hidden="true">✓</span>
+          <span className="stake-done-mark"><Icon name="check" size={30} /></span>
           <div className="stake-done-amount num">{done.sats.toLocaleString()}<small> sat</small></div>
           <p className="muted">
             You now hold <b>{done.units} {side.toUpperCase()}</b> in this market.

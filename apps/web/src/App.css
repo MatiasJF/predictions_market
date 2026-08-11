@@ -223,7 +223,28 @@
   display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius-full);
   background: var(--positive-soft); color: var(--positive);
-  font-size: 30px; font-weight: var(--weight-bold);
+  /* Holds an <Icon>, not a glyph — the box sizes it, the stroke is the mark. */
 }
 .stake-done-amount { font-size: var(--text-3xl); font-weight: var(--weight-bold); letter-spacing: -0.03em; }
 .stake-done-amount small { font-size: 0.34em; color: var(--text-subtle); margin-left: var(--space-1); }
+
+/* --- market facts ---------------------------------------------------------------------------------
+   #8 · deployed · b=20 · pool v0 used to be `tiny subtle`: the smallest type in the smallest-contrast
+   token, which over the ambient wash was effectively invisible. Reported as "too low contrast and
+   they are not seen".
+
+   Each fact now sits on its own surface at --text-muted, which clears 4.5:1 in both themes, and the
+   label is spelled out — "liquidity b=20" says something, "b=20" is a note to whoever wrote it. */
+.meta-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.meta-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-3);
+  white-space: nowrap;
+}
+.meta-chip b { color: var(--text-strong); font-weight: var(--weight-semibold); }

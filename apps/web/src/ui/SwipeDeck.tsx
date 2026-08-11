@@ -12,6 +12,7 @@
 // Gestures are never the only route either: the two buttons underneath do the same thing, they are
 // in the tab order, and the whole deck is operable from a keyboard. A swipe is a shortcut for people
 // who have hands free, not a toll gate.
+import { Icon } from './Icon';
 import { useRef, useState, type ReactNode } from 'react';
 import './SwipeDeck.css';
 
@@ -102,15 +103,15 @@ export function SwipeDeck({
 
       <div className="deck-actions">
         <button type="button" className="deck-btn deck-btn-no" onClick={() => choose('no')}>
-          <span aria-hidden="true">✕</span>
+          <Icon name="x" size={20} />
           <span className="sr-only">Back NO on this market</span>
         </button>
         <button type="button" className="deck-btn deck-btn-skip" onClick={skip}>
-          <span aria-hidden="true">↷</span>
+          <Icon name="rotateCcw" size={18} />
           <span className="sr-only">Skip this market</span>
         </button>
         <button type="button" className="deck-btn deck-btn-yes" onClick={() => choose('yes')}>
-          <span aria-hidden="true">✓</span>
+          <Icon name="check" size={20} />
           <span className="sr-only">Back YES on this market</span>
         </button>
       </div>

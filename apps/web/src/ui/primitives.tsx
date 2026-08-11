@@ -6,6 +6,7 @@
 //   2. Anything that conveys status carries an icon and words as well as a colour. Colour alone
 //      fails for ~8% of men, fails in bright sun, and fails on a projector — which is exactly where
 //      this gets demoed.
+import { Icon } from './Icon';
 import type { CSSProperties, ReactNode } from 'react';
 import './primitives.css';
 
@@ -112,7 +113,9 @@ export function StatusMessage({ status }: { status?: Status }) {
       role={isError ? 'alert' : 'status'}
       aria-live={isError ? 'assertive' : 'polite'}
     >
-      <span aria-hidden="true" className="status-icon">{isError ? '✕' : status.tone === 'warning' ? '!' : '✓'}</span>
+      <span className="status-icon">
+        <Icon name={isError ? 'x' : status.tone === 'warning' ? 'alert' : 'check'} size={13} />
+      </span>
       <span>{status.text}</span>
     </p>
   );
@@ -127,7 +130,9 @@ export function Callout({
 }: { tone?: Tone; title: ReactNode; children?: ReactNode; testId?: string }) {
   return (
     <div className={`callout tone-${tone}`} data-testid={testId}>
-      <span className="callout-icon" aria-hidden="true">{tone === 'danger' ? '⚠' : tone === 'positive' ? '✓' : 'i'}</span>
+      <span className="callout-icon">
+        <Icon name={tone === 'danger' ? 'alert' : tone === 'positive' ? 'check' : 'zap'} size={15} />
+      </span>
       <div className="grow">
         <b>{title}</b>
         {children && <div className="tiny muted callout-body">{children}</div>}
@@ -140,7 +145,7 @@ export function Callout({
    EmptyState — what a list says when it has nothing.
    `My receipts` used to render an empty box with no copy at all.
    --------------------------------------------------------------------------------------------- */
-export function EmptyState({ icon = '○', title, hint }: { icon?: ReactNode; title: ReactNode; hint?: ReactNode }) {
+export function EmptyState({ icon = <Icon name="inbox" size={28} />, title, hint }: { icon?: ReactNode; title: ReactNode; hint?: ReactNode }) {
   return (
     <div className="empty">
       <span className="empty-icon" aria-hidden="true">{icon}</span>

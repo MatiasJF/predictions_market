@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
-import { AnimatedNumber, EmptyState, HowItWorks, Pill, PriceBar, Sparkline, SwipeDeck } from '../ui';
+import { AnimatedNumber, EmptyState, HowItWorks, Pill, PriceBar, Sparkline, SwipeDeck, Icon} from '../ui';
 import { useHistories } from '../useHistories';
 import { StakeSheet } from './StakeSheet';
 
@@ -33,7 +33,7 @@ export function Discover({ signer, onOpen, isMainnet }: { signer?: Signer; onOpe
         onPick={(i, side) => setPicked({ market: tradable[i], side })}
         onEmpty={
           <EmptyState
-            icon="◎"
+            icon={<Icon name="search" size={28} />}
             title={markets && markets.length > 0 ? "You've seen everything open" : 'No markets yet'}
             hint={markets && markets.length > 0
               ? 'Deploy a new one from the Operator tab, or browse the full list under Markets.'
@@ -61,10 +61,10 @@ export function Discover({ signer, onOpen, isMainnet }: { signer?: Signer; onOpe
             <Sparkline values={histories[m.id] ?? []} payoutUnit={m.payoutUnit} height={56}
               label={`YES price history for market ${m.id}`} />
 
-            <div className="deck-foot tiny subtle">
-              <span>{m.payoutUnit} sat per winning share</span>
+            <div className="deck-foot">
+              <span className="meta-chip">pays <b>{m.payoutUnit.toLocaleString()} sat</b> per winning share</span>
               <button type="button" className="chip" onClick={(e) => { e.stopPropagation(); onOpen(m.id); }}>
-                details ↗
+                details <Icon name="externalLink" size={13} />
               </button>
             </div>
           </>

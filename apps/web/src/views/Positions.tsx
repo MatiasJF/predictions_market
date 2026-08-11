@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, usePoll } from '../api';
-import { Avatar, Button, Card, EmptyState, Pill, Skeleton } from '../ui';
+import { Avatar, Button, Card, EmptyState, Pill, Skeleton, Icon} from '../ui';
 
 const WAD = 10n ** 18n;
 const shares = (s: string) => Number(BigInt(s) / WAD);
@@ -65,7 +65,7 @@ export function Positions({ identity, onOpen }: { identity: string; onOpen: (id:
 
       {rows?.length === 0 && (
         <Card>
-          <EmptyState icon="◇" title="You hold nothing yet"
+          <EmptyState icon={<Icon name="inbox" size={28} />} title="You hold nothing yet"
             hint="Back a side from Discover or Markets and your positions show up here." />
         </Card>
       )}
@@ -91,8 +91,8 @@ export function Positions({ identity, onOpen }: { identity: string; onOpen: (id:
                   </button>
                   {claim?.remittance && (
                     claim.mined_at
-                      ? <Pill tone="positive" icon="✓">claimable</Pill>
-                      : <Pill tone="warning" icon="◷">waiting for a block</Pill>
+                      ? <Pill tone="positive" icon={<Icon name="check" size={13} />}>claimable</Pill>
+                      : <Pill tone="warning" icon={<Icon name="clock" size={13} />}>waiting for a block</Pill>
                   )}
                   <Button variant="link" size="sm" onClick={() => onOpen(market.id)}>open</Button>
                 </div>

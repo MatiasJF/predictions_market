@@ -50,12 +50,15 @@ describe('Sparkline', () => {
     render(<Sparkline values={[500, 562, 620]} payoutUnit={1000} />);
     const img = screen.getByRole('img');
     expect(img.getAttribute('aria-label')).toMatch(/500 to 620/);
-    expect(screen.getByText(/▲ 120/)).toBeTruthy();
+    // Asserted on the accessible text, not on a glyph. The direction used to be a ▲ — which is a
+    // picture, not a word, and was announced as "black up-pointing triangle". It is now a real word,
+    // visually hidden behind the icon, and this is the check that keeps it there.
+    expect(screen.getByTestId('spark-delta').textContent).toMatch(/up\s*120/);
   });
 
   it('marks a fall as a fall', () => {
     render(<Sparkline values={[620, 500]} payoutUnit={1000} />);
-    expect(screen.getByText(/▼ 120/)).toBeTruthy();
+    expect(screen.getByTestId('spark-delta').textContent).toMatch(/down\s*120/);
   });
 
   it('scales to the market\'s own range, so a small move is still visible', () => {

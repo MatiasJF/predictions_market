@@ -8,7 +8,7 @@ import { Market } from './views/Market';
 import { Operator } from './views/Operator';
 import { Discover } from './views/Discover';
 import { Positions } from './views/Positions';
-import { Button, Callout, Card, Pill, TabBar } from './ui';
+import { Button, Callout, Card, Icon, Pill, TabBar } from './ui';
 import { effectiveTheme, useSurface, useTheme } from './theme';
 import './App.css';
 
@@ -19,10 +19,10 @@ type Tab = 'discover' | 'markets' | 'positions' | 'operator';
  * identical either way. Four destinations is the ceiling for a tab bar and we are exactly at it.
  */
 const TABS = [
-  { value: 'discover' as const, label: 'Discover', icon: '◈' },
-  { value: 'markets' as const, label: 'Markets', icon: '◉' },
-  { value: 'positions' as const, label: 'Positions', icon: '◎' },
-  { value: 'operator' as const, label: 'Operator', icon: '⚙' },
+  { value: 'discover' as const, label: 'Discover', icon: <Icon name="compass" size={20} /> },
+  { value: 'markets' as const, label: 'Markets', icon: <Icon name="layers" size={20} /> },
+  { value: 'positions' as const, label: 'Positions', icon: <Icon name="wallet" size={20} /> },
+  { value: 'operator' as const, label: 'Operator', icon: <Icon name="settings" size={20} /> },
 ];
 
 export function App() {
@@ -72,14 +72,21 @@ export function App() {
           <div className="row grow">
             <span className="brand">BSV Prediction Market</span>
             {/*
-              The network badge is the most important pixel on the page. On mainnet every authorize
-              spends real satoshis, so it is stated as danger, in words, with an icon — never by
-              colour alone, which is unreadable on a projector and to a colour-blind viewer.
+              A connection state, not a warning (UI-021). This badge was red and said "MAINNET · real
+              money", with a matching red banner underneath. The operator's instruction was to drop
+              both, and it is right for a product: everyone using this knows the money is real, and an
+              alarm that fires on every screen forever is an alarm nobody reads.
+
+              The caution did not disappear, it moved to where it means something. The sign-off queue
+              still names the exact amount and still requires the slider, because that gate is about a
+              specific spend at a specific moment rather than a standing condition. Either way the
+              state is stated in words with an icon, never by colour alone — colour alone is
+              unreadable on a projector and to a colour-blind viewer.
             */}
             {network && (
               isMainnet
-                ? <Pill tone="danger" icon="⚠">MAINNET · real money</Pill>
-                : <Pill tone="neutral" icon="○">{network} · nothing is broadcast</Pill>
+                ? <Pill tone="positive" icon={<Icon name="check" size={13} />}>mainnet connected</Pill>
+                : <Pill tone="neutral">{network} · nothing is broadcast</Pill>
             )}
           </div>
 
@@ -94,7 +101,8 @@ export function App() {
               title={`Theme: ${theme ?? 'following your system'}`}
               onClick={() => setTheme(theme === null ? (shown === 'dark' ? 'light' : 'dark') : theme === 'dark' ? 'light' : null)}
             >
-              {theme === null ? '◐ auto' : theme === 'dark' ? '● dark' : '○ light'}
+              <Icon name={theme === null ? 'settings' : theme === 'dark' ? 'circle' : 'globe'} size={13} />
+              {theme === null ? 'auto' : theme === 'dark' ? 'dark' : 'light'}
             </Button>
             <Button
               variant="link" tone="neutral" size="sm"
@@ -102,21 +110,14 @@ export function App() {
               title={surface === 'glass' ? 'Frosted surfaces' : 'Solid surfaces'}
               onClick={() => setSurface(surface === 'glass' ? 'solid' : 'glass')}
             >
-              {surface === 'glass' ? '◈ glass' : '◇ solid'}
+              <Icon name={surface === 'glass' ? 'layers' : 'circle'} size={13} />
+              {surface === 'glass' ? 'glass' : 'solid'}
             </Button>
           </nav>
         </div>
       </header>
 
       <main className="wrap stack">
-        {isMainnet && (
-          <Callout tone="danger" title="This daemon is pointed at MAINNET.">
-            Authorizing anything in the Operator tab spends <b>real satoshis</b> and cannot be undone. To
-            experiment safely, restart the daemon with <code>PM_NETWORK=local</code> — it builds and verifies
-            the same real Script but broadcasts nothing.
-          </Callout>
-        )}
-
         {walletAvailable === false && (
           <Callout tone="warning" title="No BSV wallet detected — using a development key held in this browser.">
             Orders are still signed and verified, but this is <b>not production custody</b>. Install a BRC-100
@@ -125,7 +126,7 @@ export function App() {
         )}
 
         <div className="identity">
-          <Pill tone={signer?.kind === 'wallet' ? 'positive' : 'warning'} icon={signer?.kind === 'wallet' ? '✓' : '⚑'}>
+          <Pill tone={signer?.kind === 'wallet' ? 'positive' : 'warning'} icon={signer?.kind === 'wallet' ? <Icon name="check" size={13} /> : <Icon name="alert" size={13} />}>
             {signer?.kind === 'wallet' ? 'real wallet' : 'dev key'}
           </Pill>
           <code className="truncate" title={identity}>{identity ? `${identity.slice(0, 24)}…` : 'connecting…'}</code>

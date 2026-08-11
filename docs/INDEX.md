@@ -49,11 +49,13 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Bonding-curve preview + operator exposure (`b`)** | `apps/web/src/curve.ts` |
 | **Design tokens (colour/space/type/motion, light+dark)** | `apps/web/src/styles/tokens.css` |
 | **UI primitives (Card, Button, Pill, Callout, EmptyState…)** | `apps/web/src/ui/primitives.tsx` |
+| **Icon set (inline SVG, Lucide idiom — no emoji, no dependency)** | `apps/web/src/ui/Icon.tsx` |
 | **The bonding curve made visible (`PriceBar`)** | `apps/web/src/ui/PriceBar.tsx` |
 | **Slide-to-confirm on irreversible spends** | `apps/web/src/ui/SlideToConfirm.tsx` |
 | **App chassis: tabs/rail, quick actions, sheet, amount pad** | `apps/web/src/ui/chassis.tsx` |
 | **Swipe deck (Discover) — a market as a yes/no call** | `apps/web/src/ui/SwipeDeck.tsx` |
 | **Price-history graph (from the receipt ledger)** | `apps/web/src/ui/Sparkline.tsx` |
+| **Design-token contract: theme drift, contrast floor, glyph ban** | `apps/web/test/tokens.test.ts` |
 | **Custom form controls (no native appearance)** | the FORM CONTROLS block in `apps/web/src/styles/base.css` |
 | **Seed a demo database with finished markets** | `apps/spike/src/seed-demo.ts` |
 | **What a fill actually costs (fee vs batch size)** | `apps/spike/src/measure-economics.ts` |

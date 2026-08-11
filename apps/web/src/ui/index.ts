@@ -9,3 +9,4 @@ export { Sparkline, yesSeries, type Fill } from './Sparkline';
 export { TxLink } from './TxLink';
 export { HowItWorks } from './HowItWorks';
 export { AnimatedNumber, useCountTo } from './AnimatedNumber';
+export { Icon, type IconName } from './Icon';

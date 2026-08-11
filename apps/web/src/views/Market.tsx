@@ -3,7 +3,7 @@ import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
 import {
   ActionCircle, Button, Callout, Card, EmptyState, Field, KeyValue, Pill, PriceBar, Segmented,
-  Sparkline, StatusMessage, TxLink, yesSeries, type Status,
+  Icon, Sparkline, StatusMessage, TxLink, yesSeries, type Status,
 } from '../ui';
 import { StakeSheet } from './StakeSheet';
 
@@ -100,16 +100,19 @@ export function Market({
 
   return (
     <div className="stack">
-      <Button variant="link" onClick={onBack}>← all markets</Button>
+      <Button variant="link" onClick={onBack}><Icon name="arrowLeft" size={15} /> all markets</Button>
 
       <div className="stack-sm">
         <h2>{market.question}</h2>
-        <div className="row tiny subtle">
-          <span>#{market.id}</span>
-          <Pill tone="neutral">{market.state}</Pill>
-          {market.resolution && <Pill tone="positive" icon="✓">resolved {market.resolution.toUpperCase()}</Pill>}
-          <span>b={market.bUnits}</span>
-          <span>pool v{market.pool?.version ?? '—'}</span>
+        <div className="meta-row">
+          <span className="meta-chip">market <b>#{market.id}</b></span>
+          <span className="meta-chip">{market.state}</span>
+          {market.resolution && (
+            <Pill tone="positive" icon={<Icon name="check" size={12} />}>resolved {market.resolution.toUpperCase()}</Pill>
+          )}
+          <span className="meta-chip">liquidity <b>b={market.bUnits}</b></span>
+          <span className="meta-chip">pays <b>{sats(market.payoutUnit)} sat</b> per winning share</span>
+          <span className="meta-chip">pool <b>v{market.pool?.version ?? '—'}</b></span>
         </div>
       </div>
 
@@ -150,7 +153,7 @@ export function Market({
         <Card title="Order ticket" testId="panel-order">
           {!canTrade ? (
             <EmptyState
-              icon="—"
+              icon={<Icon name="minus" size={28} />}
               title="Trading is closed"
               hint={!market.pool ? 'Pool not deployed yet.'
                 : market.pool.spendable === false ? 'Pool is unspendable by this build — trading disabled.'
@@ -160,9 +163,9 @@ export function Market({
             <div className="ticket">
               {/* Backing a side opens the ONE sheet that takes payments — same as the deck and the cards. */}
               <div className="circle-row market-actions">
-                <ActionCircle icon="↑" label={`YES ${market.prices.yes_sats}`} tone="positive"
+                <ActionCircle icon={<Icon name="trendingUp" size={22} />} label={`YES ${market.prices.yes_sats}`} tone="positive"
                   title={`Back YES at ${market.prices.yes_sats} sat`} onClick={() => setStaking('yes')} />
-                <ActionCircle icon="↓" label={`NO ${market.prices.no_sats}`} tone="negative"
+                <ActionCircle icon={<Icon name="trendingDown" size={22} />} label={`NO ${market.prices.no_sats}`} tone="negative"
                   title={`Back NO at ${market.prices.no_sats} sat`} onClick={() => setStaking('no')} />
               </div>
 
@@ -241,7 +244,7 @@ export function Market({
               <span className="tiny muted">net cost {sats(mine.netCostSats)} sat</span>
             </div>
           ) : (
-            <EmptyState icon="○" title="No position yet" hint="Buy YES or NO above to take one." />
+            <EmptyState icon={<Icon name="circle" size={28} />} title="No position yet" hint="Buy YES or NO above to take one." />
           )}
 
           {myPayout && (
@@ -261,7 +264,7 @@ export function Market({
 
               {c.remittance ? (
                 <>
-                  {!c.mined_at && <Pill tone="warning" icon="◷">waiting for a block</Pill>}
+                  {!c.mined_at && <Pill tone="warning" icon={<Icon name="clock" size={13} />}>waiting for a block</Pill>}
                   <Button
                     variant="primary" tone="accent" full
                     busy={claiming} disabled={claiming || !signer || !c.mined_at}
@@ -291,7 +294,7 @@ export function Market({
         <Card title="My receipts" aside={<Pill tone="neutral">{receipts?.count ?? 0}</Pill>} testId="panel-receipts"
           subtitle="Each fill is a signed receipt — your proof of the trade, and what the on-chain settlement is audited against.">
           {(receipts?.receipts?.length ?? 0) === 0 ? (
-            <EmptyState icon="◇" title="No fills yet" hint="Your receipts appear here the moment an order fills." />
+            <EmptyState icon={<Icon name="inbox" size={28} />} title="No fills yet" hint="Your receipts appear here the moment an order fills." />
           ) : (
             <div className="scroll">
               {(receipts?.receipts ?? []).slice().reverse().map((r: any) => (

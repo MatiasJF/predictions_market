@@ -12,6 +12,7 @@
 // 380 and a YES fill at 620 describe the same market. LMSR keeps the two exactly complementary
 // (`yes + no = payoutUnit`, proven in @pm/lmsr), so a NO price converts to the YES price by
 // subtraction with no approximation. Everything below is therefore one honest YES series.
+import { Icon } from './Icon';
 import './Sparkline.css';
 
 export interface Fill { side: string; price_sats: number }
@@ -72,8 +73,16 @@ export function Sparkline({
         <polyline className="spark-line" points={line} />
         <circle className="spark-dot" cx={pts[pts.length - 1]![0]} cy={pts[pts.length - 1]![1]} r="2" />
       </svg>
-      <span className={`spark-delta ${rising ? 'yes-text' : 'no-text'}`}>
-        {rising ? '▲' : '▼'} {Math.abs(last - first)}
+      {/*
+        Direction is stated three ways, and it has to be: colour (green/orange) is meaningless to a
+        colour-blind viewer, and the icon is decorative — an <Icon> is aria-hidden, so a screen reader
+        would otherwise read "120" with no sign attached. The word carries it. It is visually hidden
+        rather than absent so the row stays tight without the meaning going with it.
+      */}
+      <span className={`spark-delta ${rising ? 'yes-text' : 'no-text'}`} data-testid="spark-delta">
+        <Icon name={rising ? 'trendingUp' : 'trendingDown'} size={12} />
+        <span className="sr-only">{rising ? 'up' : 'down'} </span>
+        {Math.abs(last - first)}
       </span>
     </div>
   );

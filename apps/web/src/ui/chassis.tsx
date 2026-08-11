@@ -7,6 +7,7 @@
 // Responsive by structure, not by hiding things: below ~720px the navigation is a bottom tab bar
 // (where a thumb is), above it a left rail (where a pointer is). Same markup, same order, same
 // accessible names — only the CSS differs, so nothing is duplicated and nothing can drift.
+import { Icon } from './Icon';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import './chassis.css';
 
@@ -111,7 +112,7 @@ export function Sheet({
         <div className="sheet-grip" aria-hidden="true" />
         <div className="sheet-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="sheet-close" onClick={onClose} aria-label="Close"><Icon name="x" size={16} /></button>
         </div>
         <div className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}

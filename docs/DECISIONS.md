@@ -1484,3 +1484,65 @@ first when a change appears to have no effect.
   one, and labels each as winnings or sale proceeds.
 - Three tests, the load-bearing one being that the seller's own key unlocks the `pkh` their proceeds were paid
   to. 264 workspace tests, typecheck and build clean.
+
+## ADR-060
+
+**UI-021 — an icon set, a measured contrast floor, and the mainnet alarm switched off**
+
+**Date:** 2026-08-11 · **Status:** accepted · **Context:** three specific reports from the operator after
+claiming 499 sat of sale proceeds through the rebuilt UI.
+
+### The reports
+
+1. The markets search field used a 🔍 emoji where the rest of the app was moving to drawn icons.
+2. *"the red warnings for mainnet, we already know it is real money, no need to warn, just mainnet connected
+   in green."*
+3. *"the details on the markets, they are too low contrast and they are not seen: #8 / deployed / b=20 / pool v0."*
+
+### Decisions
+
+**One drawn icon set, no emoji, no dependency.** `apps/web/src/ui/Icon.tsx` — 22 paths in the Lucide idiom
+(24×24 box, 1.5 stroke, round caps), inline SVG inheriting `currentColor`, `aria-hidden` by default. Emoji and
+stray Unicode were doing icon duty throughout (🔍 ◈ ◎ ⚠ ✓ ↗ ▲ ○ ◷ ✕ ↷ ←). Each renders as a different picture
+per platform, carries its own colour so it ignores the palette, sits on its own baseline, and is announced by
+name to a screen reader. A dozen paths do not justify a package.
+
+**Mainnet is a connection state, not a standing alarm.** The red `MAINNET · real money` badge and the red
+banner under it are gone; both surfaces now show a green `mainnet connected` pill. The operator is right that
+an alarm firing on every screen forever is an alarm nobody reads. **The caution moved rather than
+disappeared** — the sign-off queue still names the exact amount and still requires the slide-to-confirm,
+because that gate is about a specific spend at a specific moment. Genuine failure states (unreachable daemon,
+rejected token, stranded pool, audit mismatch) keep `tone="danger"`; it now means *something is wrong* instead
+of *you are on mainnet*.
+
+**Contrast is arithmetic, not taste.** The unreadable row was `--text-subtle` at 12px, which measures
+**3.03:1 on white** — under the 4.5:1 floor, with no large-text exemption at that size. Nobody caught it in
+review because a palette looks fine until you ask it for a number. So:
+
+- Market facts became `.meta-chip` — `--text-muted` on `--surface-sunken` (**5.17:1** light, **7.29:1** dark),
+  each on its own surface, with the label spelled out: `liquidity b=20`, not `b=20`.
+- `--text-subtle` was **failing even the 3:1 decorative floor** in light (2.77:1 on `--surface-app`, 2.60:1 on
+  `--surface-sunken`) — found by the new test, not by the report. Darkened `#8b95a5` → `#7a8598` at the same
+  hue, worst surface now 3.21:1.
+
+### Consequences
+
+Two new standing checks in `apps/web/test/tokens.test.ts`, both mutation-verified:
+
+- **contrast** — `--text-strong` and `--text-muted` must clear 4.5:1 on all three solid surfaces in both
+  themes; `--text-subtle` must clear 3:1 and is thereby marked decoration, never prose. Glass is skipped
+  honestly: `color-mix(… transparent)` contrast depends on what shows through, which no static check knows.
+- **iconography** — no pictograph, dingbat, arrow or geometric glyph in any `.tsx`, comments excluded. A line
+  may opt out with a `glyph-ok` marker for a character that is genuinely punctuation (`2 buys → 512`), so the
+  exemption is written next to what it exempts and shows up in review.
+
+The glyph scanner strips comments **line by line, tracking block state**, after a whole-file regex silently
+lost a line and slid every reported number by one — which made the `glyph-ok` lookup read its neighbour.
+
+`Sparkline`'s direction was `▲`/`▼`. Replacing it with a decorative icon would have left a screen reader
+reading `120` with no sign, so the component gained an `.sr-only` word — direction is now stated by colour,
+icon **and** word. Its two tests asserted on the glyph and were rewritten to assert on accessible text; that
+is a test contract change, recorded here rather than made quietly. `.sr-only` also moved from the deprecated
+`clip` to `clip-path`.
+
+**277 workspace tests, typecheck and build clean.** No daemon, API, custody or money-path change.

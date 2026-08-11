@@ -3,8 +3,7 @@ import { api, operatorToken, usePoll } from '../api';
 import { TxLog } from './TxLog';
 import { previewPrice, maxLossSats } from '../curve';
 import {
-  Button, Callout, Card, EmptyState, Field, Pill, SlideToConfirm, StatusMessage, type Status,
-} from '../ui';
+  Button, Callout, Card, EmptyState, Field, Pill, SlideToConfirm, StatusMessage, type Status, Icon,} from '../ui';
 import './Operator.css';
 
 const WAD = 10n ** 18n;
@@ -88,14 +87,14 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         <div className="opstat">
           <span className="opstat-label">network</span>
           {isMainnet
-            ? <Pill tone="danger" icon="⚠">mainnet · real money</Pill>
-            : <Pill tone="neutral" icon="○">{network ?? '—'}</Pill>}
+            ? <Pill tone="positive" icon={<Icon name="check" size={13} />}>mainnet connected</Pill>
+            : <Pill tone="neutral" icon={<Icon name="circle" size={13} />}>{network ?? '—'}</Pill>}
         </div>
         <div className="opstat">
           <span className="opstat-label">operator token</span>
           {!authRequired ? <Pill tone="neutral">not required</Pill>
-            : tokenOk === true ? <Pill tone="positive" icon="✓">accepted</Pill>
-            : <Pill tone="danger" icon="✕">{token ? 'rejected' : 'required'}</Pill>}
+            : tokenOk === true ? <Pill tone="positive" icon={<Icon name="check" size={13} />}>accepted</Pill>
+            : <Pill tone="danger" icon={<Icon name="x" size={13} />}>{token ? 'rejected' : 'required'}</Pill>}
         </div>
         <div className="opstat">
           <span className="opstat-label">funding wallet</span>
@@ -139,7 +138,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
       <Card title="Sign-off queue" aside={<Pill tone={pending.length ? 'warning' : 'neutral'}>{pending.length} pending</Pill>}
         testId="panel-signoff">
         {pending.length === 0 && (
-          <EmptyState icon="✓" title="Nothing awaiting authorization"
+          <EmptyState icon={<Icon name="check" size={28} />} title="Nothing awaiting authorization"
             hint="Actions you queue below appear here before anything reaches the chain." />
         )}
 
@@ -148,8 +147,8 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
             <div className="grow">
               <div className="row">
                 <b>#{b.id} {b.kind}</b>
-                <Pill tone={isMainnet ? 'danger' : 'neutral'} icon={isMainnet ? '⚠' : '○'}>
-                  {isMainnet ? `spends ~${sats(b.spend_sats)} sat of REAL money` : `~${sats(b.spend_sats)} sat · nothing is broadcast`}
+                <Pill tone="neutral">
+                  {isMainnet ? `spends ~${sats(b.spend_sats)} sat` : `~${sats(b.spend_sats)} sat · nothing is broadcast`}
                 </Pill>
               </div>
               <div className="tiny muted">{b.summary}</div>
@@ -238,7 +237,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         </div>
         <p className="tiny muted">
           Lower <b>b</b> = a steeper curve: each bet moves the price more.{' '}
-          <b>{preview.map((p) => `${p.n} buys → ${p.price}`).join(' · ')}</b> (out of {payoutUnit} sat).{' '}
+          <b>{preview.map((p) => `${p.n} buys → ${p.price}` /* glyph-ok: an arrow in prose, not an icon */).join(' · ')}</b> (out of {payoutUnit} sat).{' '}
           It is also your exposure — the most this market can lose is <b>b · ln2 · payout</b> ≈{' '}
           <b>{sats(maxLoss)} sat</b>, which you underwrite.
         </p>
@@ -260,7 +259,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
               <span>{market.payoutUnit} sat per winning share</span>
               <span>b={market.bUnits}</span>
               <span>pool v{market.pool?.version ?? '—'}</span>
-              {market.resolution && <Pill tone="positive" icon="✓">resolved {market.resolution.toUpperCase()}</Pill>}
+              {market.resolution && <Pill tone="positive" icon={<Icon name="check" size={13} />}>resolved {market.resolution.toUpperCase()}</Pill>}
             </div>
 
             {stranded && (
@@ -307,7 +306,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         <Card title="Audit" subtitle="Does the on-chain settlement match the receipts traders actually signed?"
           testId="panel-audit">
           {!audit ? <p className="muted">—</p>
-            : audit.batches === 0 ? <EmptyState icon="○" title="Nothing settled yet" hint="Settle a batch to create something to audit." />
+            : audit.batches === 0 ? <EmptyState icon={<Icon name="circle" size={28} />} title="Nothing settled yet" hint="Settle a batch to create something to audit." />
             : (
               <>
                 <StatusMessage status={audit.ok
@@ -318,7 +317,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
                     batch #{r.batchId}: {r.receiptCount} receipts · {r.violations.length} violations ·
                     {r.rabinAttested ? ' attested' : ' not attested'}
                     {r.violations.map((v: any, i: number) => (
-                      <div key={i} className="danger-text">✕ {v.check}: {v.detail}</div>
+                      <div key={i} className="danger-text"><Icon name="x" size={13} /> {v.check}: {v.detail}</div>
                     ))}
                   </div>
                 ))}
@@ -327,7 +326,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
         </Card>
 
         <Card title="Winners" testId="panel-winners">
-          {!payout?.resolved ? <EmptyState icon="○" title="Market not resolved" hint="Resolve it to see who is owed what." /> : (
+          {!payout?.resolved ? <EmptyState icon={<Icon name="circle" size={28} />} title="Market not resolved" hint="Resolve it to see who is owed what." /> : (
             <>
               {payout.winners.length > 0 && (
                 <>
@@ -360,7 +359,7 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
                 </>
               )}
               {payout.winners.length === 0 && (payout.paid ?? []).length === 0 && (
-                <EmptyState icon="○" title="No winning positions" />
+                <EmptyState icon={<Icon name="circle" size={28} />} title="No winning positions" />
               )}
             </>
           )}

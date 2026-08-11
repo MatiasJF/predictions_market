@@ -144,3 +144,112 @@ describe('design tokens', () => {
     expect([...unknown], 'var() referencing a token nothing declares').toEqual([]);
   });
 });
+
+/**
+ * UI-021 — contrast, measured rather than eyeballed.
+ *
+ * The market fact row (`#8 · deployed · b=20 · pool v0`) shipped as `--text-subtle` at 12px and the
+ * report was blunt: "they are too low contrast and they are not seen". Measured afterwards it is
+ * 3.03:1 on white — under the 4.5:1 floor, and 12px is not large text, so there is no exemption.
+ * Nobody spotted it in review because a palette looks fine until you ask it for a number.
+ *
+ * So the floor is now arithmetic. `--text-strong` and `--text-muted` are the two colours anything a
+ * person must READ is allowed to use, and both must clear 4.5:1 on every surface, in both themes.
+ * `--text-subtle` is held to 3:1 and is for decoration — it is deliberately NOT cleared for prose.
+ *
+ * Glass surfaces are skipped: they are `color-mix(... transparent)`, so their effective contrast
+ * depends on whatever shows through, which no static check can know. The solid palette underneath is
+ * what this pins down.
+ */
+const HEX = /^#([0-9a-f]{6})$/i;
+function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * ch[0]! + 0.7152 * ch[1]! + 0.0722 * ch[2]!;
+}
+const contrast = (a: string, b: string) => {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x! + 0.05) / (y! + 0.05);
+};
+
+describe('contrast', () => {
+  const themes = { light: ':root {', dark: ':root[data-theme="dark"]' };
+  const valueOf = (sel: string, name: string) =>
+    blockOf(tokensCss, sel).match(new RegExp(`${name}\\s*:\\s*([^;]+);`))?.[1]?.trim() ?? '';
+
+  for (const [theme, sel] of Object.entries(themes)) {
+    for (const surface of ['--surface-app', '--surface-raised', '--surface-sunken']) {
+      const bg = valueOf(sel, surface);
+      if (!HEX.test(bg)) continue;
+
+      it(`${theme}: readable text clears 4.5:1 on ${surface}`, () => {
+        for (const fg of ['--text-strong', '--text-muted']) {
+          const c = contrast(valueOf(sel, fg), bg);
+          expect(c, `${fg} on ${surface} in ${theme} is ${c.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      });
+
+      it(`${theme}: --text-subtle clears 3:1 on ${surface} — decoration, never prose`, () => {
+        const c = contrast(valueOf(sel, '--text-subtle'), bg);
+        expect(c, `--text-subtle on ${surface} in ${theme} is ${c.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+});
+
+/**
+ * UI-021 — no emoji or stray Unicode glyphs in the rendered UI.
+ *
+ * They were used as icons throughout (🔍 ◈ ◎ ⚠ ✓ ↗). Each renders as a different picture per platform,
+ * carries its own colour so it ignores the palette, sits on its own baseline, and gets announced by
+ * name to a screen reader. `Icon.tsx` replaced them. This stops them coming back one convenient
+ * character at a time.
+ *
+ * Comments are stripped first — the ones explaining WHY the glyphs went are allowed to name them.
+ * A line may opt out with a `glyph-ok` marker, for the rare character that is genuinely punctuation
+ * rather than an icon ("2 buys → 512"). The marker is checked against the RAW line, so the exemption
+ * has to be written down next to the thing it exempts and shows up in review.
+ */
+describe('iconography', () => {
+  it('uses drawn icons, not glyphs, in every component', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(join(dir, e.name));
+        else if (e.name.endsWith('.tsx')) files.push(join(dir, e.name));
+      }
+    };
+    walk(SRC);
+
+    // Pictographs, dingbats, arrows and the geometric shapes that were standing in for icons.
+    const GLYPH = /[\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2460}-\u{27BF}\u{25A0}-\u{25FF}\u{2B00}-\u{2BFF}]/u;
+    const offenders: string[] = [];
+    for (const f of files) {
+      // Line-by-line, tracking block-comment state, so the index of a stripped line is ALWAYS the
+      // index of the raw line it came from. A whole-file regex looked equivalent and silently lost a
+      // line, which slid every reported number by one and made the `glyph-ok` lookup read its neighbour.
+      const rawLines = readFileSync(f, 'utf8').split('\n');
+      let inBlock = false;
+      const lines = rawLines.map((raw) => {
+        let out = '';
+        for (let i = 0; i < raw.length; i++) {
+          if (inBlock) {
+            if (raw.startsWith('*/', i)) { inBlock = false; i++; }
+          } else if (raw.startsWith('/*', i)) { inBlock = true; i++; }
+          else if (raw.startsWith('//', i)) break;
+          else out += raw[i];
+        }
+        return out;
+      });
+
+      for (const [i, line] of lines.entries()) {
+        if (rawLines[i]?.includes('glyph-ok')) continue;
+        if (GLYPH.test(line)) offenders.push(`${f.split('/').pop()}:${i + 1} ${line.trim().slice(0, 60)}`);
+      }
+    }
+    expect(offenders, 'use <Icon name="…" /> instead of a glyph').toEqual([]);
+  });
+});

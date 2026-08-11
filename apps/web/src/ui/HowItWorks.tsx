@@ -7,6 +7,7 @@
 //
 // It is dismissible and stays dismissed. An explainer that cannot be turned off insults the second
 // visit, and one that reappears on every reload is worse than none.
+import { Icon } from './Icon';
 import { useState } from 'react';
 import './HowItWorks.css';
 
@@ -22,7 +23,7 @@ export function HowItWorks({ payoutUnit = 1000 }: { payoutUnit?: number }) {
     <section className="howto" aria-label="How this works">
       <div className="howto-head">
         <h2>Back your view. Get paid if you are right.</h2>
-        <button type="button" className="howto-close" onClick={dismiss} aria-label="Dismiss explanation">✕</button>
+        <button type="button" className="howto-close" onClick={dismiss} aria-label="Dismiss explanation"><Icon name="x" size={16} /></button>
       </div>
 
       <ol className="howto-steps">

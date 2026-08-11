@@ -520,6 +520,18 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     unspent outputs counts both the inputs a mempool transaction is spending and the change it creates; the
     panel read 405,270 against a real 198,615 right after two deploys. Now `confirmed + net unconfirmed` from
     the chain, with the pending leg shown separately. Verified against the live address, not only a mock.
+  - ● **UI-021 — icons, contrast, and switching off the mainnet alarm (ADR-060).** Three operator reports.
+    (a) Emoji and stray Unicode were doing icon duty (🔍 ◈ ◎ ⚠ ✓ ↗ ▲ ○ ◷ ✕ ↷ ←) — replaced by `ui/Icon.tsx`,
+    22 inline paths in the Lucide idiom, no dependency. (b) The red `MAINNET · real money` badge and banner
+    are gone; both surfaces show a green `mainnet connected` pill. The caution MOVED rather than went — the
+    sign-off slider still names the amount and still gates each spend — and `tone="danger"` now means
+    something is wrong, not that you are on mainnet. (c) The market fact row measured **3.03:1** and is now
+    `.meta-chip` at 5.17:1 light / 7.29:1 dark, with labels spelled out (`liquidity b=20`). Two new standing
+    checks, both mutation-verified: a **contrast floor** in `tokens.test.ts` — which found that
+    `--text-subtle` was failing even the 3:1 decorative threshold in light, unreported — and a **glyph ban**
+    across every `.tsx`, with an auditable `glyph-ok` opt-out for punctuation. `Sparkline` gained an
+    `.sr-only` direction word, because a decorative icon would have left a screen reader reading `120` with
+    no sign; its two tests moved off the glyph and onto accessible text. 277 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

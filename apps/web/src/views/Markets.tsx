@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, usePoll } from '../api';
 import type { Signer } from '../signer';
-import { ActionCircle, Card, Chips, EmptyState, Pill, PriceBar, Skeleton, Sparkline } from '../ui';
+import { ActionCircle, Card, Chips, EmptyState, Icon, Pill, PriceBar, Skeleton, Sparkline } from '../ui';
 import { useHistories } from '../useHistories';
 import { StakeSheet } from './StakeSheet';
 
@@ -52,7 +52,7 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
 
       <div className="stack-sm">
         <label className="searchbar">
-          <span aria-hidden="true">🔍</span>
+          <Icon name="search" size={17} />
           <input
             type="search" className="searchbar-input" value={q} placeholder="Search markets"
             aria-label="Search markets" onChange={(e) => setQ(e.target.value)}
@@ -83,7 +83,7 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
       {markets && shown.length === 0 && (
         <Card>
           <EmptyState
-            icon="◎"
+            icon={<Icon name="search" size={28} />}
             title={all.length === 0 ? 'No markets yet' : q ? 'Nothing matches that search' : `No ${filter} markets`}
             hint={all.length === 0
               ? 'Create one from the Operator tab — it takes a question, a liquidity setting and a payout per share.'
@@ -100,9 +100,9 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
             <article key={m.id} className="market-card" data-testid="market-card">
               <div className="market-meta">
                 <span className="tiny subtle">#{m.id}</span>
-                {m.resolution && <Pill tone="positive" icon="✓">resolved {m.resolution.toUpperCase()}</Pill>}
-                {stale && <Pill tone="danger" icon="⚠">stale build — unspendable</Pill>}
-                {!m.pool && <Pill tone="neutral" icon="○">not deployed</Pill>}
+                {m.resolution && <Pill tone="positive" icon={<Icon name="check" size={13} />}>resolved {m.resolution.toUpperCase()}</Pill>}
+                {stale && <Pill tone="danger" icon={<Icon name="alert" size={13} />}>stale build — unspendable</Pill>}
+                {!m.pool && <Pill tone="neutral" icon={<Icon name="circle" size={13} />}>not deployed</Pill>}
               </div>
 
               {/* The question is the link into the market — the whole card is not clickable, because
@@ -118,17 +118,19 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
                 label={`YES price history for market ${m.id}`} />
 
               <div className="circle-row market-actions">
-                <ActionCircle icon="↑" label="YES" tone="positive" disabled={!tradable}
+                <ActionCircle icon={<Icon name="trendingUp" size={22} />} label="YES" tone="positive" disabled={!tradable}
                   title={tradable ? `Back YES at ${m.prices.yes_sats} sat` : 'Trading is closed on this market'}
                   onClick={() => setPicked({ market: m, side: 'yes' })} />
-                <ActionCircle icon="↓" label="NO" tone="negative" disabled={!tradable}
+                <ActionCircle icon={<Icon name="trendingDown" size={22} />} label="NO" tone="negative" disabled={!tradable}
                   title={tradable ? `Back NO at ${m.prices.no_sats} sat` : 'Trading is closed on this market'}
                   onClick={() => setPicked({ market: m, side: 'no' })} />
-                <ActionCircle icon="↗" label="Details" tone="neutral" onClick={() => onOpen(m.id)} />
+                <ActionCircle icon={<Icon name="externalLink" size={20} />} label="Details" tone="neutral" onClick={() => onOpen(m.id)} />
               </div>
 
-              <div className="market-meta tiny subtle">
-                <span>b={m.bUnits}</span><span>·</span><span>pool v{m.pool?.version ?? '—'}</span>
+              <div className="meta-row">
+                <span className="meta-chip">liquidity <b>b={m.bUnits}</b></span>
+                <span className="meta-chip">pays <b>{m.payoutUnit.toLocaleString()} sat</b></span>
+                <span className="meta-chip">pool <b>v{m.pool?.version ?? '—'}</b></span>
               </div>
             </article>
           );

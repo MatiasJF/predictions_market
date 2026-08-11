@@ -8,6 +8,7 @@
 // and Script-verifies the identical transaction and then deliberately does not broadcast it, so an
 // explorer link would lead to a 404 and quietly imply the transaction went somewhere it did not.
 // Silence is honest; a dead link is not.
+import { Icon } from './Icon';
 import './TxLink.css';
 
 export function TxLink({
@@ -24,9 +25,9 @@ export function TxLink({
       aria-label={`${label} — transaction ${txid}`}
       title={txid}
     >
-      <span aria-hidden="true" className="txlink-icon">◈</span>
+      <Icon name="link" size={15} className="txlink-icon" />
       <span>{compact ? `${txid.slice(0, 8)}…` : label}</span>
-      <span aria-hidden="true">↗</span>
+      <Icon name="externalLink" size={14} />
     </a>
   );
 }

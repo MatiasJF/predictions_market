@@ -12,4 +12,4 @@
 }
 .txlink:hover { text-decoration: none; filter: brightness(1.06); }
 .txlink.is-compact { font-family: var(--font-mono); }
-.txlink-icon { font-size: 0.9em; }
+.txlink-icon { flex: none; }
