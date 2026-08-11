@@ -40,10 +40,10 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
           hint="Authorized actions appear here with their full transaction id." />
       ) : (
         <>
-          {!isMainnet && (
+          {sent.some((b) => b.network !== 'mainnet') && (
             <p className="tiny muted">
-              Local run — these were built and Script-verified exactly as on mainnet, but never broadcast, so they
-              have no explorer entry.
+              Some of these were built and Script-verified exactly as on mainnet but never broadcast, so they have
+              no explorer entry. Only the ones that really went to mainnet carry a link.
             </p>
           )}
           <div>
@@ -63,7 +63,8 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
                     aria-label={`Copy transaction id ${b.txid}`}>
                     {copied === b.txid ? 'copied ✓' : 'copy'}
                   </Button>
-                  <TxLink txid={b.txid} isMainnet={isMainnet} />
+                  {/* Per row: a local rehearsal and a real broadcast look identical apart from this. */}
+                  <TxLink txid={b.txid} isMainnet={b.network === 'mainnet'} />
                 </div>
               </div>
             ))}

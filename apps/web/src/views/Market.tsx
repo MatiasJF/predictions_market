@@ -293,8 +293,12 @@ export function Market({
                     ? <Pill tone="positive" icon="✓">settled</Pill>
                     : <Pill tone="warning" icon="◷">not yet on chain</Pill>}
                   {/* Your money, and where it went. The settlement link appears once the batch lands. */}
-                  <TxLink txid={r.payment_txid} isMainnet={isMainnet} label="your payment" compact />
-                  <TxLink txid={r.settle_txid} isMainnet={isMainnet} label="settlement" compact />
+                  {/*
+                    Keyed on the TRANSACTION's own network, not the daemon's. One database can hold
+                    both rehearsed and real transactions, and only the real ones exist on an explorer.
+                  */}
+                  <TxLink txid={r.payment_txid} isMainnet={r.payment_network === 'mainnet'} label="your payment" compact />
+                  <TxLink txid={r.settle_txid} isMainnet={r.settle_network === 'mainnet'} label="settlement" compact />
                 </div>
               ))}
             </div>

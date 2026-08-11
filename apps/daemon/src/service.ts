@@ -109,6 +109,9 @@ export class MarketService {
     const bUnits = BigInt(input.bUnits ?? 0);
     if (bUnits <= 0n) throw badReq('bUnits must be a positive integer (LMSR liquidity in share-units)');
     const payoutUnit = BigInt(input.payoutUnit ?? 100_000);
+    // `markets.network` is constrained to testnet|mainnet, and a market built on a `local` daemon is
+    // still a mainnet-shaped market — it is the TRANSACTIONS that were never sent. So the honest
+    // signal lives on the broadcast rows (migration 016), not here.
     const network = input.network ?? 'mainnet';
 
     const platformKeyId = this.keyRefId('platform:' + network, 'platform', await this.engine.fundingPublicKey(), network, 'funding wallet public key');
@@ -383,12 +386,12 @@ export class MarketService {
     const info = this.db.prepare(
       `INSERT INTO payment_intents
        (market_id, trader_pubkey, side, action, units, quoted_cost_sats,
-        derivation_prefix, derivation_suffix, locking_script, address, expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        derivation_prefix, derivation_suffix, locking_script, address, expires_at, network)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
       id, trader, side, action, units, quoted,
       dest.remittance.derivationPrefix, dest.remittance.derivationSuffix,
-      dest.lockingScript, dest.address, expiresAt,
+      dest.lockingScript, dest.address, expiresAt, process.env.PM_NETWORK ?? 'mainnet',
     );
 
     return {
@@ -531,22 +534,26 @@ export class MarketService {
     // for it, and the settlement that wrote it to the chain. Without these the app can tell someone
     // their money moved but not show them where — which is most of what a block explorer is for.
     const sql = `
-      SELECT o.*, pi.txid AS payment_txid, b.txid AS settle_txid
+      SELECT o.*, pi.txid AS payment_txid, pi.network AS payment_network,
+             b.txid AS settle_txid, br.network AS settle_network
         FROM exec_orders o
         LEFT JOIN payment_intents pi ON pi.id = o.payment_intent_id
         LEFT JOIN exec_batches b     ON b.id  = o.batch_id
+        LEFT JOIN broadcasts br      ON br.txid = b.txid
        WHERE o.market_id = ?${trader ? ' AND o.trader_pubkey = ?' : ''}
        ORDER BY o.seq`;
     const rows = (trader
       ? this.db.prepare(sql).all(id, trader)
-      : this.db.prepare(sql).all(id)) as (ExecOrderRow & { payment_txid: string | null; settle_txid: string | null })[];
+      : this.db.prepare(sql).all(id)) as (ExecOrderRow & { payment_txid: string | null; payment_network: string | null; settle_txid: string | null; settle_network: string | null })[];
     return {
       market_id: id,
       count: rows.length,
       receipts: rows.map((r) => ({
         ...execOrderView(r),
         payment_txid: r.payment_txid,
+        payment_network: r.payment_network,
         settle_txid: r.settle_txid,
+        settle_network: r.settle_network,
       })),
     };
   }
@@ -968,10 +975,14 @@ export class MarketService {
 
   // ── sign-off queue ──────────────────────────────────────────────────────────────────────────────────
   listBroadcasts(status?: string) {
-    const rows = (status
-      ? this.db.prepare('SELECT * FROM broadcasts WHERE status = ? ORDER BY id DESC').all(status)
-      : this.db.prepare('SELECT * FROM broadcasts ORDER BY id DESC').all()) as BroadcastRow[];
-    return rows.map(broadcastView);
+    // Joined to the market's network: in a database holding both, only the transactions that really
+    // went to mainnet should be offered as links. `status='broadcast'` alone cannot tell them apart,
+    // because a local run builds and Script-verifies the identical transaction and records the same
+    // txid without sending it.
+    const sql = `SELECT * FROM broadcasts ${status ? 'WHERE status = ?' : ''} ORDER BY id DESC`;
+    const rows = (status ? this.db.prepare(sql).all(status) : this.db.prepare(sql).all()) as
+      (BroadcastRow & { network: string | null })[];
+    return rows.map((r) => ({ ...broadcastView(r), network: r.network }));
   }
   getBroadcast(bid: number) {
     return broadcastView(this.broadcastRow(bid));
@@ -1129,8 +1140,8 @@ export class MarketService {
     const pending = this.db.prepare("SELECT COUNT(*) c FROM broadcasts WHERE market_id=? AND status='pending'").get(marketId) as { c: number };
     if (pending.c > 0) throw conflict('a pending broadcast already exists for this market — authorize or reject it first');
     const info = this.db.prepare(
-      'INSERT INTO broadcasts(market_id, kind, summary, spend_sats, plan) VALUES (?, ?, ?, ?, ?)',
-    ).run(marketId, plan.kind, plan.summary, plan.spendSats, JSON.stringify(plan));
+      'INSERT INTO broadcasts(market_id, kind, summary, spend_sats, plan, network) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(marketId, plan.kind, plan.summary, plan.spendSats, JSON.stringify(plan), process.env.PM_NETWORK ?? 'mainnet');
     return { broadcast_id: Number(info.lastInsertRowid), status: 'pending' as const, kind: plan.kind, summary: plan.summary, spend_sats: plan.spendSats };
   }
 
