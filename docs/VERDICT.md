@@ -205,6 +205,32 @@ balance in their own wallet.** Everything above this line proved the mechanism; 
   contract — 0.1 sat/byte, the miner minimum. ADR-038's fee correction had never been measured across a full
   mainnet lifecycle until now.
 
+### The whole loop, through the rebuilt interface — 2026-08-11 (market #7, ADR-058)
+
+The 2026-08-10 run proved a market. This one proved a **product**: the same loop walked by a person using the
+app, with the one step that had never worked in this design — `internalizeAction` against a real BRC-100
+wallet — finally exercised end to end.
+
+| step | txid | fee | block |
+|---|---|---|---|
+| deploy | `352df1f3…` | 4,074 | 961823 |
+| trader's buy ×2 | `1925b70a…` · `83c82747…` | *trader's own wallet* | 961826 |
+| settle (2 fills → net YES 2) | `f7855ab2…` | 8,157 | — |
+| resolve YES (Rabin oracle) | `bd819f41…` | 8,190 | — |
+| payout | `64d57774…` | 8,180 | 961858 |
+| | | **28,601** | |
+
+- **The price moved as the trader bought**: YES 500 → 512 → 524, from their own two fills. The bonding curve,
+  visible, priced against real money — the thing that was invisible until ADR-045/046 fixed `b` and the display.
+- **The claim worked.** 2,000 sat internalized from 82,164 bytes of AtomicBEEF at output index 2, the wallet
+  verifying the merkle proof itself rather than trusting the daemon. Reported by the operator as *"claimed 2000
+  sat — it is in your wallet balance now"*.
+- **The trader's economics:** paid 1,038 sat across two buys at 512 and 524 out of 1,000, resolved YES, received
+  2,000 — **net +962 sat**. Backing an outcome the market thought was near even, and being right, roughly
+  doubled the stake. Exactly what the interface tells a first-time visitor it will do.
+- Fees are the operator's, unchanged at the miner minimum, and dwarf the stake at this scale — which is a real
+  statement about where this is economically viable, not a rounding note.
+
 **What the same run also showed does not work.** Two sells were filled and recorded as 998 sat owed to the
 trader, and nothing paid them — sells remain a booked liability with no settlement path. One buy attempt cost
 1,002 sat that bought nothing, stranded by a defect this run exposed (see ADR-043). Neither is fatal here, since

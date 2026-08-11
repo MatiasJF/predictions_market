@@ -1448,3 +1448,22 @@ first when a change appears to have no effect.
   TRUE value rather than whatever frame the count is on — announcing every intermediate value would be worse
   than announcing none. Animation is emphasis here, never information; the number is correct at rest either way.
 - 261 workspace tests, typecheck and build clean.
+
+## ADR-058 · The loop closed through the rebuilt interface (mainnet, 2026-08-11) · Accepted · 2026-08-11
+- The 2026-08-10 run proved a market. This one proved a **product**: the same loop walked by a person using the
+  app — connect, back a side, pay from your own wallet, see your transaction, win, collect — with the step that
+  had **never worked in this design** finally exercised. `internalizeAction` against a real BRC-100 wallet had
+  been assembled, tested against a real payout's BEEF, and never once accepted by wallet software.
+- It was accepted: 2,000 sat internalized from 82,164 bytes of AtomicBEEF at output index 2, mined in block
+  961858, the wallet verifying the merkle proof itself rather than trusting the daemon.
+- Full chain: deploy `352df1f3…` (961823) → two trader buys `1925b70a…`/`83c82747…` (961826) → settle
+  `f7855ab2…` → resolve YES `bd819f41…` → payout `64d57774…` (961858). **28,601 sat** of operator fees.
+- **The curve was visible in the act of trading**: YES 500 → 512 → 524 as the trader's own two fills landed.
+  That is the fact ADR-045 and ADR-046 exist to have made true, seen on real money for the first time.
+- Trader economics: 1,038 sat in at 512 and 524 out of 1,000, out 2,000 — **net +962 sat**. What the onboarding
+  card (ADR-057) promises, happening.
+- **What this does not say.** Fees remain the operator's and dwarf a small stake at this scale; the stake pot
+  still custodies money between bet and payout (ADR-019 rung 1); sells have still never run on mainnet; and the
+  appearance of all of this has been verified only by the operator's eyes, never by a machine — the headless
+  browser here cannot execute localhost bundles, which is why three of the last four UI defects were found by
+  looking rather than by testing.

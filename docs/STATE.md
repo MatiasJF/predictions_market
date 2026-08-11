@@ -1,16 +1,16 @@
 # STATE — living
 
-_Last updated: 2026-08-10 — **THE ROUND TRIP IS CLOSED ON MAINNET** (Phase P6, FUND-001, ADR-043). A trader's
-own satoshis funded a bet and came back into their own wallet as spendable balance. Market #7: deploy
-`9798adff…` (block 961665) → settle `cddc3a89…` → resolve `a743e25c…` → payout `7c8be780…` (all block 961684),
-audit 4 receipts / 0 violations, **28,601 sat total fees — 5× cheaper than the comparable 143,017 sat run** on a
-bigger contract. Paid in: `7e6f5874…` 1,002 sat + `2b0748b8…` 1,000 sat. Claimed out: 2,000 sat via
-`internalizeAction` from 82,316 B of AtomicBEEF. The pay-once guard also fired on live state. Everything before
-this proved the mechanism; this proved a market. **Three defects were found and fixed during the run**
-(MAINNET-008/009/010 — all one root cause: a transient condition cached as a permanent verdict). **Sells are now
-payable too** (ADR-044): a sell books a debt at fill time and is paid out of the staked satoshis themselves —
-built and tested, **not yet run on mainnet**, with market #7's 998 sat waiting as the first real one. 185
-workspace tests green._
+_Last updated: 2026-08-11 — **THE LOOP IS CLOSED THROUGH THE PRODUCT** (ADR-058). Not just the mechanism and
+not just a market: a person using the app connected a wallet, backed a side, paid from their own balance, watched
+the price move as they bought (YES 500 → 512 → 524 on their own two fills), won, and **collected into their
+wallet** — the `internalizeAction` step that had never once been accepted by real wallet software. Market #7 on
+mainnet: deploy `352df1f3…` → buys `1925b70a…`/`83c82747…` → settle `f7855ab2…` → resolve `bd819f41…` → payout
+`64d57774…` (block 961858) → claimed 2,000 sat. **28,601 sat** of operator fees; the trader netted **+962 sat**.
+The interface around it was rebuilt the same day (ADR-047…057): tokens, a fintech chassis with a swipe deck,
+price graphs, explorer links on every transaction, and an onboarding card that says in plain words what the
+numbers mean. **Still true:** sells have never run on mainnet, the operator custodies stakes between bet and
+payout, and nothing about how any of it LOOKS has been verified by anything but human eyes. 261 workspace tests
+green._
 
 _Previously: 2026-08-07 — PLATFORM (Phase P5). **A person with a browser wallet can now trade this market on
 mainnet and get paid.** `apps/web` gives traders a market list → order ticket → sign → position/receipts, and the
