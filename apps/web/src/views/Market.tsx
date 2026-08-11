@@ -45,7 +45,9 @@ export function Market({
 
   const mine = positions?.positions?.find((p: any) => p.trader === identity);
   const myPayout = payout?.winners?.find((w: any) => w.trader === identity);
-  const myClaim = claims?.claims?.find((c: any) => c.trader === identity);
+  // Everything this market has paid me — winnings AND sale proceeds. Both arrive at a one-time
+  // address and both need the wallet told how it was derived, so both belong in the same list.
+  const myClaims: any[] = (claims?.claims ?? []).filter((c: any) => c.trader === identity);
   const canTrade = market?.pool && market.pool.resolved !== 1 && market.pool.spendable !== false;
   const devKeyCannotPay = signer?.kind === 'local';
   // What this trader holds, which is the ceiling on what they can close.
@@ -75,12 +77,12 @@ export function Market({
     }
   }
 
-  async function claim() {
+  async function claim(kind: 'payout' | 'proceeds') {
     if (!signer) return;
     setClaiming(true);
     setClaimMsg(undefined);
     try {
-      const prepared = await api.payoutClaim(id, identity);
+      const prepared = await api.payoutClaim(id, identity, kind);
       if (!prepared.ready) throw new Error(prepared.reason);
       const { accepted } = await signer.claim(prepared.internalize);
       setClaimMsg(accepted
@@ -248,50 +250,42 @@ export function Market({
             </Callout>
           )}
 
-          {myClaim && (
-            <div className="claim-box">
+          {myClaims.map((c) => (
+            <div className="claim-box" key={`${c.kind}-${c.txid}-${c.order_seq ?? ''}`}>
               <div className="row-between">
-                <span className="strong">Paid {sats(myClaim.sats)} sat</span>
-                <TxLink txid={myClaim.txid} isMainnet={isMainnet} label="See the payout" />
+                <span className="strong">
+                  {c.kind === 'proceeds' ? 'Sale proceeds' : 'Winnings'} — {sats(c.sats)} sat
+                </span>
+                <TxLink txid={c.txid} isMainnet={isMainnet} label="See the payment" />
               </div>
 
-              {myClaim.remittance ? (
+              {c.remittance ? (
                 <>
-                  {/*
-                    Three different kinds of "not finished" exist in this system and they used to look
-                    alike. This one is "broadcast but not mined": a wallet needs the merkle proof before
-                    it will accept the money, so the button says what it is waiting for.
-                  */}
-                  {!myClaim.mined_at && <Pill tone="warning" icon="◷">waiting for a block</Pill>}
+                  {!c.mined_at && <Pill tone="warning" icon="◷">waiting for a block</Pill>}
                   <Button
                     variant="primary" tone="accent" full
-                    busy={claiming} disabled={claiming || !signer || !myClaim.mined_at}
-                    onClick={() => void claim()}
+                    busy={claiming} disabled={claiming || !signer || !c.mined_at}
+                    onClick={() => void claim(c.kind)}
                   >
-                    {claiming ? 'claiming…' : !myClaim.mined_at ? 'waiting for the payout to confirm…' : 'claim into my wallet'}
+                    {claiming ? 'claiming…'
+                      : !c.mined_at ? 'waiting to confirm…'
+                      : 'claim into my wallet'}
                   </Button>
-                  <StatusMessage status={claimMsg} />
                   <p className="tiny muted">
                     Sent to a one-time address only your key can unlock. Your wallet needs the transaction and
                     the derivation before the balance appears — that is what this button hands it.{' '}
-                    {myClaim.mined_at
-                      ? `Confirmed in block ${myClaim.mined_at}.`
-                      : 'It is not in a block yet; a wallet needs that proof before it will take the money. '
-                        + 'The derivation is recoverable from this market at any time, so nothing is lost by waiting.'}
+                    {c.mined_at ? `Confirmed in block ${c.mined_at}.` : 'It is not in a block yet.'}
                   </p>
-                  <details>
-                    <summary className="tiny muted">the derivation, if you want to claim from elsewhere</summary>
-                    <pre className="code-block tiny">{JSON.stringify(myClaim.remittance, null, 2)}</pre>
-                  </details>
                 </>
               ) : (
                 <p className="tiny warning-text">
-                  This payout predates one-time addresses: it went to your identity key's own hash, which no
-                  wallet watches. The satoshis are yours but you would have to sweep that key by hand.
+                  This payment predates one-time addresses: it went to your identity key's own hash, which no
+                  wallet watches. The satoshis are yours but that key has to be swept by hand.
                 </p>
               )}
             </div>
-          )}
+          ))}
+          {myClaims.length > 0 && <StatusMessage status={claimMsg} />}
         </Card>
 
         <Card title="My receipts" aside={<Pill tone="neutral">{receipts?.count ?? 0}</Pill>} testId="panel-receipts"

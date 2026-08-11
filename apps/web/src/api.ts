@@ -37,7 +37,8 @@ export const api = {
   /** FUND-001: payouts already made to a trader, with the derivation their wallet needs to claim them. */
   payoutClaims: (id: number, trader?: string) => call('GET', `/markets/${id}/payouts${trader ? `?trader=${trader}` : ''}`),
   /** The prepared `internalizeAction` call for one winner. Hits the network, so call it on demand, not on a poll. */
-  payoutClaim: (id: number, trader: string) => call('GET', `/markets/${id}/claim?trader=${trader}`),
+  payoutClaim: (id: number, trader: string, kind?: 'payout' | 'proceeds') =>
+    call('GET', `/markets/${id}/claim?trader=${trader}${kind ? `&kind=${kind}` : ''}`),
   /** What the market owes sellers, and what it has already paid them. */
   sellDebts: (id: number) => call('GET', `/markets/${id}/debts`),
   broadcasts: (status?: string) => call('GET', `/broadcasts${status ? `?status=${status}` : ''}`),

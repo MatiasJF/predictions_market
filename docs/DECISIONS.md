@@ -1467,3 +1467,20 @@ first when a change appears to have no effect.
   appearance of all of this has been verified only by the operator's eyes, never by a machine — the headless
   browser here cannot execute localhost bundles, which is why three of the last four UI defects were found by
   looking rather than by testing.
+
+## ADR-059 · A seller must be able to COLLECT, not merely be paid (MAINNET-015) · Accepted · 2026-08-11
+- Found while preparing the mainnet sells demonstration, before spending anything. Sale proceeds are sent to a
+  one-time BRC-29 destination exactly like winnings — but the claim path read only the `payouts` table, so a
+  seller's money landed at an address they could **see and not collect**. That is precisely the defect ADR-041
+  fixed for winners, left standing for sellers, and it would otherwise have been discovered live and in front of
+  an audience.
+- `payoutClaims` now returns both kinds, tagged `kind: 'payout' | 'proceeds'`, and `payoutClaim` prepares the
+  `internalizeAction` for either — one list and one claim path, so there is no second implementation to drift.
+  It prefers a claim that is actually claimable, so a mined sale is not hidden behind an unmined payout that
+  happens to sort first.
+- An **owed** debt is deliberately not listed as a claim. Offering one would invite a claim against money that
+  has not moved.
+- The market view now renders every payment the market has made to you rather than assuming there is at most
+  one, and labels each as winnings or sale proceeds.
+- Three tests, the load-bearing one being that the seller's own key unlocks the `pkh` their proceeds were paid
+  to. 264 workspace tests, typecheck and build clean.

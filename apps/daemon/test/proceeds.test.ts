@@ -164,4 +164,41 @@ describe('FUND-001 step 7b — a seller actually gets paid', () => {
     await expect(svc.enqueueProceeds(marketId)).rejects.toThrow(/cannot cover its own book|holds 0 sat/);
     expect(svc.sellDebts(marketId).owed, 'a refused payment must leave the debt standing').toHaveLength(1);
   });
+  /**
+   * MAINNET-015 — a seller must be able to COLLECT, not just be paid.
+   *
+   * Sale proceeds are sent to a one-time BRC-29 destination exactly like winnings, but the claim path
+   * read only the `payouts` table — so a seller's money landed somewhere they could see and could not
+   * collect. That is the defect ADR-041 fixed for winners and left standing for sellers, and it would
+   * have been discovered live, on mainnet, in front of an audience.
+   */
+    it('lists sale proceeds alongside winnings, tagged by kind', async () => {
+      await sell(db, svc, marketId, trader, 2, 10);
+      const q = await svc.enqueueProceeds(marketId);
+      await svc.authorize(q.broadcast_id);
+
+      const { claims } = await svc.payoutClaims(marketId, trader) as any;
+      const sale = claims.find((c: any) => c.kind === 'proceeds');
+      expect(sale, 'a paid sale must appear as something claimable').toBeTruthy();
+      expect(sale.sats).toBeGreaterThan(0);
+      expect(sale.remittance, 'without this the money cannot be internalized').toBeTruthy();
+    });
+
+    it("THE POINT: the seller's own key unlocks the proceeds they were paid", async () => {
+      await sell(db, svc, marketId, trader, 2, 10);
+      const q = await svc.enqueueProceeds(marketId);
+      await svc.authorize(q.broadcast_id);
+
+      const { claims } = await svc.payoutClaims(marketId, trader) as any;
+      const sale = claims.find((c: any) => c.kind === 'proceeds');
+      const key = derivePaymentKey(traderKey, sale.remittance);
+      expect(key.toPublicKey().toHash('hex'), 'the seller must hold the key to their own proceeds').toBe(sale.pkh);
+    });
+
+    it('does not offer an unpaid debt as a claim', async () => {
+      await sell(db, svc, marketId, trader, 2, 10);
+      const { claims } = await svc.payoutClaims(marketId, trader) as any;
+      // Owed is not paid. Listing it would invite a claim against money that has not moved.
+      expect(claims.filter((c: any) => c.kind === 'proceeds')).toHaveLength(0);
+    });
 });

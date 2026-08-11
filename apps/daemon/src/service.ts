@@ -694,57 +694,70 @@ export class MarketService {
     return height;
   }
 
+  /**
+   * Every payment this market has made TO a trader, and what their wallet needs to take custody.
+   *
+   * Both kinds, deliberately. Winnings and sale proceeds are paid the same way — a one-time BRC-29
+   * destination plus a remittance — and until now only winnings could be claimed. A seller's money
+   * landed at an address they could see and could not collect: the exact defect ADR-041 fixed for
+   * winners, left standing for sellers. One list and one claim path, so there is no second
+   * implementation to drift.
+   */
   async payoutClaims(id: number, trader?: string) {
     this.marketRow(id);
-    const rows = this.db
-      .prepare(
-        `SELECT trader_pubkey, pkh, shares, sats, txid, derivation_prefix, derivation_suffix, sender_identity_key
-           FROM payouts WHERE market_id=?${trader ? ' AND trader_pubkey=?' : ''} ORDER BY id`,
-      )
-      .all(...(trader ? [id, trader] : [id])) as {
-        trader_pubkey: string; pkh: string; shares: string; sats: number; txid: string;
-        derivation_prefix: string | null; derivation_suffix: string | null; sender_identity_key: string | null;
-      }[];
+    const where = trader ? ' AND trader_pubkey=?' : '';
+    const args = trader ? [id, trader] : [id];
+
+    const wins = this.db.prepare(
+      `SELECT trader_pubkey, pkh, shares, sats, txid, derivation_prefix, derivation_suffix, sender_identity_key
+         FROM payouts WHERE market_id=?${where} ORDER BY id`,
+    ).all(...args) as any[];
+
+    const sales = this.db.prepare(
+      `SELECT trader_pubkey, pkh, sats, txid, derivation_prefix, derivation_suffix, sender_identity_key, order_seq
+         FROM sell_proceeds WHERE market_id=? AND status='paid'${where} ORDER BY order_seq`,
+    ).all(...args) as any[];
+
     const heights = new Map<string, number | undefined>();
-    for (const txid of new Set(rows.map((r) => r.txid))) heights.set(txid, await this.minedHeight(txid));
+    for (const txid of new Set([...wins, ...sales].map((r) => r.txid).filter(Boolean))) {
+      heights.set(txid, await this.minedHeight(txid));
+    }
+
+    const view = (r: any, kind: 'payout' | 'proceeds') => ({
+      kind,
+      trader: r.trader_pubkey,
+      sats: r.sats,
+      shares: r.shares ?? null,
+      order_seq: r.order_seq ?? null,
+      txid: r.txid,
+      pkh: r.pkh,
+      /** Claiming is impossible before this is a number — a wallet needs the merkle proof of a mined tx. */
+      mined_at: heights.get(r.txid) ?? null,
+      // Pre-FUND-001 payouts have no remittance: paid to a bare identity hash, nothing to internalize.
+      remittance: r.derivation_prefix && r.derivation_suffix && r.sender_identity_key
+        ? {
+            derivationPrefix: r.derivation_prefix,
+            derivationSuffix: r.derivation_suffix,
+            senderIdentityKey: r.sender_identity_key,
+          }
+        : null,
+    });
+
     return {
       market_id: id,
-      claims: rows.map((r) => ({
-        trader: r.trader_pubkey,
-        sats: r.sats,
-        shares: r.shares,
-        txid: r.txid,
-        pkh: r.pkh,
-        /** Claiming is impossible before this is a number — a wallet needs the merkle proof of a mined tx. */
-        mined_at: heights.get(r.txid) ?? null,
-        // Pre-FUND-001 payouts have no remittance: they were paid to a bare identity hash and there is nothing
-        // to internalize. Say so plainly rather than emitting a half-filled object a wallet would choke on.
-        remittance: r.derivation_prefix && r.derivation_suffix && r.sender_identity_key
-          ? {
-              derivationPrefix: r.derivation_prefix,
-              derivationSuffix: r.derivation_suffix,
-              senderIdentityKey: r.sender_identity_key,
-            }
-          : null,
-      })),
+      claims: [...wins.map((r) => view(r, 'payout')), ...sales.map((r) => view(r, 'proceeds'))],
     };
   }
 
-  /**
-   * Everything a winner's wallet needs to take custody of a payout — the `internalizeAction` call, prepared.
-   *
-   * Split from `payoutClaims` on purpose. That one is cheap and polled; this one fetches tens of kilobytes of
-   * merkle-proved transaction from the network, so it happens when a winner actually asks to claim.
-   *
-   * The honest failure mode is `ready: false`. A payout is only claimable once it is **mined**, because the
-   * proof a wallet accepts is the transaction's merkle path (see `BeefSource` for why its ancestry is not an
-   * option here). Until then the money is theirs and nothing is lost — it just cannot be internalized yet.
-   */
-  async payoutClaim(id: number, traderInput: string) {
+
+  async payoutClaim(id: number, traderInput: string, kind?: 'payout' | 'proceeds') {
     const trader = assertIdentityKey((traderInput ?? '').trim());
     const { claims } = await this.payoutClaims(id, trader);
-    const claim = claims[0];
-    if (!claim) throw notFound(`no payout to ${trader.slice(0, 16)}… in market ${id}`);
+    // Prefer what can actually be claimed now, so a mined sale is not hidden behind an unmined payout
+    // that happens to sort first.
+    const claim = (kind ? claims.filter((c) => c.kind === kind) : claims)
+      .sort((a, b) => Number(!!b.mined_at) - Number(!!a.mined_at))[0];
+    if (!claim) throw notFound(`nothing paid to ${trader.slice(0, 16)}… in market ${id}`);
     if (!claim.remittance) {
       throw conflict(
         'this payout predates one-time addresses — it was paid to your identity key\'s own hash and there is ' +
@@ -775,7 +788,9 @@ export class MarketService {
         outputIndex,
         protocol: 'wallet payment' as const,
         paymentRemittance: claim.remittance,
-        description: `prediction market #${id} winnings`,
+        description: claim.kind === 'proceeds'
+          ? `prediction market #${id} sale proceeds`
+          : `prediction market #${id} winnings`,
       },
     };
   }

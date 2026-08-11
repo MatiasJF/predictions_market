@@ -80,7 +80,7 @@ export async function route(svc: MarketService, ctx: Ctx): Promise<unknown> {
     // …and the prepared `internalizeAction` call for one winner. Separate because it fetches the merkle-proved
     // transaction from the network, so it runs when someone claims rather than on every poll.
     if (method === 'GET' && segs.length === 3 && segs[2] === 'claim') {
-      return svc.payoutClaim(id, query.get('trader') ?? '');
+      return svc.payoutClaim(id, query.get('trader') ?? '', (query.get('kind') as any) ?? undefined);
     }
     // FUND-001 step 7b: what this market owes sellers, and whether it has paid. Readable by anyone — a trader
     // should be able to see the platform's debt to them without asking the operator.
