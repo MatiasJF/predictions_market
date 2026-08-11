@@ -499,7 +499,18 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     chips, search, and a new **Positions** tab. **Discover** is a swipe card stack, one market per card:
     a swipe picks a side and opens the sheet, it never places a bet. One shared `StakeSheet` for every route
     into a trade. **Appearance still unverified** — the headless browser here cannot run localhost bundles.
-  - ○ **step 10 — `apps/daemon` `dev` has no watch mode** (plain `tsx src/server.ts`). Cost two false diagnoses
+  - ● **UI-013…016 — what looking at it found (ADR-051).** Revolut-style top-anchored page wash + floating
+    tab bar; **price-history graphs** on every market (derived from the receipt ledger, no new API); every
+    form control custom rather than the browser's; nav bar un-inverted; deck shows one card and grows to hold
+    it. Two of these were defects introduced earlier the same session and invisible to 230+ passing tests —
+    the graph cache keyed on a rounded integer (the CURVE-001 rounding, reintroduced), and the deck overflow
+    caused by adding the graph. Each is now pinned by a contract test verified by re-introducing the bug.
+  - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
+    markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
+    payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a
+    mainnet daemon or a database that already holds markets. Six markets, three resolved and paid.
+  - ● **step 10 — `apps/daemon` `dev` now runs `tsx watch`.** Its absence cost two false diagnoses on
+    2026-08-10; the README says to check process age first when a change appears to have no effect. (plain `tsx src/server.ts`). Cost two false diagnoses
     during the live run, both settled by comparing file mtimes to the process start time. Use `tsx watch`.
 
 ## Known issues

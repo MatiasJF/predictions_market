@@ -1286,3 +1286,47 @@ transient or uninitialised condition recorded as a permanent verdict.**
   preference, not an improvement, and imposing it would be a worse default than offering it.
 - Verified by mutation, as with the base palette: drifting a value between the two dark-glass blocks fails, and
   so does letting glass touch a text colour. 220 workspace tests, typecheck and build clean.
+
+## ADR-051 · What looking at it actually found (UI-013…016) · Accepted · 2026-08-11
+Four tickets of visual work, all driven by the operator looking at the screen and reporting what was wrong.
+Recorded together because the lesson is the same in each: **none of these were findable from the code, and
+none of them were caught by 230+ passing tests.**
+
+- **UI-013 — the background.** A reference screenshot showed Revolut's home is ONE vertical gradient anchored at
+  the top of the page, brightest behind the header, falling to near-black by the fold. Mine scattered three
+  radial blobs around the viewport. A single directional wash reads as light coming from somewhere; blobs read
+  as wallpaper. The tab bar also became a floating pill with the active tab in its own pill, which is most of
+  what stops a bottom bar reading as browser chrome.
+- **UI-013 — graphs.** The `PriceBar` says where a market is now; one number cannot say whether 62% has drifted
+  or lurched. For a bonding curve the SHAPE of the movement is most of the information. The series is derived
+  from the receipt ledger with no new API — every fill records its execution price, so the fills are the
+  history. A receipt records the price of the side that traded, and LMSR keeps the sides exactly complementary,
+  so a NO price converts to YES by subtraction with no approximation. Eight tests cover that conversion, because
+  a graph is the easiest thing in an interface to get quietly wrong: it renders, it looks plausible, and nobody
+  checks the arithmetic.
+- **UI-014 — three reported bugs.** (1) The nav bar used `--surface-inverse`, which is by definition the
+  opposite of the theme: dark bar in light mode, light bar in dark mode. Revolut's bar looks dark because their
+  page is dark, not because it inverts. (2) Native form controls carry the OS's design, not this one, and stay
+  stubbornly light in a dark theme — every control is now custom, including the parts `appearance: none` takes
+  away (focus, disabled, autofill). (3) **The graphs did not update after a trade**, because the history
+  refetched only when `yes_sats` changed — and `yes_sats` is a ROUNDED INTEGER. With a large `b` a one-share buy
+  moves the true price by a fraction of a satoshi, so the key never changed. **This is the same rounding that
+  made CURVE-001 look like a fixed price** (2 shares cost 1,002 sat while both displayed prices read 500) — the
+  display was fixed for it in the morning and it was reintroduced as a cache key the same afternoon.
+- **UI-015 — the deck showed two cards.** The card behind rendered its full content, legible around the top card
+  and, in glass, straight through it. It is now an empty silhouette. Following that report turned up a second
+  defect: picking a side flew the card out and snapped the same one back, because the deck never advanced.
+- **UI-016 — the deck overflowed.** Cards were `position: absolute; inset: 0` inside a fixed-height stack, so
+  each was pinned to 380px regardless of content — and **adding the graph in UI-013 pushed every card past it.**
+  Cards now overlay by sharing a grid cell, so the container takes the height of the tallest. A defect
+  introduced by an earlier change in the same session, invisible to every test, found by looking.
+
+**The pattern worth keeping.** Each fix is now pinned by a contract test that fails if the mistake returns — and
+each of those was verified by re-introducing the bug and watching it fail, not by assuming. Stylesheet contracts
+(no inverse token in the bar; no absolute positioning on a deck card) exist because jsdom lays nothing out, so
+the stylesheet is the only place a layout invariant can be asserted at all.
+
+**And the meta-lesson, which cost the most.** Twice today a report of "nothing changed" was a stale process, not
+a bug: a daemon older than the fix, then a wedged dev server that had been serving nothing for hours while I
+kept saying "go and look". `apps/daemon`'s `dev` now runs `tsx watch`, and its README says to check process age
+first when a change appears to have no effect.

@@ -53,6 +53,9 @@ Topic → path. `(stub)` = file exists, not implemented. `(planned)` = not creat
 | **Slide-to-confirm on irreversible spends** | `apps/web/src/ui/SlideToConfirm.tsx` |
 | **App chassis: tabs/rail, quick actions, sheet, amount pad** | `apps/web/src/ui/chassis.tsx` |
 | **Swipe deck (Discover) — a market as a yes/no call** | `apps/web/src/ui/SwipeDeck.tsx` |
+| **Price-history graph (from the receipt ledger)** | `apps/web/src/ui/Sparkline.tsx` |
+| **Custom form controls (no native appearance)** | the FORM CONTROLS block in `apps/web/src/styles/base.css` |
+| **Seed a demo database with finished markets** | `apps/spike/src/seed-demo.ts` |
 | **The one place a stake is placed** | `apps/web/src/views/StakeSheet.tsx` |
 | **Positions across every market** | `apps/web/src/views/Positions.tsx` |
 | **Theme: follow the system, or override and remember** | `apps/web/src/theme.ts` |

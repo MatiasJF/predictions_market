@@ -104,3 +104,20 @@ Three layers, one seam (see `docs/ARCHITECTURE.md`): `http.ts` (router, 127.0.0.
 (`@pm/persistence`) holds markets, the `pool_utxos` full-state lineage, the trades ledger, and the
 `broadcasts` queue. LMSR math is the pure `@pm/lmsr` ground truth. Decisions: ADR-015 (API-as-seam + queue),
 ADR-016 (pool state in DB + plain buy).
+
+## `pnpm dev` watches; `pnpm start` does not
+
+`dev` runs `tsx watch`, so editing anything the server imports restarts it. This is not a
+convenience — its absence cost real time on 2026-08-10. `dev` was plain `tsx`, so a running daemon
+silently kept serving whatever the code looked like when it started, and two separate fixes appeared
+not to work: a payment-gate change, and a pool-spendability fix. Both were "diagnosed" for a while
+before the actual cause turned out to be a process older than the code.
+
+If a change seems to have no effect, check that first:
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN -t | head -1 | xargs ps -o lstart=,etime= -p
+```
+
+A process older than your edit is not running your edit. `start` deliberately does not watch — a
+long-lived daemon holding mainnet keys should not restart itself because a file changed.
