@@ -828,15 +828,31 @@ export class MarketService {
    * another is paid with, and the balance below is a fact about the chain rather than an accounting entry.
    */
   private async potStakes(): Promise<StakeUtxo[]> {
+    // ONLY stakes paid on the network this daemon is actually on.
+    //
+    // Without this the pot included every stake ever recorded, including 58 from seeded local markets
+    // whose payments were built, Script-verified and deliberately never broadcast. Those UTXOs do not
+    // exist: the daemon would have made 58 pointless lookups and then silently dropped them, and the
+    // pot would have reported 61,797 sat of which 60,246 was imaginary. A pot that overstates itself
+    // is how a payment gets built that cannot be signed.
+    //
+    // NULL network means "recorded before migration 016", which is not a claim that it is real — so
+    // it is excluded rather than assumed.
+    const net = process.env.PM_NETWORK ?? 'mainnet';
     const rows = this.db
-      .prepare("SELECT * FROM payment_intents WHERE status='paid' AND spent=0 AND txid IS NOT NULL ORDER BY id")
-      .all() as PaymentIntentRow[];
+      .prepare("SELECT * FROM payment_intents WHERE status='paid' AND spent=0 AND txid IS NOT NULL AND network = ? ORDER BY id")
+      .all(net) as PaymentIntentRow[];
     const stakes: StakeUtxo[] = [];
+    const skipped: string[] = [];
     for (const r of rows) {
       const raw = await this.chainCheck?.rawTx?.(r.txid!);
-      // A stake we cannot fetch the funding transaction for cannot be signed against. Skip it rather than fail
-      // the whole payment: the others are still spendable, and this one is not lost, only unavailable now.
-      if (!raw) continue;
+      // A stake whose funding transaction cannot be fetched cannot be signed against. Skipping is right
+      // — the others are still spendable and this one is not lost, only unavailable — but it must not
+      // be silent, or a pot that is short for a transient reason looks like a pot that is short.
+      if (!raw) {
+        skipped.push(`${r.txid!.slice(0, 12)}… (${r.paid_sats} sat)`);
+        continue;
+      }
       stakes.push({
         txid: r.txid!, vout: r.output_index!, satoshis: r.paid_sats!,
         remittance: {
@@ -847,14 +863,18 @@ export class MarketService {
         sourceRawTx: raw,
       });
     }
+    if (skipped.length) {
+      // eslint-disable-next-line no-console
+      console.warn(`pot: skipped ${skipped.length} unfetchable stake(s): ${skipped.join(', ')}`);
+    }
     return stakes;
   }
 
   /** What the pot holds, for the operator console. */
   async potBalance() {
     const rows = this.db
-      .prepare("SELECT COALESCE(SUM(paid_sats),0) AS sats, COUNT(*) AS n FROM payment_intents WHERE status='paid' AND spent=0")
-      .get() as { sats: number; n: number };
+      .prepare("SELECT COALESCE(SUM(paid_sats),0) AS sats, COUNT(*) AS n FROM payment_intents WHERE status='paid' AND spent=0 AND network = ?")
+      .get(process.env.PM_NETWORK ?? 'mainnet') as { sats: number; n: number };
     return { balance_sats: rows.sats, stakes: rows.n, address: this.paymentKey?.toPublicKey().toAddress() ?? null };
   }
 
