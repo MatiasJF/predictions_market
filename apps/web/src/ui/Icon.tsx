@@ -13,7 +13,7 @@ import type { SVGProps } from 'react';
 export type IconName =
   | 'search' | 'trendingUp' | 'trendingDown' | 'layers' | 'wallet' | 'settings'
   | 'check' | 'alert' | 'clock' | 'externalLink' | 'x' | 'plus' | 'compass' | 'receipt'
-  | 'circle' | 'inbox' | 'link' | 'minus' | 'zap' | 'globe' | 'arrowLeft' | 'rotateCcw';
+  | 'circle' | 'inbox' | 'link' | 'minus' | 'zap' | 'globe' | 'arrowLeft' | 'arrowRight' | 'rotateCcw';
 
 const PATHS: Record<IconName, string> = {
   search: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16M21 21l-4.35-4.35',
@@ -30,6 +30,7 @@ const PATHS: Record<IconName, string> = {
   plus: 'M12 5v14M5 12h14',
   compass: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M16.2 7.8l-2.1 6.3-6.3 2.1 2.1-6.3z',
   arrowLeft: 'M19 12H5M12 19l-7-7 7-7',
+  arrowRight: 'M5 12h14M12 5l7 7-7 7',
   rotateCcw: 'M3 3v6h6M3.5 14a9 9 0 1 0 2.1-9.4L3 9',
   circle: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18',
   inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11',

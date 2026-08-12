@@ -169,7 +169,7 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
     expect(tx.outputs[prepared.internalize.outputIndex]?.lockingScript.toHex()).toBe(`76a914${pkh}88ac`);
   });
 
-  it('says WHY an unmined payout cannot be claimed yet, rather than failing', async () => {
+  it('says WHY a claim cannot be prepared, rather than failing, when the proof is genuinely unavailable', async () => {
     await payWinners(db, svc, marketId);
     const pkh = (await svc.payoutClaims(marketId, trader) as any).claims[0].pkh;
     const online = new MarketService(
@@ -178,17 +178,20 @@ describe('FUND-001 — a winner can claim their payout into their own wallet', (
     );
     const prepared = await online.payoutClaim(marketId, trader) as any;
     expect(prepared.ready).toBe(false);
-    expect(prepared.reason).toMatch(/not mined yet/);
+    // UI-023 — being UNCONFIRMED is no longer the reason, because it is no longer a blocker: the BEEF is built
+    // from the payout's mined parents instead. This case is now "no proof could be obtained at all", which is
+    // transient (propagation, an unreachable service) rather than a ten-minute wall.
+    expect(prepared.reason).toMatch(/cannot be proved|propagating/);
     // The money is not lost and the part that cannot be reconstructed still comes back.
     expect(prepared.remittance.senderIdentityKey).toBe(operatorKey.toPublicKey().toString());
   });
 
   /**
-   * The claim button is disabled until this says a block number, so the number has to be right. A button whose
-   * only possible outcome is an error should not be pressable — the payout has to be MINED before a wallet will
-   * take the money, and a poll-cheap fact is what lets the UI know that without fetching a 75 KB proof.
+   * `mined_at` is INFORMATIONAL since UI-023 — the claim button no longer waits on it — but it is still shown
+   * ("Confirmed in block N"), still polled by an open tab, and therefore still has to be right and still has to
+   * be cached. A wrong block number is a lie about the chain even when nothing is gated on it.
    */
-  it('reports whether the payout is in a block, so the UI can refuse to offer a doomed claim', async () => {
+  it('reports whether the payout is in a block, and caches the answer once it is', async () => {
     await payWinners(db, svc, marketId);
 
     const unconfirmed = new MarketService(

@@ -731,7 +731,10 @@ export class MarketService {
       order_seq: r.order_seq ?? null,
       txid: r.txid,
       pkh: r.pkh,
-      /** Claiming is impossible before this is a number — a wallet needs the merkle proof of a mined tx. */
+      /**
+       * Informational since UI-023, no longer a precondition. An unconfirmed payout is claimable: the BEEF is
+       * assembled from its mined parents instead of its own merkle proof (see `@pm/wallet` beef.ts).
+       */
       mined_at: heights.get(r.txid) ?? null,
       // Pre-FUND-001 payouts have no remittance: paid to a bare identity hash, nothing to internalize.
       remittance: r.derivation_prefix && r.derivation_suffix && r.sender_identity_key
@@ -772,7 +775,7 @@ export class MarketService {
     if (!tx) {
       return {
         ready: false as const,
-        reason: 'the payout transaction is not mined yet — a wallet needs its merkle proof before it will accept the money',
+        reason: 'the payout transaction cannot be proved to your wallet yet — it may still be propagating; try again in a moment',
         ...claim,
       };
     }

@@ -5,11 +5,22 @@
 // **AtomicBEEF**, not raw hex: the wallet insists on being able to verify the transaction itself rather than
 // trusting whoever handed it over. Which is the correct instinct, and the reason this file exists.
 //
-// A BEEF is verifiable one of two ways: carry the whole ancestry back to something proven, or carry a merkle
-// path for the transaction itself. The first is hopeless here — a payout spends the pool covenant, whose input
-// script alone is ~40 KB, and its ancestry chains back through every settlement. The second is one lookup, and
-// costs nothing once the transaction is mined. So: **a payout becomes claimable when it confirms**, not before.
-// That is a real constraint on the user experience and it is stated rather than hidden.
+// A BEEF is verifiable one of two ways: carry a merkle path for the transaction itself, or carry its ancestry
+// back to transactions that have one.
+//
+// This file used to take the first route only, and therefore made a payout claimable **only once it confirmed**
+// — roughly a ten-minute wait, on the grounds that the second route was hopeless because a payout spends the
+// pool covenant (a ~40 KB unlock script) and "its ancestry chains back through every settlement".
+//
+// That last part was wrong, and the error is worth naming because it cost users a ten-minute wall for no reason.
+// **Ancestry stops at the first proven transaction.** It does not run to the genesis of the market. A payout's
+// inputs are the resolve transaction and a funding UTXO, both of which are already mined and both of which
+// therefore have merkle paths of their own. The walk is one level deep, not N settlements deep.
+//
+// So `atomicBeef` now tries the cheap route first and falls back to assembling from the parents. The result is
+// bigger on the wire (a mined payout is ~82 KB of itself; the unmined form also carries its parents) which is
+// exactly why the cheap route is still tried first — but it means a winner can take their money the moment the
+// payout is broadcast, which is what internalizing a payment should have required all along.
 import { Beef, Transaction } from '@bsv/sdk';
 import { findPaymentOutput } from './brc29.js';
 
@@ -33,8 +44,10 @@ export function outputPayingPkh(atomicBeefHex: string, pkh: string): { outputInd
  */
 export interface BeefSource {
   /**
-   * AtomicBEEF for `txid`, hex-encoded, or `undefined` if the chain cannot prove it yet — typically because it
-   * is still unconfirmed. `undefined` means "ask again later", never "this transaction is bad".
+   * AtomicBEEF for `txid`, hex-encoded, or `undefined` if the chain cannot prove it at all. `undefined` means
+   * "ask again later", never "this transaction is bad".
+   *
+   * Being unconfirmed is NOT a reason to return undefined — see the note at the top of this file.
    */
   atomicBeef(txid: string): Promise<string | undefined>;
 }
@@ -58,11 +71,19 @@ export class ToolboxBeefSource implements BeefSource {
   private readonly cache = new Map<string, string>();
   private services?: { getBeefForTxid(txid: string): Promise<Beef> };
 
-  constructor(private readonly chain: 'main' | 'test' = 'main') {}
+  /**
+   * @param rawTxOf fetches raw transaction hex by txid, INCLUDING while it is still in the mempool. Without it
+   *   the unconfirmed path is unavailable and this behaves as it did before: mined transactions only.
+   */
+  constructor(
+    private readonly chain: 'main' | 'test' = 'main',
+    private readonly rawTxOf?: (txid: string) => Promise<string | undefined>,
+  ) {}
 
   async atomicBeef(txid: string): Promise<string | undefined> {
     const hit = this.cache.get(txid);
     if (hit) return hit;
+    // The cheap route: one lookup, and the smallest possible BEEF. Works only once mined.
     try {
       const services = await this.load();
       const beef = await services.getBeefForTxid(txid);
@@ -71,8 +92,36 @@ export class ToolboxBeefSource implements BeefSource {
       this.cache.set(txid, hex);
       return hex;
     } catch {
-      // Unconfirmed, or the service is unreachable. Both mean "not yet", and neither is worth failing a request
-      // over — the caller still has the remittance, which is the part that cannot be reconstructed.
+      // Not mined, or the service is unreachable. Fall through and try to build it from the parents.
+    }
+    return this.fromParents(txid);
+  }
+
+  /**
+   * Assemble a BEEF for an unconfirmed transaction out of its parents' proofs.
+   *
+   * Deliberately NOT cached: this is the shape a transaction has only while it is unconfirmed, and caching it
+   * would keep serving the large form long after the small one became available.
+   */
+  private async fromParents(txid: string): Promise<string | undefined> {
+    if (!this.rawTxOf) return undefined;
+    try {
+      const rawHex = await this.rawTxOf(txid);
+      if (!rawHex) return undefined;
+      const tx = Transaction.fromHex(rawHex);
+
+      const services = await this.load();
+      const beef = new Beef();
+      for (const input of tx.inputs) {
+        const parent = input.sourceTXID;
+        if (!parent) return undefined;
+        // If a parent is ALSO unconfirmed this throws, and returning undefined is the honest answer: the walk
+        // would have to go deeper and this is not the place to recurse without a depth bound.
+        beef.mergeBeef((await services.getBeefForTxid(parent)).toBinary());
+      }
+      beef.mergeRawTx([...Buffer.from(rawHex, 'hex')]);
+      return Buffer.from(beef.toBinaryAtomic(txid)).toString('hex');
+    } catch {
       return undefined;
     }
   }

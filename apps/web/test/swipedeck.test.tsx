@@ -45,17 +45,34 @@ describe('SwipeDeck', () => {
     vi.useRealTimers();
   });
 
-  it('skip moves on without picking a side', () => {
+  // UI-023 renamed skip to an explicit forward arrow and added its opposite. Browsing in either direction must
+  // never pick a side — that is the safety line this file exists to hold.
+  it('next moves on without picking a side', () => {
     const onPick = renderDeck();
-    fireEvent.click(screen.getByRole('button', { name: /Skip/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Next market/ }));
     expect(onPick).not.toHaveBeenCalled();
     expect(screen.getByText('Second question')).toBeTruthy();
+  });
+
+  it('back returns to the previous market, and does not pick a side either', () => {
+    const onPick = renderDeck();
+    fireEvent.click(screen.getByRole('button', { name: /Next market/ }));
+    expect(screen.getByText('Second question')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Previous market/ }));
+    expect(screen.getByText('First question')).toBeTruthy();
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('cannot go back past the first market', () => {
+    renderDeck();
+    const back = screen.getByRole('button', { name: /Previous market/ }) as HTMLButtonElement;
+    expect(back.disabled, 'nothing to go back to').toBe(true);
   });
 
   it('counts down what is left, so the deck has an end in sight', () => {
     renderDeck();
     expect(screen.getByText(/3 left/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Skip/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Next market/ }));
     expect(screen.getByText(/2 left/)).toBeTruthy();
   });
 

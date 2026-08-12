@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 // @vitest-environment jsdom
 //
 // UI-013 — the price history has to be the price history.
@@ -67,5 +69,24 @@ describe('Sparkline', () => {
     const ys = pts.split(' ').map((p) => Number(p.split(',')[1]));
     // Against a fixed 0..1000 axis these two would be the same pixel and the line would look dead.
     expect(Math.abs(ys[0]! - ys[1]!), 'a 2-sat move must still render as a slope').toBeGreaterThan(1);
+  });
+});
+
+/**
+ * A layout contract, checked in the stylesheet because jsdom lays nothing out.
+ *
+ * The delta used to be `position: absolute; top: 0; right: 0` — which is precisely where a rising line
+ * ends, so the number sat on top of the graph. Reported as the figure being "in the same place as the
+ * end of the graph so it collapses". A flex row cannot overlap; absolute positioning always can.
+ */
+describe('Sparkline layout', () => {
+  it('gives the delta its own column instead of floating it over the graph', () => {
+    const css = readFileSync(join(__dirname, '..', 'src', 'ui', 'Sparkline.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const block = (sel: string) => css.slice(css.indexOf(sel), css.indexOf('}', css.indexOf(sel)));
+
+    expect(block('.spark {'), '.spark must lay its children out in a row').toMatch(/display:\s*flex/);
+    expect(block('.spark-delta {'), 'the delta must not be positioned over the graph')
+      .not.toMatch(/position:\s*absolute/);
   });
 });

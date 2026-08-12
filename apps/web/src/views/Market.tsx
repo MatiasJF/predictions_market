@@ -266,20 +266,24 @@ export function Market({
 
               {c.remittance ? (
                 <>
-                  {!c.mined_at && <Pill tone="warning" icon={<Icon name="clock" size={13} />}>waiting for a block</Pill>}
+                  {/*
+                    NOT gated on confirmation any more (UI-023). Claiming is an `internalizeAction`: the wallet
+                    is being handed a transaction and a derivation, not being asked to spend anything, and a
+                    BEEF built from the payout's mined parents proves it just as well as its own merkle path
+                    would. The ten-minute wall this used to impose was a limitation of how the proof was
+                    assembled, not a property of the money.
+                  */}
                   <Button
                     variant="primary" tone="accent" full
-                    busy={claiming} disabled={claiming || !signer || !c.mined_at}
+                    busy={claiming} disabled={claiming || !signer}
                     onClick={() => void claim(c.kind)}
                   >
-                    {claiming ? 'claiming…'
-                      : !c.mined_at ? 'waiting to confirm…'
-                      : 'claim into my wallet'}
+                    {claiming ? 'claiming…' : 'claim into my wallet'}
                   </Button>
                   <p className="tiny muted">
                     Sent to a one-time address only your key can unlock. Your wallet needs the transaction and
                     the derivation before the balance appears — that is what this button hands it.{' '}
-                    {c.mined_at ? `Confirmed in block ${c.mined_at}.` : 'It is not in a block yet.'}
+                    {c.mined_at ? `Confirmed in block ${c.mined_at}.` : 'Broadcast; not in a block yet, which does not hold up the claim.'}
                   </p>
                 </>
               ) : (

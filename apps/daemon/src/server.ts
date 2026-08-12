@@ -11,7 +11,7 @@ import { ExecutionEngine, makeReceiptSigner } from '@pm/execution';
 import { MarketService } from './service.js';
 import { startServer } from './http.js';
 import { PrivateKey } from '@bsv/sdk';
-import { WocChainCheck, OfflineChainCheck, ToolboxBeefSource, NoBeefSource } from '@pm/wallet';
+import { WocChainCheck, OfflineChainCheck, ToolboxBeefSource, NoBeefSource, type ChainCheck } from '@pm/wallet';
 
 /** Read a WIF from the repo-root .env (used at runtime only — never stored/echoed; Golden Rule 6). */
 function envWif(name: string): string {
@@ -59,13 +59,18 @@ const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()));
 // network. `local` accepts anything (there is no chain to ask); mainnet asks WhatsOnChain, which is what stops
 // a trader submitting a valid-but-never-broadcast payment and getting a fill for free.
 const payKey = paymentWif() ? PrivateKey.fromWif(paymentWif()) : undefined;
-const chainCheck = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
+// Typed as the interface, not the union: `rawTx` is an optional member of ChainCheck that only the online
+// implementation has, and the union type hides it entirely.
+const chainCheck: ChainCheck = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
   ? new WocChainCheck('main')
   : new OfflineChainCheck();
-// A winner's wallet will not accept money on our say-so; it wants the payout transaction with a merkle proof.
-// Offline there is none, and `NoBeefSource` says so instead of failing at request time.
+// A winner's wallet will not accept money on our say-so; it wants the payout transaction, provable. Offline
+// there is nothing to prove it against, and `NoBeefSource` says so instead of failing at request time.
+//
+// `chainCheck.rawTx` is handed over so an UNCONFIRMED payout can still be assembled from its (mined) parents —
+// WhatsOnChain serves mempool transactions, which is what makes claiming possible before the block arrives.
 const beefSource = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
-  ? new ToolboxBeefSource('main')
+  ? new ToolboxBeefSource('main', (txid) => chainCheck.rawTx?.(txid) ?? Promise.resolve(undefined))
   : new NoBeefSource();
 const service = new MarketService(db, engine, exec, payKey, chainCheck, beefSource);
 const port = Number(process.env.PM_PORT ?? 8787);

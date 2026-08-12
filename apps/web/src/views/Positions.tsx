@@ -38,7 +38,8 @@ export function Positions({ identity, onOpen }: { identity: string; onOpen: (id:
   }, [markets, identity]);
 
   const staked = (rows ?? []).reduce((s, r) => s + (r.mine ? Number(r.mine.netCostSats) : 0), 0);
-  const claimable = (rows ?? []).filter((r) => r.claim?.remittance && r.claim.mined_at);
+  // Confirmation is no longer part of being claimable (UI-023) — see the note in Market.tsx.
+  const claimable = (rows ?? []).filter((r) => r.claim?.remittance);
 
   return (
     <div className="stack">
@@ -90,9 +91,7 @@ export function Positions({ identity, onOpen }: { identity: string; onOpen: (id:
                     </span>
                   </button>
                   {claim?.remittance && (
-                    claim.mined_at
-                      ? <Pill tone="positive" icon={<Icon name="check" size={13} />}>claimable</Pill>
-                      : <Pill tone="warning" icon={<Icon name="clock" size={13} />}>waiting for a block</Pill>
+                    <Pill tone="positive" icon={<Icon name="check" size={13} />}>claimable</Pill>
                   )}
                   <Button variant="link" size="sm" onClick={() => onOpen(market.id)}>open</Button>
                 </div>

@@ -83,7 +83,10 @@
 .deck-btn:active { transform: scale(0.94); }
 .deck-btn-no { color: var(--negative); }
 .deck-btn-yes { color: var(--positive); }
-.deck-btn-skip { width: 48px; height: 48px; font-size: 18px; color: var(--text-subtle); }
+/* Navigation, not a decision — deliberately smaller and quieter than the YES/NO pair, so the two
+   buttons that pick a side stay the obvious ones. */
+.deck-btn-nav { width: 44px; height: 44px; color: var(--text-muted); }
+.deck-btn-nav:disabled { opacity: 0.35; cursor: default; }
 
 .deck-hint { text-align: center; max-width: 34ch; }
 

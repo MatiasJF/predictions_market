@@ -51,9 +51,17 @@ export function SwipeDeck({
     }, 180);
   }
 
-  function skip() {
+  // Browse without deciding, in both directions (UI-023). The deck could only ever move forwards,
+  // so overshooting a market you wanted meant starting the whole stack again. `back` is the only
+  // control here that undoes something, and it undoes nothing but your position in the queue —
+  // picking a side is still the only thing that opens the stake sheet.
+  function next() {
     setDx(0);
     setTop((t) => Math.min(t + 1, items.length));
+  }
+  function back() {
+    setDx(0);
+    setTop((t) => Math.max(t - 1, 0));
   }
 
   if (!item) {
@@ -68,7 +76,17 @@ export function SwipeDeck({
   }
 
   return (
-    <div className="deck">
+    <div
+      className="deck"
+      // The arrows are reachable without a pointer, and without tabbing to them first.
+      tabIndex={0}
+      role="group"
+      aria-label="Market deck — left and right arrow keys move between markets"
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+      }}
+    >
       <div className="deck-stack">
         {/*
           An EMPTY shell behind the top card — a silhouette, not a second card.
@@ -102,22 +120,26 @@ export function SwipeDeck({
       </div>
 
       <div className="deck-actions">
+        <button type="button" className="deck-btn deck-btn-nav" onClick={back} disabled={top === 0}>
+          <Icon name="arrowLeft" size={18} />
+          <span className="sr-only">Previous market</span>
+        </button>
         <button type="button" className="deck-btn deck-btn-no" onClick={() => choose('no')}>
           <Icon name="x" size={20} />
           <span className="sr-only">Back NO on this market</span>
-        </button>
-        <button type="button" className="deck-btn deck-btn-skip" onClick={skip}>
-          <Icon name="rotateCcw" size={18} />
-          <span className="sr-only">Skip this market</span>
         </button>
         <button type="button" className="deck-btn deck-btn-yes" onClick={() => choose('yes')}>
           <Icon name="check" size={20} />
           <span className="sr-only">Back YES on this market</span>
         </button>
+        <button type="button" className="deck-btn deck-btn-nav" onClick={next}>
+          <Icon name="arrowRight" size={18} />
+          <span className="sr-only">Next market</span>
+        </button>
       </div>
 
       <p className="tiny muted deck-hint">
-        Swipe or tap to pick a side — {items.length - top} left. Nothing is bought until you approve the amount.
+        Arrows to browse, swipe or tap to pick a side — {items.length - top} left. Nothing is bought until you approve the amount.
       </p>
     </div>
   );

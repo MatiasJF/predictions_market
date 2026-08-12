@@ -551,6 +551,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     The runbook records what is **provably on chain** (only #7 complete, plus #8's deploy and sell) versus
     the 58 receipts across #1–#5 that were Script-verified and never broadcast, so nobody promises an
     audience a WhatsOnChain link that does not exist.
+  - ● **UI-023 — claiming stops waiting for a block (ADR-062).** `beef.ts` justified a ten-minute wall with
+    "ancestry chains back through every settlement". Wrong: **ancestry stops at the first proven
+    transaction**, and a payout's inputs (the resolve tx, a funding UTXO) are already mined — one level, not
+    N. `atomicBeef` now falls back to assembling from the parents, so an unconfirmed payout is claimable.
+    Proved against mainnet: 160.5 KB assembled vs 80.2 KB mined, right txid, output located, and
+    `beef.verify()` **true on real WhatsOnChain headers**. `mined_at` stays as information, not a gate. Also:
+    the Discover deck gained ← / → (browse both ways, arrow keys, never picks a side), and the sparkline delta
+    moved out of the graph it was overlapping. 281 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

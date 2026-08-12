@@ -1596,3 +1596,62 @@ Making the surface toggle icon-only removed the visible word its test asserted o
 carries the state to assistive tech now that there is no visible label. Test contract change, recorded here.
 
 278 workspace tests, typecheck and build clean. No daemon, API, custody or money-path change.
+
+## ADR-062
+
+**UI-023 — claiming stops waiting for a block; the deck goes both ways; the graph stops colliding**
+
+**Date:** 2026-08-12 · **Status:** accepted · **Context:** three reports after the showcase market ran end to
+end through step 6 on mainnet.
+
+### 1. A claim no longer waits for confirmation
+
+*"to reinternalize the tx of the winners it should not wait for confirmation as it is just a tx
+internalization."* Correct, and the old behaviour rested on a mistake in this repo's own reasoning.
+
+`beef.ts` said full-ancestry BEEF was hopeless "because a payout spends the pool covenant, whose input script
+alone is ~40 KB, and its ancestry chains back through every settlement". The first half is true — the real
+payout `64d57774…` is **81,765 bytes**, input 0 being a **40,919-byte** covenant unlock. The second half is
+wrong: **ancestry stops at the first proven transaction.** A payout's inputs are the resolve transaction and a
+funding UTXO, both already mined, both carrying merkle paths. The walk is one level, not N settlements.
+
+So `atomicBeef` now tries the cheap route (own merkle path) and falls back to assembling from the parents,
+which works while the payout is still in the mempool — WhatsOnChain serves mempool transactions, which is what
+`chainCheck.rawTx` is wired in for.
+
+**Verified empirically against mainnet**, not assumed, per the standing rule about toolchain behaviour:
+
+| | size | result |
+|---|---|---|
+| via its own merkle proof (mined) | 80.2 KB | baseline |
+| via parents, forced | 160.5 KB | parses to the right txid; payment output located at index 2, 2000 sat |
+| `beef.verify()` on **real WhatsOnChain headers** | — | **true** |
+
+Double the bytes, which is why the cheap route is still tried first. `mined_at` survives as information
+("Confirmed in block N") and is still cached, because a wrong block number is a lie about the chain even when
+nothing is gated on it — but it is no longer a precondition anywhere.
+
+This reverses a decision made at the operator's request earlier in the project ("make the button disabled until
+the block is confirmed so that you cannot claim it incorrectly"). That request was sound given what the code
+could do then; the constraint was in the proof assembly, not in the money.
+
+### 2. The deck browses in both directions
+
+Discover could only ever move forwards, so overshooting a market meant restarting the stack. The skip control
+became an explicit **← / →** pair flanking YES/NO, bound to the left and right arrow keys, deliberately smaller
+and quieter than the two buttons that pick a side. Browsing still never picks a side — the safety line in
+`SwipeDeck.tsx` is unchanged, and the tests now assert it in both directions.
+
+### 3. The sparkline delta stopped colliding with the line
+
+It was `position: absolute; top: 0; right: 0` — exactly where a rising line ends. Reported as the number sitting
+"in the same place as the end of the graph so it collapses". It has its own flex column now: a row cannot
+overlap by construction, where absolute positioning always can. Pinned by a stylesheet contract in
+`sparkline.test.tsx`, mutation-verified.
+
+### Consequences
+
+Three tests encoded the old behaviour and were rewritten rather than deleted: the unmined-claim test now
+asserts the *transient* failure reason, the mined-height test keeps its caching guarantee while dropping the
+"refuse a doomed claim" premise, and the deck tests cover next **and** back. 281 tests, typecheck and build
+clean. `docs/DEMO.md` corrected — it told the operator a live claim needed a ten-minute wait.

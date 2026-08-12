@@ -99,7 +99,9 @@ thing the audience sees is a wallet dialog.
    would just teach people to dismiss confirmations).
 5. **Operator console** — the sign-off queue. Settle the batch you just created. The slider is the
    gate, and it names the exact amount.
-6. **Positions → claim.** See §5 on timing before you promise this one live.
+6. **Positions → claim.** Safe to do live: since UI-023 a claim no longer waits for the payout to be
+   mined — the proof is assembled from the payout's already-mined parents. Verified against mainnet: the
+   assembled BEEF is 160.5 KB against 80.2 KB once mined, and passes `verify()` on real WhatsOnChain headers.
 
 Costs, from measured mainnet transactions: a buy ~1,000 sat, a settle batch 200 sat, resolve 100 sat,
 payout 2,200 sat. Against **172,884 sat** confirmed, a full live lifecycle is comfortably affordable.
@@ -125,7 +127,7 @@ ceiling is `MAX_PAYOUTS = 8` winners, not fees. Irrelevant unless a demo market 
 
 | If this happens | Why | Do this |
 |---|---|---|
-| **Claim button stays disabled** | Deliberate. A payout is not claimable until its transaction is **mined**, roughly 10 minutes. | Say so — it is a correctness feature, not a hang. Don't plan a live claim of a payout you make in the same session. |
+| **Claim fails with "cannot be proved yet"** | Transient — the payout has not propagated far enough for its parents to be fetched. | Press again in a moment. **It no longer waits for a block** (UI-023), so a live claim in the same session is fine. |
 | Wallet approval never appears | MetaNet Desktop not running or not focused | Alt-tab to it. The app is idle until you approve; nothing is lost. |
 | "payment: transaction … is not on the network yet" | Propagation lag | Press again. **The quote is still valid and you will not be charged twice** — the intent is reused (MAINNET-012). |
 | "This pool cannot be spent by the current build" | The contract was recompiled after that market was deployed | Use a different market. Do not recompile mid-demo. |
