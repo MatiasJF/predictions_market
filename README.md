@@ -57,9 +57,12 @@ wallet (e.g. MetaNet Desktop) and reload to use your own.
 Optional, deliberate, and it spends real satoshis. You need a funded key.
 
 ```bash
-cp .env.example .env        # then fill in PM_FUNDING_WIF and set PM_NETWORK=mainnet
-PM_NETWORK=mainnet pnpm dev
+cp .env.example .env        # then set PM_NETWORK=mainnet and fill in PM_FUNDING_WIF
+pnpm dev
 ```
+
+Configuration precedence is: an explicit variable on the command line, then `.env`, then the safe default.
+So `PM_NETWORK=mainnet pnpm dev` works as a one-off without editing anything.
 
 - `.env` is gitignored and holds **real spending keys**. It is read at runtime only; the database stores
   public keys and references, never secrets. Don't print it, and close it before screen-sharing.
@@ -88,7 +91,7 @@ PM_NETWORK=mainnet pnpm dev
 | Exit code 139, or the process dies silently | Node 20. `better-sqlite3`'s native binary segfaults rather than failing cleanly | `nvm use` (Node 22 is pinned in `.nvmrc`), then `pnpm rebuild -r` |
 | ~45 tests fail with `NODE_MODULE_VERSION` | native modules built for a different Node | `pnpm rebuild -r` |
 | `Cannot find module …/contracts-scrypt/dist/…` | the contract package hasn't been built — its output is gitignored | `pnpm setup` |
-| `EADDRINUSE` on 8787 | a daemon is already running | `pnpm dev` refuses and tells you; stop it, or `PM_PORT=8788 pnpm dev` |
+| `EADDRINUSE`, or a port is busy | something is already running there | `pnpm dev` checks **both** ports before starting and prints what holds them, with its age. Stop it, or `PM_PORT=8788 PM_WEB_PORT=5274 pnpm dev` |
 | The page looks stale after an edit | a stale process, not your code | Check the process **age** first: `ps -o etime= -p $(lsof -ti :8787 \| head -1)`. Anything older than your last change isn't running it. |
 | `http://127.0.0.1:5273` doesn't load | the dev server binds IPv6 only | use `http://localhost:5273` |
 

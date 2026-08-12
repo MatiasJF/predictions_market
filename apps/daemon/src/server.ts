@@ -13,14 +13,15 @@ import { startServer } from './http.js';
 import { PrivateKey } from '@bsv/sdk';
 import { WocChainCheck, OfflineChainCheck, ToolboxBeefSource, NoBeefSource, type ChainCheck } from '@pm/wallet';
 
-/** Read a WIF from the repo-root .env (used at runtime only — never stored/echoed; Golden Rule 6). */
-function envWif(name: string): string {
+/** Read a value from the repo-root .env (secrets are used at runtime only — never stored/echoed; Golden Rule 6). */
+function envFile(name: string): string {
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '.env');
   if (!existsSync(envPath)) return '';
   const m = readFileSync(envPath, 'utf8').match(new RegExp(`^${name}=(.+)$`, 'm'));
-  const wif = m?.[1];
-  return wif ? wif.trim().replace(/^["']|["']$/g, '') : '';
+  const v = m?.[1];
+  return v ? v.trim().replace(/^["']|["']$/g, '') : '';
 }
+const envWif = envFile;
 /** Funding WIF — passed to the sCrypt engine's authorize path only. */
 const fundingWif = (): string => envWif('PM_FUNDING_WIF');
 /** Sequencer WIF for signing off-chain receipts — falls back to the funding key, then a random dev key. */
@@ -43,8 +44,17 @@ const paymentWif = (): string => envWif('PM_PAYMENT_WIF') || fundingWif();
  * exactly as they would be on mainnet — they are simply never broadcast, which costs nothing and needs no
  * keys. Going to mainnet stays a deliberate act: set PM_NETWORK=mainnet yourself.
  */
-process.env.PM_NETWORK ||= 'local';
-process.env.PM_ENGINE ||= 'scrypt';
+/*
+ * Precedence: an explicit variable on the command line, then `.env`, then the safe default.
+ *
+ * `.env` HAD `PM_NETWORK=mainnet` all along and the daemon never read it — only WIF names were ever pulled
+ * from that file, and the network came from a hardcoded `?? 'mainnet'` fallback. Which worked, silently, for
+ * exactly as long as the fallback agreed with the file. Changing the fallback to `local` for the benefit of a
+ * fresh clone therefore flipped a configured mainnet daemon to local on its next restart, with nothing in
+ * `.env` to prevent it. Reading the file is what makes both true at once.
+ */
+process.env.PM_NETWORK ||= envFile('PM_NETWORK') || 'local';
+process.env.PM_ENGINE ||= envFile('PM_ENGINE') || 'scrypt';
 
 async function makeEngine(): Promise<{ engine: ChainEngine; label: string }> {
   const kind = process.env.PM_ENGINE ?? 'runar';
@@ -72,7 +82,21 @@ const exec = new ExecutionEngine(db, makeReceiptSigner(sequencerWif()));
 // Trader payments: derive destinations from the payment key, and confirm the payment actually reached the
 // network. `local` accepts anything (there is no chain to ask); mainnet asks WhatsOnChain, which is what stops
 // a trader submitting a valid-but-never-broadcast payment and getting a fill for free.
-const payKey = paymentWif() ? PrivateKey.fromWif(paymentWif()) : undefined;
+/*
+ * With no key configured, an OFFLINE run gets an ephemeral one.
+ *
+ * Without this a fresh clone cannot trade at all: `payment-intent` returns 501 `no_payment_key`, so the
+ * demo seeder dies on its first buy and the app can be looked at but not used. On `local` that key is
+ * pure ceremony — payments are built and Script-verified and never broadcast — so generating one costs
+ * nothing and makes the whole flow work with no configuration.
+ *
+ * NEVER on mainnet. A key that exists only in memory would be handed real stake payments and forget them
+ * on the next restart, which is money destroyed rather than money at risk. There, no key stays 501, and
+ * the daemon says which key is missing.
+ */
+const payKey = paymentWif()
+  ? PrivateKey.fromWif(paymentWif())
+  : (process.env.PM_NETWORK === 'mainnet' ? undefined : PrivateKey.fromRandom());
 // Typed as the interface, not the union: `rawTx` is an optional member of ChainCheck that only the online
 // implementation has, and the union type hides it entirely.
 const chainCheck: ChainCheck = (process.env.PM_NETWORK ?? 'mainnet') === 'mainnet'
