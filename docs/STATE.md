@@ -559,6 +559,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     `beef.verify()` **true on real WhatsOnChain headers**. `mined_at` stays as information, not a gate. Also:
     the Discover deck gained ← / → (browse both ways, arrow keys, never picks a side), and the sparkline delta
     moved out of the graph it was overlapping. 281 tests.
+  - ● **UI-024 — the search field, and a reset that never applied (ADR-063).** Reported as the input colour
+    looking strange. It was **specificity**: `base.css` styles `input[type="search"]` at (0,1,1) and the
+    reset was `.searchbar-input` at (0,1,0), so the field kept the global fill, border and radius — a grey
+    rounded box inside the pill. Now `.searchbar .searchbar-input`, with every global property answered. The
+    control also became a recessed well (`--surface-sunken`, lifting to raised on focus) instead of a raised
+    card that looked like the market cards under it, and gained the clear button it never had. Guarded by a
+    specificity contract — **whose first version was vacuous** (it compared against `textarea`, the last item
+    in the global selector list) and was caught by mutating the CSS and watching the suite stay green. 282 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

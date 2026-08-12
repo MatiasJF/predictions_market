@@ -57,6 +57,11 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
             type="search" className="searchbar-input" value={q} placeholder="Search markets"
             aria-label="Search markets" onChange={(e) => setQ(e.target.value)}
           />
+          {q && (
+            <button type="button" className="searchbar-clear" onClick={() => setQ('')} aria-label="Clear search">
+              <Icon name="x" size={13} />
+            </button>
+          )}
         </label>
         <Chips
           label="Filter markets" value={filter} onChange={setFilter}

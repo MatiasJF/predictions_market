@@ -1655,3 +1655,50 @@ Three tests encoded the old behaviour and were rewritten rather than deleted: th
 asserts the *transient* failure reason, the mined-height test keeps its caching guarantee while dropping the
 "refuse a doomed claim" premise, and the deck tests cover next **and** back. 281 tests, typecheck and build
 clean. `docs/DEMO.md` corrected — it told the operator a live claim needed a ten-minute wait.
+
+## ADR-063
+
+**UI-024 — the market search field, and a reset that never applied**
+
+**Date:** 2026-08-12 · **Status:** accepted · **Context:** *"the searchbar to search all markets looks strange
+on input colour, take a look at it whole and make it more close to the page style."*
+
+### It was a specificity bug, not a colour choice
+
+`base.css` styles form controls globally, `input[type="search"]` among them: a `--surface-app` fill, a border,
+`--radius-md`, padding. The search field tried to undo that with `.searchbar-input { background: none; border:
+none }`.
+
+**That rule never applied.** An element+attribute selector is **(0,1,1)**; a lone class is **(0,1,0)**. So the
+field kept the global fill, the global border and the global corner radius — a grey rounded box nested inside
+the pill that was supposed to *be* the control. Two greys and two radii in one component, which is exactly what
+"strange on input colour" describes.
+
+Fixed with `.searchbar .searchbar-input` (0,2,0), and every property the global rule sets is now explicitly
+answered — leaving any one of them out brings back a piece of the double box.
+
+### And the whole control moved to the page's idiom
+
+The wrapper was `--surface-raised` with a full border: the same treatment the market cards *below it* get, so
+the control that filters the list looked like another item in the list. It is a **recessed well** now —
+`--surface-sunken`, transparent border, border appearing on hover, and on focus it lifts to `--surface-raised`
+with the accent border and the focus ring. Sunken reads as "type here" without a second border saying so.
+
+It also gained a **clear button**, which it had no affordance for at all: `base.css` hides Safari's native one
+(rightly — that is the OS's design, not ours) and the empty state tells people to "clear the search".
+
+### Consequences
+
+A specificity contract in `tokens.test.ts` computes both selectors' specificity and asserts the component
+outranks the global rule, refusing a tie — a tie is decided by file import order, which is not something intent
+should rest on.
+
+**The first version of that test was vacuous and passed on the broken CSS.** The global rule is a selector
+list, and it took `.split(',').pop()` — which is `textarea`, at (0,0,1). A lone class beats that comfortably.
+Caught by mutation-testing the check itself: reverting the selector left the suite green. It now compares
+against the compound that actually matches the element, and the mutation fails as it should.
+
+Audited the rest: `.field input` / `input.control` are the only other component rules touching form controls,
+and they set values identical to the global rule, so they are redundant rather than broken. No other victim.
+
+282 tests, typecheck and build clean.

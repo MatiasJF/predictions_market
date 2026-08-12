@@ -181,19 +181,60 @@
 }
 
 /* --- search ---------------------------------------------------------------------------------------- */
+/* --- search ------------------------------------------------------------------------------------------
+   A RECESSED WELL, not a floating card. It used to be `--surface-raised` with a full border, which is
+   the same treatment the market cards below it get — so the control that filters the list looked like
+   another item in the list. Sunken reads as "type here" without needing a second border to say so.
+
+   And it was worse than that in practice. base.css styles `input[type="search"]` globally, and an
+   element+attribute selector is (0,1,1) while `.searchbar-input` is only (0,1,0) — so the reset below
+   NEVER APPLIED and the field kept the global `--surface-app` fill, its own border and its own corner
+   radius, nested inside this pill. Reported as the input colour looking strange, and it was: two
+   different greys and two radii in one control.
+
+   Hence `.searchbar .searchbar-input` (0,2,0). Specificity is the bug, so specificity is the fix. */
 .searchbar {
   display: flex; align-items: center; gap: var(--space-3);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   padding: var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.searchbar-input {
+.searchbar:hover { border-color: var(--border); }
+.searchbar:focus-within {
+  background: var(--surface-raised);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+/* Beats `input[type="search"]` in base.css — see above. Every one of these lines is undoing something
+   that rule sets, so removing any of them brings back a piece of the double-box. */
+.searchbar .searchbar-input {
   flex: 1 1 auto; min-width: 0;
-  font: inherit; border: none; background: none; color: var(--text-strong);
+  font: inherit;
+  appearance: none; -webkit-appearance: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: var(--text-strong);
 }
-.searchbar-input:focus { outline: none; }
-.searchbar:focus-within { box-shadow: var(--focus-ring); }
+.searchbar .searchbar-input:focus { outline: none; border-color: transparent; }
+.searchbar .searchbar-input::placeholder { color: var(--text-subtle); }
+
+/* Clearing it had no affordance at all: base.css hides Safari's native clear button (rightly — it is
+   the OS's design, not ours), and the empty state tells people to "clear the search". */
+.searchbar-clear {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border: none; border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.searchbar-clear:hover { color: var(--text-strong); }
 
 /* --- market card actions ------------------------------------------------------------------------------ */
 .market-actions { justify-content: flex-start; gap: var(--space-5); padding: var(--space-2) 0; }

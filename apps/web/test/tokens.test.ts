@@ -288,3 +288,60 @@ describe('legibility', () => {
     expect(offenders, 'use `tiny muted`, or `subtle` at a larger size').toEqual([]);
   });
 });
+
+/**
+ * UI-024 — a component reset must actually outbid the global rule it is undoing.
+ *
+ * `base.css` styles `input[type="search"]` globally: a fill, a border, a radius, padding. The search
+ * field tried to undo that with `.searchbar-input { background: none; border: none }` — and lost, because
+ * an element+attribute selector is (0,1,1) and a lone class is (0,1,0). The reset never applied. The
+ * visible result was a grey box with its own border and corner radius nested inside the pill, reported
+ * as the input colour looking strange.
+ *
+ * Nothing catches this: the CSS is valid, the rule is present, the build is clean, and it only shows up
+ * by looking at the thing. So the comparison is arithmetic here.
+ */
+const specificity = (sel: string): [number, number, number] => {
+  const s = sel.trim();
+  const ids = (s.match(/#[\w-]+/g) ?? []).length;
+  const classes = (s.match(/\.[\w-]+/g) ?? []).length
+    + (s.match(/\[[^\]]+\]/g) ?? []).length
+    + (s.match(/:(?!:)(?!hover|focus|active|disabled|not|placeholder)[\w-]+/g) ?? []).length;
+  const elements = (s.match(/(^|[\s>+~])[a-z][\w-]*/g) ?? []).length;
+  return [ids, classes, elements];
+};
+const beats = (a: string, b: string) => {
+  const [x, y] = [specificity(a), specificity(b)];
+  for (let i = 0; i < 3; i++) if (x[i]! !== y[i]!) return x[i]! > y[i]!;
+  return false; // a tie depends on source order, which is not a contract anyone should rely on
+};
+
+describe('component resets', () => {
+  it('lets the search field beat the global input rule it is undoing', () => {
+    const appCss = strip(readFileSync(join(SRC, 'App.css'), 'utf8'));
+    const baseCss = strip(readFileSync(join(SRC, 'styles', 'base.css'), 'utf8'));
+
+    const globalRule = baseCss.match(/([^}]*input\[type="search"\][^{]*)\{([^}]*)\}/)?.[1];
+    expect(globalRule, 'base.css should still style search inputs globally').toBeTruthy();
+
+    // The rule that resets the field inside the searchbar.
+    const reset = appCss.match(/([^}]*\.searchbar-input[^{]*)\{([^}]*background[^}]*)\}/);
+    expect(reset, 'the searchbar must reset the global input styling').toBeTruthy();
+
+    const [, resetSel, resetBody] = reset!;
+    // Every property the global rule sets has to be answered, or a piece of the double-box survives.
+    for (const prop of ['background', 'border', 'border-radius', 'padding']) {
+      expect(resetBody, `the reset must neutralise \`${prop}\``).toMatch(new RegExp(`${prop}\\s*:`));
+    }
+    // The GLOBAL RULE IS A SELECTOR LIST — `input[type="text"], input[type="search"], …, textarea`.
+    // The first version of this test took `.split(',').pop()`, which is `textarea` at (0,0,1); a lone
+    // class beats that, so the check passed on the broken CSS. Compare against the compound that
+    // actually applies to this element.
+    const globalSearch = globalRule!.split(',').map((x) => x.trim()).find((x) => x.includes('[type="search"]'));
+    expect(globalSearch, 'expected an input[type="search"] compound in the global rule').toBeTruthy();
+    expect(
+      beats(resetSel!, globalSearch!),
+      `\`${resetSel!.trim()}\` must outrank \`${globalSearch}\` — a tie is decided by file order, not by intent`,
+    ).toBe(true);
+  });
+});
