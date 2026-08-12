@@ -124,13 +124,21 @@ export function SwipeDeck({
           <Icon name="arrowLeft" size={18} />
           <span className="sr-only">Previous market</span>
         </button>
-        <button type="button" className="deck-btn deck-btn-no" onClick={() => choose('no')}>
-          <Icon name="x" size={20} />
-          <span className="sr-only">Back NO on this market</span>
-        </button>
+        {/*
+          YES on the LEFT, NO on the right, at the operator's instruction (UI-026).
+
+          Worth knowing that this disagrees with the gesture directly above it: dragging RIGHT still picks
+          YES, which is the convention the card stack borrowed from. So the button nearest your left thumb
+          and the direction your left thumb pushes now mean opposite things. Flipping the drag to match is
+          a two-line change in `onPointerUp` if that trade turns out to be the wrong way round.
+        */}
         <button type="button" className="deck-btn deck-btn-yes" onClick={() => choose('yes')}>
           <Icon name="check" size={20} />
           <span className="sr-only">Back YES on this market</span>
+        </button>
+        <button type="button" className="deck-btn deck-btn-no" onClick={() => choose('no')}>
+          <Icon name="x" size={20} />
+          <span className="sr-only">Back NO on this market</span>
         </button>
         <button type="button" className="deck-btn deck-btn-nav" onClick={next}>
           <Icon name="arrowRight" size={18} />

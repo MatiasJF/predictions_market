@@ -106,3 +106,19 @@ describe('deck layout', () => {
     expect(stack, 'the stack must size to its tallest card').not.toMatch(/min-height|height:\s*\d/);
   });
 });
+
+/**
+ * UI-026 — YES sits to the LEFT of NO in the action row.
+ *
+ * Asked for explicitly, and worth pinning because it is the kind of ordering a later refactor "tidies"
+ * back. Order is read off the DOM rather than from a class, so it is the order a person actually sees.
+ */
+describe('SwipeDeck button order', () => {
+  it('puts YES left and NO right', () => {
+    renderDeck();
+    const labels = screen.getAllByRole('button')
+      .map((b) => b.textContent ?? '')
+      .filter((t) => /Back (YES|NO)/.test(t));
+    expect(labels.map((t) => (t.includes('YES') ? 'yes' : 'no'))).toEqual(['yes', 'no']);
+  });
+});

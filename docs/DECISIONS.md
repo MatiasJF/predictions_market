@@ -1741,3 +1741,43 @@ the sheet, the tab bar — which removes the artifact class entirely at the cost
 cards.
 
 285 tests, typecheck and build clean.
+
+## ADR-065
+
+**UI-026 — the tab bar came back to the rail, and YES moved left**
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+### The regression, and the rule it produced
+
+ADR-064 gave the shell's children an explicit stacking order so the background wash could leave
+`z-index: -1`. That rule listed `main`, `header` and `.tabbar` and set `position: relative` on all three.
+
+`.tabbar` is `position: fixed`, and on desktop a media query turns it into a left rail by setting only
+`top` / `left` / `width`. The new rule outranked it, so the bar fell into normal flow, the rail geometry
+stopped applying without a positioned element to apply to, and it **collapsed to the bottom of the page**.
+Reported immediately. Typecheck and build were clean and no test failed.
+
+The header and the bar never needed the rule: at `z-index` 10 and 20 they already cleared a wash at 0. Only
+`main` — which is static and has no z-index — did. The rule is now `.app-shell > main` alone.
+
+**The rule that falls out of this: never restate `position` for an element that positions itself.** It is
+now a test — every stylesheet is scanned for rules that mention `.tabbar` or `.topbar` and set `position`,
+and anything outside the owning file fails. Pseudo-elements are excluded, since `.topbar::after` positioning
+itself says nothing about the header. Mutation-verified by reintroducing the exact regression.
+
+This is the second specificity-override defect in two days (see ADR-063, where a search-field reset lost to
+a global element+attribute selector). Both were invisible to typecheck, tests and the build, and both were
+found by a person looking at the screen. That is a pattern worth naming rather than fixing twice quietly.
+
+### YES to the left of NO
+
+Asked for directly. Pinned by reading the order off the DOM rather than from a class, so the test asserts
+the order a person actually sees.
+
+**Noted, not silently accepted:** this now disagrees with the gesture immediately above it. Dragging RIGHT
+still picks YES — the convention the card stack borrowed — so the button nearest the left thumb and the
+direction the left thumb pushes mean opposite things. Flipping the drag to match is two lines in
+`onPointerUp`. Left as asked; the trade is recorded here so it can be reversed knowingly.
+
+288 tests, typecheck and build clean.

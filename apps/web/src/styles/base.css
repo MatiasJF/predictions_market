@@ -52,9 +52,16 @@ a:hover { text-decoration: underline; }
 
 /* --- layout ---------------------------------------------------------------------------------- */
 /* `position: relative` + a stacking order for the content, so the fixed ambient layer can sit at z-index 0
-   instead of behind the root context. See the note on `.ambient` in App.css. */
+   instead of behind the root context. See the note on `.ambient` in App.css.
+   
+   ONLY `main`. The header and the tab bar position themselves — `sticky, z-index 10` and `fixed, z-index 20`
+   respectively — so they already clear the wash. An earlier version of this rule listed all three and set
+   `position: relative` on them, which beat `.tabbar { position: fixed }` on specificity: the bar dropped out
+   of the viewport into normal flow, and the desktop media query that turns it into a left rail sets only
+   `top`/`left`/`width`, which do nothing without a positioned element. It collapsed to the bottom of the
+   page. Never restate positioning here for something that positions itself. */
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; position: relative; }
-.app-shell > main, .app-shell > header, .app-shell > .tabbar { position: relative; z-index: 1; }
+.app-shell > main { position: relative; z-index: 1; }
 .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-8); }
 .stack { display: flex; flex-direction: column; gap: var(--space-4); }
 .stack-sm { display: flex; flex-direction: column; gap: var(--space-2); }

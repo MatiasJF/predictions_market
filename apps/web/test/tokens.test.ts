@@ -345,3 +345,51 @@ describe('component resets', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * UI-026 — nothing may restate `position` for an element that positions itself.
+ *
+ * The tab bar is `position: fixed` and becomes a left rail on desktop via a media query that sets only
+ * `top`/`left`/`width`. A stacking-order rule elsewhere listed it and set `position: relative`, which won
+ * on specificity — so the bar fell out of the viewport into normal flow, the rail geometry stopped
+ * applying, and it collapsed to the bottom of the page. The build was clean and no test failed.
+ *
+ * The bar and the header already sit above the background wash (z-index 20 and 10). They never needed
+ * help, and offering it broke them.
+ */
+describe('layout ownership', () => {
+  const cssFiles: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(dir, e.name));
+      else if (e.name.endsWith('.css')) cssFiles.push(join(dir, e.name));
+    }
+  };
+  walk(SRC);
+
+  for (const [selector, owner, expected] of [
+    ['.tabbar', 'chassis.css', 'fixed'],
+    ['.topbar', 'App.css', 'sticky'],
+  ] as const) {
+    it(`only ${owner} sets \`position\` on ${selector}`, () => {
+      const offenders: string[] = [];
+      for (const f of cssFiles) {
+        const css = strip(readFileSync(f, 'utf8'));
+        // Every rule whose selector mentions this class and whose body sets `position`.
+        for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+          const sel = m[1]!;
+          const body = m[2]!;
+          // A pseudo-element is its own box — `.topbar::after` positioning itself says nothing about
+          // whether something is overriding `.topbar`.
+          if (!new RegExp(`\\${selector}(?![\\w-]|::)`).test(sel)) continue;
+          if (!/(^|[;\s])position\s*:/.test(body)) continue;
+          const file = f.split('/').pop()!;
+          const value = body.match(/position\s*:\s*([a-z-]+)/)?.[1];
+          if (file !== owner) offenders.push(`${file} sets position:${value} on \`${sel.trim()}\``);
+          else expect(value, `${owner} should keep ${selector} ${expected}`).toBe(expected);
+        }
+      }
+      expect(offenders, `${selector} positions itself — do not restate it elsewhere`).toEqual([]);
+    });
+  }
+});

@@ -575,6 +575,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     Chromium leaves unpainted until a repaint (hence "until you scroll or click"). Wash moved to `z-index: 0`
     with content at `1`. **Diagnosed by reading, not reproduced** — no browser here renders the app; fallback
     if it survives is to drop blur from tall cards and keep it on the short chrome. 285 tests.
+  - ● **UI-026 — the tab bar returned to its rail; YES moved left (ADR-065).** ADR-064's stacking rule set
+    `position: relative` on `.tabbar`, which is `position: fixed` and becomes a desktop left rail via a
+    media query setting only `top`/`left`/`width` — so it dropped into normal flow and **collapsed to the
+    bottom of the page**. Clean build, no failing test; caught by looking. Rule is now `.app-shell > main`
+    alone, and **"never restate `position` for an element that positions itself"** is a mutation-verified
+    test. Second specificity-override defect in two days after ADR-063. Also: YES now sits left of NO in the
+    deck, as asked — which disagrees with drag-right-means-YES, recorded rather than silently accepted.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a
