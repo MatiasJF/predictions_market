@@ -1,6 +1,6 @@
 # Demo runbook
 
-**Everything below was verified against the live mainnet daemon on 2026-08-11.** Re-run the pre-flight
+**Everything below was verified against the live mainnet daemon on 2026-08-12.** Re-run the pre-flight
 before the demo; the market table changes as soon as anyone trades.
 
 ---
@@ -54,7 +54,8 @@ real transaction on a public ledger"* — and only some of these markets can pro
 
 | Market | Receipts | On chain | Use it for |
 |---|---|---|---|
-| **#7** — BSV mainnet fees under 0.1 sat/byte | 2 | **2** | **the hero.** Complete lifecycle, every step verifiable |
+| **#9** — BSV block height past 962,000 | 6 | **6** | **the hero.** Every fill, and deploy/settle/resolve/payout, all on chain |
+| **#7** — BSV mainnet fees under 0.1 sat/byte | 2 | **2** | a second complete lifecycle |
 | **#8** — take a real bet from a stranger | 2 | 1 | **the live trade.** Deployed, spendable, b=20 |
 | #1, #2, #3 | 14 / 11 / 9 | 0 | history and visual richness only |
 | #4, #5 | 16 / 8 | 0 | history only |
@@ -78,6 +79,22 @@ Market #7's full lifecycle, all clickable at `whatsonchain.com/tx/<txid>`:
 | resolve (oracle) | `bd819f41a16940807959…` | 100 sat |
 | payout | `64d577746d0026705b2c…` | 2,200 sat |
 
+Market #9's steps, all on mainnet: deploy `1622ccb1cc3554e85625…` (51 sat), settle `d1b037f05d4f0bdf76d0…`
+(200 sat), resolve `e14ec39c23b4eef4dfd2…` (100 sat), payout `e8482fba4702e8c23b02…` (8,200 sat), plus six
+buy transactions. It also carries a **rejected** deploy in the log, which is worth showing rather than hiding:
+the sign-off queue refusing a broadcast is the gate doing its job.
+
+**Two caveats on #9, both known:**
+
+1. **It was resolved before its own question came true.** The market asks about height 962,000 and was resolved
+   YES at height 961,909. It becomes true at 962,000 — check `whatsonchain.com` before pointing an audience at
+   this particular question, since the demo invites people to go and verify.
+2. **Its price history is a sawtooth**, `541 → 582 → 541 → 582 → 541 → 582`, not a trend. Nothing is wrong: at
+   `b=12` those are exactly the LMSR prices for a net position of +2 and +4 units. The fills alternated
+   YES/NO evenly, so the net position bounced between two values and the price followed it honestly. For a
+   rising curve, weight the fills one way — `YES, YES, YES, NO, YES, YES` gives `541, 582, 620, 582, 620, 655`.
+   Use **#4** if you want a graph with a shape, and #9 for the proof.
+
 Market #8 also carries `182c453eee8f8310ab85…` — a **sell**, where the market paid the seller 499 sat
 of proceeds to a one-time address. Worth showing: it is the leg most prediction-market demos skip.
 
@@ -92,8 +109,9 @@ thing the audience sees is a wallet dialog.
 2. **A market with history** (#1 or #4) — the price bar and the sparkline. Point out that every fill
    moved the price: that is the bonding curve, not a quoted spread. No explorer links here; don't
    offer any.
-3. **Market #7** — the same thing, finished, and every step verifiable. Open one receipt's
-   WhatsOnChain link in a second tab. This is the moment the claim is proven.
+3. **Market #9** — finished, and every one of its six fills verifiable along with deploy, settle, resolve
+   and payout. Open one receipt's WhatsOnChain link in a second tab. This is the moment the claim is proven.
+   (#7 is a second, smaller example if you want one.)
 4. **Market #8, live** — buy 1–2 shares from a real BRC-100 wallet. Your wallet raises its own
    approval with the amount; that is the only ceremony, deliberately (a second confirm in the app
    would just teach people to dismiss confirmations).
