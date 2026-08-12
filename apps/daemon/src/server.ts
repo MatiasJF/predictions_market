@@ -32,6 +32,20 @@ const sequencerWif = (): string => envWif('PM_SEQUENCER_WIF') || fundingWif();
  */
 const paymentWif = (): string => envWif('PM_PAYMENT_WIF') || fundingWif();
 
+/*
+ * SAFE DEFAULTS FOR AN UNCONFIGURED RUN.
+ *
+ * `PM_NETWORK` defaulted to `mainnet` and `PM_ENGINE` to `runar`. That is the wrong pair to hand someone who
+ * has just cloned the repository and typed one command: mainnet means the app reports a real network and
+ * reaches for a real explorer, and the Rúnar engine needs a toolchain that is not installed by `pnpm install`.
+ *
+ * Unset now means the free, offline, working combination. Transactions are still built and Script-verified
+ * exactly as they would be on mainnet — they are simply never broadcast, which costs nothing and needs no
+ * keys. Going to mainnet stays a deliberate act: set PM_NETWORK=mainnet yourself.
+ */
+process.env.PM_NETWORK ||= 'local';
+process.env.PM_ENGINE ||= 'scrypt';
+
 async function makeEngine(): Promise<{ engine: ChainEngine; label: string }> {
   const kind = process.env.PM_ENGINE ?? 'runar';
   if (kind === 'scrypt') {
