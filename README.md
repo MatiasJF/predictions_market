@@ -24,11 +24,17 @@ Then:
 ```bash
 git clone https://github.com/MatiasJF/predictions_market.git && cd predictions_market
 pnpm setup      # installs everything and builds the contract — a few minutes, once
-pnpm demo       # optional: fill the database with example markets
-pnpm dev        # start it
+pnpm dev        # start the daemon and the app
 ```
 
 Open **<http://localhost:5273>**.
+
+To start with example markets instead of an empty list, leave `pnpm dev` running and, **in a second
+terminal**:
+
+```bash
+pnpm demo       # seeds markets by driving the running daemon — it needs `pnpm dev` up first
+```
 
 > `127.0.0.1:5273` will look dead — the dev server binds IPv6 only. Use `localhost`.
 

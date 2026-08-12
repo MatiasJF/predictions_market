@@ -16,8 +16,13 @@
 import { LockingScript, PrivateKey, Transaction } from '@bsv/sdk';
 import { signOrder } from '@pm/execution';
 
-const API = process.env.PM_API ?? 'http://127.0.0.1:8799';
-const TOKEN = process.env.PM_OPERATOR_TOKEN ?? 'demo';
+// Default to the port `pnpm dev` actually uses, and follow PM_PORT when that is overridden. This used to
+// default to 8799 — a port from the development recipe in the comment above — so `pnpm demo` after
+// `pnpm dev` failed with a bare `fetch failed` while a perfectly good daemon sat on 8787.
+const API = process.env.PM_API ?? `http://127.0.0.1:${process.env.PM_PORT ?? 8787}`;
+// An unconfigured daemon leaves operator routes open, so an empty token is the right default; it is only
+// sent when one is set.
+const TOKEN = process.env.PM_OPERATOR_TOKEN ?? '';
 
 /** Markets worth looking at: a spread of questions, liquidity and payout sizes. */
 const MARKETS = [
