@@ -106,7 +106,18 @@ export function Markets({ onOpen, signer, isMainnet }: { onOpen: (id: number) =>
               <div className="market-meta">
                 <span className="meta-chip">#{m.id}</span>
                 {m.resolution && <Pill tone="positive" icon={<Icon name="check" size={13} />}>resolved {m.resolution.toUpperCase()}</Pill>}
-                {stale && <Pill tone="danger" icon={<Icon name="alert" size={13} />}>stale build — unspendable</Pill>}
+                {stale && (
+                  /*
+                    Two causes, two audiences. A pool from an older contract build is a fault and reads as
+                    one. A seeded market that was never broadcast is not a fault — it is demo history doing
+                    exactly what it was made for — so it gets a neutral chip rather than a red alarm. The
+                    operator console still shows the precise reason; a trader does not need the word
+                    "unspendable" to understand that a market is not taking bets.
+                  */
+                  m.pool?.unspendable_reason?.includes('never broadcast')
+                    ? <Pill tone="neutral">history only — not taking bets</Pill>
+                    : <Pill tone="danger" icon={<Icon name="alert" size={13} />}>stale build — unspendable</Pill>
+                )}
                 {!m.pool && <Pill tone="neutral" icon={<Icon name="circle" size={13} />}>not deployed</Pill>}
               </div>
 

@@ -1781,3 +1781,64 @@ direction the left thumb pushes mean opposite things. Flipping the drag to match
 `onPointerUp`. Left as asked; the trade is recorded here so it can be reversed knowingly.
 
 288 tests, typecheck and build clean.
+
+## ADR-066
+
+**MAINNET-016 — "can this be spent" was answering a question about code, not about the chain**
+
+**Date:** 2026-08-12 · **Status:** accepted · **Context:** two authorized broadcasts failed at the network:
+
+```
+#29 settle  m6 — WhatsonchainProvider ERROR: 500 "Missing inputs"
+#30 resolve m6 — WhatsonchainProvider ERROR: 500 "258: txn-mempool-conflict"
+```
+
+### Diagnosis
+
+Market #6's pool was created by deploy `55a51fc5…`, which returns **404 on WhatsOnChain** and whose broadcast
+row carries `network = NULL`. It is one of the seeded markets: built, Script-verified exactly as on mainnet,
+and deliberately never broadcast. There is no output on chain, so `Missing inputs` is literally correct, and
+the resolve then conflicted over the same phantom outpoint.
+
+**Nothing was lost — a rejected transaction pays no fee.** The defect is that the only way to discover this
+was to authorize a broadcast and watch it fail.
+
+The console offered those actions because `pool.spendable` was `true`, and `poolSpendable()` answers *"can
+THIS BUILD produce a valid unlocking script for this locking script"* — a question about code. It says nothing
+about whether the UTXO exists. The two had been conflated under one word.
+
+### Fix
+
+The database already knew the answer: migration 016 records which network each broadcast reached. So the
+check is local, synchronous and free — no extra network call on a polled endpoint. `NULL` means "recorded
+before that migration", which is not a claim that it is real, so it **fails closed**.
+
+Enforced in `tradablePool()` (covering settle and resolve) and again in `enqueuePayout()`, which reads the
+pool directly because a payout legitimately spends a *resolved* pool. **Only on mainnet** — an offline run
+never broadcasts anything, and applying this there would make `local` refuse to do the one thing it exists
+for.
+
+`pool.unspendable_reason` now carries which of the two kinds of stranded it is. A reason that does not match
+what happened is how someone spends an hour recompiling a contract that was fine.
+
+### Consequence worth stating: three markets stopped taking bets
+
+`spendable: false` feeds the UI's `tradable` flag, so markets #4, #5 and #6 no longer offer trading, and the
+Discover deck is down to market #8.
+
+That is correct rather than incidental. Off-chain trading itself still works — `submitOrder` and
+`createPaymentIntent` never used this gate — so the daemon *would* have accepted the money. It should not:
+fills on a pool that can never be settled on chain are real satoshis paid into a market that cannot resolve.
+Better a thin Discover than a demo that takes a stranger's money for an unsettleable position.
+
+Trader-facing wording is neutral (`history only — not taking bets`) rather than a red `unspendable` alarm.
+A seeded market behaving as seeded is not a fault; the operator console keeps the precise reason.
+
+### Verification
+
+Four tests in `apps/daemon/test/pool-onchain.test.ts`, mutation-verified: refuses settle/resolve with a 409
+and a sentence; names the right kind of stranded and explicitly does **not** blame the contract build; allows
+it once the deploy really reached mainnet; and never blocks a local run. Checked against the live daemon —
+markets #1–#6 report unspendable, #7/#8/#9 spendable, which matches the chain exactly.
+
+292 tests, typecheck and build clean.

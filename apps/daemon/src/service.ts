@@ -176,9 +176,17 @@ export class MarketService {
             version: pool.version, txid: pool.txid, vout: pool.vout, sats: pool.sats,
             qYes: pool.q_yes, qNo: pool.q_no, eYes: pool.e_yes, eNo: pool.e_no,
             collateral: pool.collateral, resolved: pool.resolved, winner: pool.winner,
-            // Whether THIS build can still spend it. A pool deployed by an earlier build of the contract is
-            // stranded — surfaced here so a client can refuse the action instead of failing at authorize time.
-            spendable: this.engine.poolSpendable?.(poolRef(pool)) ?? true,
+            // Whether THIS build can still spend it, AND whether there is anything on chain to spend.
+            // Two independent ways to be stranded — a pool from an older contract build, and a pool that was
+            // never broadcast — surfaced here so a client can refuse the action instead of failing at
+            // authorize time with `Missing inputs`.
+            spendable: !this.poolNotOnChain(pool) && (this.engine.poolSpendable?.(poolRef(pool)) ?? true),
+            unspendable_reason:
+              this.poolNotOnChain(pool)
+              ?? ((this.engine.poolSpendable?.(poolRef(pool)) ?? true)
+                ? null
+                : 'this pool was deployed by an earlier build of the contract, so the current build cannot '
+                  + 'produce a valid unlocking script for it. Deploy a fresh market.'),
           }
         : null,
     };
@@ -625,6 +633,10 @@ export class MarketService {
     const m = this.marketRow(id);
     const pool = this.currentPool(id);
     if (!pool) throw conflict('market not deployed');
+    // Not via `tradablePool`: a payout spends a RESOLVED pool, which that helper rejects. The on-chain
+    // check still applies — a payout spends the resolve output and fails the same way without one.
+    const absent = this.poolNotOnChain(pool);
+    if (absent) throw conflict(absent);
     if (pool.resolved !== 1) throw conflict('market not resolved — nothing to pay out yet');
     if (!m.resolution) throw conflict('market has no recorded resolution');
     // Paying twice is REAL money twice. `winningPayouts` derives from the receipt ledger, which paying does not
@@ -1201,7 +1213,40 @@ export class MarketService {
     const pool = this.currentPool(id);
     if (!pool) throw conflict('market not deployed — deploy it first');
     if (pool.resolved === 1) throw conflict('market is resolved — trading is closed');
+    const absent = this.poolNotOnChain(pool);
+    if (absent) throw conflict(absent);
     return { m, pool };
+  }
+
+  /**
+   * MAINNET-016 — a pool that was never broadcast has nothing to spend.
+   *
+   * `poolSpendable` asks whether THIS BUILD can produce a valid unlocking script for the pool's locking
+   * script. That is a question about code. It says nothing about whether the UTXO exists, and the two were
+   * conflated: market #6's pool was built and Script-verified during seeding and deliberately never
+   * broadcast, so the console offered settle and resolve, both were authorized, and the network answered
+   * `Missing inputs` and `txn-mempool-conflict`. Nothing was lost — a rejected transaction pays no fee —
+   * but the only way to find out was to try.
+   *
+   * The answer is already in the database: migration 016 records which network each broadcast reached.
+   * NULL means "recorded before that migration", which is not a claim that it is real, so it fails closed.
+   *
+   * Only enforced on mainnet. Offline runs never broadcast anything — that is the entire point of them —
+   * and applying this there would make `local` refuse to do the thing it exists to do.
+   *
+   * @returns a reason string when the pool cannot be spent, or `undefined` when it can.
+   */
+  private poolNotOnChain(pool: PoolUtxoRow): string | undefined {
+    const net = process.env.PM_NETWORK ?? 'mainnet';
+    if (net !== 'mainnet') return undefined;
+    const row = this.db
+      .prepare("SELECT network FROM broadcasts WHERE txid=? AND status='broadcast' ORDER BY id DESC LIMIT 1")
+      .get(pool.txid) as { network?: string | null } | undefined;
+    if (row?.network === net) return undefined;
+    return (
+      `this pool only exists locally — the transaction that created it (${pool.txid.slice(0, 12)}…) was built ` +
+      'and Script-verified but never broadcast, so there is no output on chain to spend. Deploy a fresh market.'
+    );
   }
 
   private currentPool(marketId: number): PoolUtxoRow | undefined {

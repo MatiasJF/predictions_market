@@ -263,9 +263,16 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
             </div>
 
             {stranded && (
-              <Callout tone="danger" title="This pool cannot be spent by the current build.">
-                Its locking script <i>is</i> the compiled contract, and the contract has changed since this pool
-                was deployed — so every action below would fail at authorize time. Create a fresh market instead.
+              <Callout tone="danger" title="This pool cannot be spent.">
+                {/*
+                  Two different ways to be stranded, and they need different words: a pool from an older
+                  contract build, and a pool that was never broadcast at all. The daemon knows which, so it
+                  says which — "create a fresh market" is the same advice either way, but a reason that does
+                  not match what happened is how someone spends an hour recompiling a contract that was fine.
+                */}
+                {market.pool?.unspendable_reason
+                  ?? 'Its locking script is the compiled contract, and the contract has changed since this pool '
+                     + 'was deployed — so every action below would fail at authorize time. Create a fresh market instead.'}
               </Callout>
             )}
 

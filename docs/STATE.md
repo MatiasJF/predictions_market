@@ -582,6 +582,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     alone, and **"never restate `position` for an element that positions itself"** is a mutation-verified
     test. Second specificity-override defect in two days after ADR-063. Also: YES now sits left of NO in the
     deck, as asked — which disagrees with drag-right-means-YES, recorded rather than silently accepted.
+  - ● **MAINNET-016 — spendable was a question about code, not the chain (ADR-066).** Two authorized
+    broadcasts failed: `Missing inputs` and `txn-mempool-conflict`, on market #6 — a **seeded** market whose
+    deploy `55a51fc5…` is 404 on WhatsOnChain and was never broadcast. `poolSpendable()` only ever answered
+    "can this build unlock that script"; nothing asked whether the UTXO exists. Now checked against
+    `broadcasts.network` (migration 016) — local, free, fails closed on NULL, mainnet only. No fee was lost;
+    rejected transactions pay nothing. **Consequence: markets #4/#5/#6 stopped taking bets and Discover is
+    down to #8** — correct, since fills on an unsettleable pool are real money into a market that cannot
+    resolve. Fresh mainnet deploys (51 sat each) are the way to restock Discover. 292 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a
