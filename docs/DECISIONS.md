@@ -1702,3 +1702,42 @@ Audited the rest: `.field input` / `input.control` are the only other component 
 and they set values identical to the global rule, so they are redundant rather than broken. No other victim.
 
 282 tests, typecheck and build clean.
+
+## ADR-064
+
+**UI-025 — the transaction log stops dominating the operator console, and the unpainted rectangle**
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+### The log shows five, and opens on request
+
+`TxLog` rendered every broadcast the daemon had ever made. After a demo run that is the longest element on
+the page, sitting **above** the market controls an operator actually acts on, so everything useful is below
+the fold. Now the five most recent, with a button to open the full list.
+
+Two properties are held by test because truncation is easy to get subtly wrong: the rows kept are the
+**newest** (a log that hides the transaction you just made is worse than a long one — and the sort is now
+explicit rather than trusting the endpoint's order), and the header totals still describe the **whole** log,
+not the visible slice. Mutation-verified: rendering everything fails two of the three.
+
+### The black box over the card
+
+Reported as a black box covering the market card "until you scroll too far down or click it" — both of which
+are ways of forcing a repaint, which is the tell.
+
+`.ambient` — the fixed, full-viewport background wash — sat at **`z-index: -1`**, behind the root stacking
+context, while glass mode puts `backdrop-filter` on `.card` and `.market-card`. A blurred element then has to
+sample a backdrop living outside its own stacking context, and Chromium mis-handles this on tall elements,
+leaving a rectangle unpainted until something dirties it.
+
+The wash now sits at **`z-index: 0`** with the shell's children explicitly at `1`. Same picture, defined
+semantics, and no negative-index backdrop for the compositor to get wrong.
+
+**Stated honestly: this was diagnosed by reading, not by reproducing.** There is no browser in this
+environment that renders the app (the headless one available does not mount React), so the fix addresses the
+known-bad configuration rather than an observed repaint. If it survives, the fallback is to drop
+`backdrop-filter` from the tall content cards and keep it on the short chrome — the header, the search field,
+the sheet, the tab bar — which removes the artifact class entirely at the cost of some of the glass look on
+cards.
+
+285 tests, typecheck and build clean.

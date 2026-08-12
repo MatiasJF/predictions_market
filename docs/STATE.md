@@ -567,6 +567,14 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     card that looked like the market cards under it, and gained the clear button it never had. Guarded by a
     specificity contract — **whose first version was vacuous** (it compared against `textarea`, the last item
     in the global selector list) and was caught by mutating the CSS and watching the suite stay green. 282 tests.
+  - ● **UI-025 — the tx log paginates; the unpainted rectangle (ADR-064).** `TxLog` rendered every broadcast
+    ever, pushing the operator's actual controls below the fold; now five most recent + "show all", with
+    tests pinning that the NEWEST are kept and that the totals still cover the whole log. Separately, the
+    black box over the market card: `.ambient` was a fixed wash at **`z-index: -1`** while glass puts
+    `backdrop-filter` on cards — a blurred element sampling a backdrop outside its stacking context, which
+    Chromium leaves unpainted until a repaint (hence "until you scroll or click"). Wash moved to `z-index: 0`
+    with content at `1`. **Diagnosed by reading, not reproduced** — no browser here renders the app; fallback
+    if it survives is to drop blur from tall cards and keep it on the short chrome. 285 tests.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

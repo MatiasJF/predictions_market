@@ -14,6 +14,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  /* Above `.ambient`, which is no longer at a negative index — see the note there. */
   background: color-mix(in srgb, var(--surface-app) 62%, transparent);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
@@ -268,7 +269,13 @@
   display: block;
   position: fixed;
   inset: 0;
-  z-index: -1;
+  /* z-index 0, NOT -1.
+     A negative z-index puts this behind the root stacking context, and a `backdrop-filter` element then has
+     to sample a backdrop that lives outside its own context. Chromium gets this wrong on tall elements and
+     leaves an unpainted rectangle that fills in on the next repaint — reported as "a black box over the
+     market card until you scroll too far down or click it", both of which force exactly that repaint.
+     Sitting at 0 with the content explicitly above it is the same picture with defined semantics. */
+  z-index: 0;
   pointer-events: none;
   background:
     radial-gradient(120vw 60vh at 50% -18vh,
@@ -280,8 +287,9 @@
   transition: opacity var(--dur-base) var(--ease);
 }
 
-/* The shell owns a stacking context, so the z-index:-1 wash is reliably ABOVE the page background
-   and below every card — rather than depending on what else happens to be on the page. */
+/* The shell owns a stacking context, so the wash is reliably ABOVE the page background and below every
+   card — rather than depending on what else happens to be on the page. The wash itself sits at z-index 0
+   and the content at 1; it used to be at -1, which is what produced the unpainted rectangles. */
 .app-shell { position: relative; z-index: 0; }
 
 /* --- the glass treatment itself ---------------------------------------------------------------------

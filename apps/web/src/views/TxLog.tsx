@@ -9,9 +9,21 @@ import { Button, Card, EmptyState, Pill, TxLink, Icon} from '../ui';
  * copy, and links straight to WhatsOnChain. On a local run there is nothing to link to — the transaction was
  * built and Script-verified but never broadcast — and the log says so instead of offering a dead link.
  */
+/** How many rows are worth showing unprompted. The log only grows, and by the end of a demo it is the
+ *  longest thing on the page — pushing everything an operator actually acts on below the fold. */
+const RECENT = 5;
+
 export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet: boolean }) {
   const [copied, setCopied] = useState<string>('');
-  const sent = broadcasts.filter((b) => b.status === 'broadcast' && b.txid);
+  const [expanded, setExpanded] = useState(false);
+  // Newest first, explicitly. The endpoint happens to return them that way; a log that silently reorders
+  // itself and then truncates to five would hide the most recent transaction, which is the one being
+  // looked for.
+  const sent = broadcasts
+    .filter((b) => b.status === 'broadcast' && b.txid)
+    .slice()
+    .sort((a, b) => b.id - a.id);
+  const shown = expanded ? sent : sent.slice(0, RECENT);
 
   const totalFee = sent.reduce((s, b) => s + (b.fee_sats ?? 0), 0);
   const totalSize = sent.reduce((s, b) => s + (b.size_bytes ?? 0), 0);
@@ -47,7 +59,7 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
             </p>
           )}
           <div>
-            {sent.map((b) => (
+            {shown.map((b) => (
               <div key={b.id} className="txrow">
                 <div className="txhead">
                   <b>#{b.id} {b.kind}</b>
@@ -69,6 +81,14 @@ export function TxLog({ broadcasts, isMainnet }: { broadcasts: any[]; isMainnet:
               </div>
             ))}
           </div>
+
+          {sent.length > RECENT && (
+            <Button variant="secondary" tone="neutral" size="sm" full onClick={() => setExpanded(!expanded)}>
+              {expanded
+                ? `show the ${RECENT} most recent`
+                : `show all ${sent.length} transactions`}
+            </Button>
+          )}
         </>
       )}
     </Card>
