@@ -106,6 +106,26 @@ export function Operator({ network, authRequired }: { network?: string; authRequ
           {!!balance?.pending_sats && (
             <span className="tiny warning-text num">{sats(balance.pending_sats)} sat in flight</span>
           )}
+          {/*
+            THE ADDRESS, because the first question anyone asks on a new machine is "where do I send
+            the money?" — and the answer existed only in an API response nothing rendered. Funding is
+            discovered automatically: the engine lists this address's unspent outputs at spend time, so
+            sats sent here are usable as soon as they are seen, with no import step.
+          */}
+          {balance?.address && (
+            <button
+              type="button" className="fundaddr"
+              title="Copy the funding address"
+              onClick={() => void navigator.clipboard?.writeText(balance.address).then(
+                () => setMsg({ tone: 'positive', text: 'funding address copied — send BSV here to top up the operator wallet' }),
+                () => {},
+              )}
+            >
+              <Icon name="wallet" size={12} />
+              <span className="mono">{balance.address.slice(0, 10)}…{balance.address.slice(-6)}</span>
+              <span className="sr-only">Copy the funding address {balance.address}</span>
+            </button>
+          )}
         </div>
         <div className="opstat">
           <span className="opstat-label">awaiting sign-off</span>

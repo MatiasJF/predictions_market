@@ -101,3 +101,18 @@
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
 }
+
+/* The funding address: a chip you can copy, not a wall of base58. Sits under the balance it belongs to. */
+.fundaddr {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  margin-top: 2px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.fundaddr:hover { color: var(--text-strong); border-color: var(--border-strong); }
+.fundaddr .mono { font-family: var(--font-mono); }

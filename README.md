@@ -13,6 +13,9 @@ findings and [`docs/DEMO.md`](docs/DEMO.md) for which transactions are real and 
 
 ## Run it on a Mac
 
+> Handing this to someone else? [`SETUP.md`](SETUP.md) is the same thing written for a person
+> receiving a `.env` — installation, funding, and what to do when it breaks.
+
 You need **Node 22+** and **pnpm**. If you have neither:
 
 ```bash
