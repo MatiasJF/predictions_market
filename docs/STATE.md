@@ -590,6 +590,15 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     rejected transactions pay nothing. **Consequence: markets #4/#5/#6 stopped taking bets and Discover is
     down to #8** — correct, since fills on an unsettleable pool are real money into a market that cannot
     resolve. Fresh mainnet deploys (51 sat each) are the way to restock Discover. 292 tests.
+  - ● **ONBOARD-001 — three commands from clone to running (ADR-067).** `README.md` + `pnpm setup` / `demo` /
+    `dev`. Validated by actually cloning the repo and running it, which found four blockers: the contract
+    package's build output is gitignored so a clone had **no engine**; `pnpm demo` died with
+    `501 no_payment_key` (offline runs now mint an ephemeral key — never on mainnet, where an in-memory key
+    would forget real stakes); `PM_WEB_PORT` never reached vite through `-- --port`; and the defaults sent a
+    first-time user to **mainnet** with the Rúnar engine. Fixing that last one flipped the operator's own
+    daemon to local, because **`.env` had said `PM_NETWORK=mainnet` all along and the daemon never read it** —
+    precedence is now command line → `.env` → safe default. Proven end to end on the clone: zero-config
+    daemon, six seeded markets, and the full UI journey green.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

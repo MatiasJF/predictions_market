@@ -1842,3 +1842,58 @@ it once the deploy really reached mainnet; and never blocks a local run. Checked
 markets #1–#6 report unspendable, #7/#8/#9 spendable, which matches the chain exactly.
 
 292 tests, typecheck and build clean.
+
+## ADR-067
+
+**ONBOARD-001 — a fresh clone runs in three commands, verified by actually cloning it**
+
+**Date:** 2026-08-13 · **Status:** accepted · **Context:** *"I want to make this so anyone can download it
+cloning the github and run it in their mac with simple commands."*
+
+There was no README, no setup path, and no git remote. `pnpm setup` / `pnpm demo` / `pnpm dev` now cover it,
+and `README.md` documents the traps rather than only the happy path.
+
+### The method mattered more than the writing
+
+The instructions were validated by `git clone`-ing the repository into a temporary directory and running
+them. Four blockers surfaced that reading the code would not have shown:
+
+1. **No engine at all.** `packages/contracts-scrypt` is deliberately outside the pnpm workspace (sCrypt's
+   ts-patch transpiler needs a flat `node_modules`) and its `dist/` and `artifacts/` are gitignored. A clone
+   therefore has nothing to import, and the daemon fails on a file that was never there. `setup.sh` runs its
+   `npm install && npm run compile && npm run build` — which also downloads the sCrypt compiler on first run.
+2. **`pnpm demo` died on its first buy** with `501 no_payment_key`. A clone has no keys, so the app could be
+   looked at but not used. An offline run now generates an **ephemeral** payment key: on `local` a payment is
+   built, Script-verified and never broadcast, so the key is ceremony. **Never on mainnet** — a key living
+   only in memory would take real stake payments and forget them on restart, which is money destroyed rather
+   than money at risk.
+3. **`PM_WEB_PORT` silently did nothing.** `pnpm --filter @pm/web dev -- --port N` never reaches vite: the
+   `--` survives as a literal, the flag is ignored, and the server keeps its configured port and dies on the
+   one the caller believed they had overridden. `vite.config.ts` reads the environment instead. `dev.sh`
+   checks **both** ports up front, because `strictPort` means the web failure would otherwise arrive after
+   the daemon was already running and read as a broken app rather than a busy port.
+4. **Defaults pointed a first-time user at mainnet.** `PM_NETWORK` defaulted to `mainnet` and `PM_ENGINE` to
+   `runar` — a network that reports as real and an engine needing a toolchain `pnpm install` does not provide.
+   Unset now means `local` + `scrypt`.
+
+### The regression that (4) caused, and the fix that made both true
+
+`.env` had contained `PM_NETWORK=mainnet` from the beginning **and the daemon had never read it.** Only WIF
+names were ever pulled from that file; the network came from the hardcoded fallback, which worked silently
+for exactly as long as the fallback agreed with the file.
+
+So flipping the fallback to `local` flipped the operator's configured mainnet daemon to `local` on its next
+`tsx watch` reload, with nothing in `.env` able to prevent it. Caught by checking `/health` after the change,
+not by reasoning about it.
+
+Precedence is now **command line → `.env` → safe default**, which is what everyone already assumed `.env`
+meant. A configured daemon stays mainnet; a fresh clone gets local.
+
+### Verification
+
+On a genuine clone: `setup` compiled all five contracts from scratch and the suite passed; the daemon came up
+`local`/`scrypt` with **no configuration**; the app served; the seeder filled six markets with real fills and
+settlements; and the **full UI journey — create → deploy → signed order → settle → audit → resolve → pay
+winners — passed against it** in 15.6s.
+
+292 tests, typecheck and build clean.
