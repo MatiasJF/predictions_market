@@ -22,7 +22,7 @@ brew install node pnpm      # or: nvm install 22 && npm install -g pnpm
 Then:
 
 ```bash
-git clone <this-repo> && cd prediction_markets
+git clone https://github.com/MatiasJF/predictions_market.git && cd predictions_market
 pnpm setup      # installs everything and builds the contract — a few minutes, once
 pnpm demo       # optional: fill the database with example markets
 pnpm dev        # start it
