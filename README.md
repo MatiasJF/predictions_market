@@ -63,12 +63,22 @@ wallet (e.g. MetaNet Desktop) and reload to use your own.
 Optional, deliberate, and it spends real satoshis. You need a funded key.
 
 ```bash
-cp .env.example .env        # then set PM_NETWORK=mainnet and fill in PM_FUNDING_WIF
-pnpm dev
+cp .env.example .env
 ```
 
-Configuration precedence is: an explicit variable on the command line, then `.env`, then the safe default.
-So `PM_NETWORK=mainnet pnpm dev` works as a one-off without editing anything.
+Then set, in `.env`:
+
+| | |
+|---|---|
+| `PM_NETWORK=mainnet` | otherwise nothing is broadcast |
+| `PM_FUNDING_WIF=…` | a funded key. The daemon spends from it; it is read at runtime and never stored |
+| `PM_DB_PATH=data/mainnet.db` | **keep mainnet in its own database.** A relative path is resolved against the repo root |
+| `PM_OPERATOR_TOKEN=…` | any random string. Without it, anything that can reach the daemon can authorize a real spend |
+
+Then `pnpm dev`. Precedence is: an explicit variable on the command line, then `.env`, then the safe default
+— so `PM_NETWORK=mainnet pnpm dev` also works as a one-off.
+
+`.env` is not watched: **restart `pnpm dev` after changing it.**
 
 - `.env` is gitignored and holds **real spending keys**. It is read at runtime only; the database stores
   public keys and references, never secrets. Don't print it, and close it before screen-sharing.

@@ -55,6 +55,19 @@ const paymentWif = (): string => envWif('PM_PAYMENT_WIF') || fundingWif();
  */
 process.env.PM_NETWORK ||= envFile('PM_NETWORK') || 'local';
 process.env.PM_ENGINE ||= envFile('PM_ENGINE') || 'scrypt';
+/*
+ * The database and the operator token come from `.env` too, for the same reason.
+ *
+ * `PM_DB_PATH` especially: a mainnet daemon launched without it falls back to `data/spike.db` while the
+ * markets everyone means are somewhere else, and the result is not an error — it is a working daemon,
+ * on the right network, showing the wrong markets. There is no symptom to notice until you go looking
+ * for a market that is not there.
+ */
+process.env.PM_DB_PATH ||= envFile('PM_DB_PATH');
+process.env.PM_OPERATOR_TOKEN ||= envFile('PM_OPERATOR_TOKEN');
+if (!process.env.PM_DB_PATH) delete process.env.PM_DB_PATH;          // empty string is not a path
+if (!process.env.PM_OPERATOR_TOKEN) delete process.env.PM_OPERATOR_TOKEN; // empty means "no auth", not ""
+
 
 async function makeEngine(): Promise<{ engine: ChainEngine; label: string }> {
   const kind = process.env.PM_ENGINE ?? 'runar';
