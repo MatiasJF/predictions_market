@@ -599,6 +599,13 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     daemon to local, because **`.env` had said `PM_NETWORK=mainnet` all along and the daemon never read it** —
     precedence is now command line → `.env` → safe default. Proven end to end on the clone: zero-config
     daemon, six seeded markets, and the full UI journey green.
+  - ● **MAINNET-017 — every spend after the first hit `txn-mempool-conflict` (ADR-068).** On a fresh machine:
+    deploy succeeded, then two settles and a deploy were all refused as double spends. WhatsOnChain's unspent
+    list is **eventually consistent** and kept offering the output the deploy had just spent — sometimes
+    without even setting `isSpentInMempoolTx`. sCrypt's in-process cache would have covered it, but `tsx
+    watch` was restarting the daemon every second, so every action started cold. `FeeProvider` now records
+    the outpoints each broadcast consumes and filters them from selection; module-level, because the engine
+    drops its provider on failure. Requires a contract rebuild (`pnpm run setup`) since `dist/` is gitignored.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

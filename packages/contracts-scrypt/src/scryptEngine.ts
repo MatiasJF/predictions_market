@@ -65,9 +65,76 @@ const FEE_PER_KB = (() => {
  * WhatsOnChain's default (~50 sat/KB) is BELOW the published miner minimum, so those transactions were
  * deprioritised and sat unconfirmed for 40+ minutes. This is the one place the rate is decided — see FEE_PER_KB.
  */
+/**
+ * Outpoints this process has successfully broadcast a spend of.
+ *
+ * MODULE-LEVEL on purpose. The engine drops its provider after a failed broadcast (see the catch in `exec`),
+ * and a per-instance set would forget everything spent before that failure — handing the selector an output
+ * it had already consumed. An outpoint that has been spent can never become spendable again, so this needs
+ * no expiry and can only ever be right.
+ */
+const spentOutpoints = new Set<string>()
+
 class FeeProvider extends DefaultProvider {
     override async getFeePerKb(): Promise<number> {
         return FEE_PER_KB
+    }
+
+    /** Record what a broadcast consumed, so nothing offers those outputs again. */
+    override async sendTransaction(tx: bsv.Transaction): Promise<string> {
+        const txid = await super.sendTransaction(tx)
+        for (const input of tx.inputs) {
+            spentOutpoints.add(`${Buffer.from(input.prevTxId).toString('hex')}:${input.outputIndex}`)
+        }
+        return txid
+    }
+
+    /**
+     * MAINNET-017 — never offer an output that is already being spent.
+     *
+     * WhatsOnChain's `/address/{addr}/unspent` is EVENTUALLY CONSISTENT: for a while after a broadcast it
+     * keeps listing the output that broadcast spent. Sometimes it flags it `isSpentInMempoolTx: true`, and
+     * sometimes — as observed on this very wallet — the flag is simply absent. Either way the default
+     * provider passes it through, the next transaction picks the same input, and the node answers
+     * `258: txn-mempool-conflict`: a double spend, correctly refused.
+     *
+     * So the authority is what WE broadcast, not what the explorer has caught up with. The flag is still
+     * honoured as a second line of defence, for outputs spent by someone else or by a previous process.
+     *
+     * It hides on a wallet with several outputs, because the selector usually reaches for a different one.
+     * On a freshly funded wallet with exactly one it is deterministic: the first spend works, and every
+     * spend after it fails until that first one is mined. Which is exactly what a new machine looks like.
+     *
+     * Filtering here rather than at each call site because sCrypt funds transactions internally — this is
+     * the one place every spend passes through.
+     */
+    override async listUnspent(
+        address: bsv.Address,
+        options?: Parameters<DefaultProvider['listUnspent']>[1],
+    ): ReturnType<DefaultProvider['listUnspent']> {
+        const fromChain = await super.listUnspent(address, options)
+        // What this process has already spent — authoritative, and immune to the explorer lagging.
+        const utxos = fromChain.filter((u) => !spentOutpoints.has(`${u.txId}:${u.outputIndex}`))
+        if (utxos.length !== fromChain.length) {
+            // eslint-disable-next-line no-console
+            console.warn(`funding: skipped ${fromChain.length - utxos.length} output(s) this process already spent`)
+        }
+        let spentInMempool: Set<string>
+        try {
+            const res = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address.toString()}/unspent`)
+            if (!res.ok) return utxos
+            const rows = (await res.json()) as { tx_hash: string; tx_pos: number; isSpentInMempoolTx?: boolean }[]
+            spentInMempool = new Set(rows.filter((r) => r.isSpentInMempoolTx === true).map((r) => `${r.tx_hash}:${r.tx_pos}`))
+        } catch {
+            // If the flag cannot be fetched, hand back what the provider said. Losing the filter risks a
+            // conflict the node will reject for free; inventing an empty list would strand a funded wallet.
+            return utxos
+        }
+        if (spentInMempool.size === 0) return utxos
+        const usable = utxos.filter((u) => !spentInMempool.has(`${u.txId}:${u.outputIndex}`))
+        // eslint-disable-next-line no-console
+        console.warn(`funding: skipped ${utxos.length - usable.length} output(s) already being spent in the mempool`)
+        return usable
     }
 }
 

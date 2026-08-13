@@ -1897,3 +1897,57 @@ settlements; and the **full UI journey — create → deploy → signed order �
 winners — passed against it** in 15.6s.
 
 292 tests, typecheck and build clean.
+
+## ADR-068
+
+**MAINNET-017 — every spend after the first failed with `txn-mempool-conflict`**
+
+**Date:** 2026-08-13 · **Status:** accepted · **Context:** on a second machine, a fresh database, one funded
+wallet:
+
+```
+#1 deploy — broadcast, 39.7 KB, 4,074 sat        ✓
+#2 settle — 500: 258: txn-mempool-conflict       ✗
+#3 settle — 500: 258: txn-mempool-conflict       ✗
+#4 deploy — 500: 258: txn-mempool-conflict       ✗
+```
+
+`txn-mempool-conflict` is a node correctly refusing a double spend: the transaction spends an input that
+something already in the mempool spends. Every failure was trying to spend the output the successful deploy
+had just consumed.
+
+### Two causes, and they compound
+
+**WhatsOnChain's unspent list is eventually consistent.** For a while after a broadcast it keeps listing the
+output that broadcast spent. Sometimes it flags it `isSpentInMempoolTx: true` — and sometimes, as observed on
+this exact wallet, the flag is simply absent. sCrypt funds transactions internally from that list, so the
+selector picks the spent output again.
+
+**And the wallet's funding cache kept being destroyed.** sCrypt caches UTXOs in-process and updates them on a
+successful spend, which would have avoided this. But `tsx watch` was restarting the daemon roughly once a
+second (ADR: same day, the `node_modules` watch bug), so every action started from a cold cache and re-read
+the stale list. Fixing the watcher alone would have hidden this rather than fixed it — a daemon restart, a
+crash, or a second process would bring it straight back.
+
+### Fix
+
+**The authority is what we broadcast, not what the explorer has caught up with.** `FeeProvider.sendTransaction`
+records the outpoints each successful broadcast consumed, and `listUnspent` filters them out. An outpoint that
+has been spent can never become spendable again, so the set needs no expiry and cannot go wrong.
+
+It is **module-level, not per-instance**, deliberately: the engine drops its provider after a failed broadcast,
+and a per-instance set would forget everything spent before that failure — handing the selector an output it
+had already consumed.
+
+The `isSpentInMempoolTx` flag is still honoured as a second line of defence, for outputs spent by someone else
+or by a previous process.
+
+### Consequence
+
+Spending now chains through unconfirmed change instead of waiting for a block, which is what makes several
+actions in a row possible on a wallet with one output. If the wallet genuinely runs out, the error becomes
+"no sufficient utxos" — still blocked, but blocked with an accurate reason rather than a double-spend
+rejection.
+
+Note for whoever hits this: `packages/contracts-scrypt` builds to gitignored output, so pulling the source is
+not enough — `pnpm run setup`, or `npm run build` inside that package.
