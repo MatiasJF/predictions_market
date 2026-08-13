@@ -57,7 +57,7 @@ cat <<'DONE'
 ✅ Ready.
 
   pnpm dev      start the daemon and the web app together, then open http://localhost:5273
-  pnpm demo     fill a fresh database with example markets so there is something to look at
+  pnpm demo     with `pnpm dev` already running, fill the database with example markets
 
 Nothing above touches a real network. The daemon defaults to PM_NETWORK=local: every transaction is
 built and verified against Bitcoin Script exactly as it would be on mainnet, and simply never broadcast.

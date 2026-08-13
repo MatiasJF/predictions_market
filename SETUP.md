@@ -3,7 +3,7 @@
 You should have been sent a **`.env` file separately**. It holds real spending keys, so it is not in the
 repository and never will be. Everything else is here.
 
-Total time: about ten minutes, most of it waiting for `pnpm setup`.
+Total time: about ten minutes, most of it waiting for `pnpm run setup`.
 
 ---
 
@@ -42,10 +42,14 @@ Check both: `node -v` and `pnpm -v`.
 ```bash
 git clone https://github.com/MatiasJF/predictions_market.git
 cd predictions_market
-pnpm setup
+pnpm run setup
 ```
 
-`pnpm setup` installs dependencies, rebuilds native modules for your Node version, and compiles the on-chain
+> Use `pnpm run setup`, not `pnpm setup` — **`setup` is a built-in pnpm command** (it configures pnpm
+> itself) and will not run this project's script. `pnpm run` always works for any script.
+
+
+`pnpm run setup` installs dependencies, rebuilds native modules for your Node version, and compiles the on-chain
 contract. **The contract build is the slow part** and it downloads a compiler on first run. It ends by running
 the test suite; you should see it pass. Safe to run again any time.
 
@@ -151,7 +155,7 @@ PM_NETWORK=local PM_DB_PATH=data/practice.db pnpm dev
 |---|---|---|
 | Exit code 139, or it dies with no message | Node 20 — the database module segfaults | `nvm use` then `pnpm rebuild -r` |
 | `NODE_MODULE_VERSION` errors, many tests failing | native modules built for a different Node | `pnpm rebuild -r` |
-| `Cannot find module …/contracts-scrypt/dist/…` | the contract was not built | `pnpm setup` |
+| `Cannot find module …/contracts-scrypt/dist/…` | the contract was not built | `pnpm run setup` |
 | Port already in use | something is still running | `pnpm dev` refuses and tells you what holds it and for how long. Stop it, or `PM_PORT=8788 PM_WEB_PORT=5274 pnpm dev` |
 | `http://127.0.0.1:5273` won't load | the dev server is IPv6-only | use `http://localhost:5273` |
 | The app says it can't reach the daemon | the daemon stopped | the message includes the command to restart it |

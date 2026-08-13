@@ -26,7 +26,7 @@ Then:
 
 ```bash
 git clone https://github.com/MatiasJF/predictions_market.git && cd predictions_market
-pnpm setup      # installs everything and builds the contract — a few minutes, once
+pnpm run setup  # installs everything and builds the contract — a few minutes, once
 pnpm dev        # start the daemon and the app
 ```
 
@@ -95,7 +95,7 @@ Then `pnpm dev`. Precedence is: an explicit variable on the command line, then `
 
 | | |
 |---|---|
-| `pnpm setup` | one-time install + contract build. Safe to re-run. |
+| `pnpm run setup` | one-time install + contract build. Safe to re-run. **`run` is required** — `setup` is a built-in pnpm command |
 | `pnpm dev` | daemon + web app together; Ctrl-C stops both |
 | `pnpm demo` | seed a database with example markets (refuses to run against mainnet) |
 | `pnpm test` | the full suite |
@@ -109,7 +109,7 @@ Then `pnpm dev`. Precedence is: an explicit variable on the command line, then `
 |---|---|---|
 | Exit code 139, or the process dies silently | Node 20. `better-sqlite3`'s native binary segfaults rather than failing cleanly | `nvm use` (Node 22 is pinned in `.nvmrc`), then `pnpm rebuild -r` |
 | ~45 tests fail with `NODE_MODULE_VERSION` | native modules built for a different Node | `pnpm rebuild -r` |
-| `Cannot find module …/contracts-scrypt/dist/…` | the contract package hasn't been built — its output is gitignored | `pnpm setup` |
+| `Cannot find module …/contracts-scrypt/dist/…` | the contract package hasn't been built — its output is gitignored | `pnpm run setup` |
 | `EADDRINUSE`, or a port is busy | something is already running there | `pnpm dev` checks **both** ports before starting and prints what holds them, with its age. Stop it, or `PM_PORT=8788 PM_WEB_PORT=5274 pnpm dev` |
 | The daemon restarts in a loop, logging `change in ./../../node_modules/…` | `tsx watch` excludes `node_modules` only under its own root, and the pnpm store is two levels above `apps/daemon` — so the whole dependency tree was watched. Fixed in `apps/daemon/package.json` via `--exclude` |
 | The page looks stale after an edit | a stale process, not your code | Check the process **age** first: `ps -o etime= -p $(lsof -ti :8787 \| head -1)`. Anything older than your last change isn't running it. |
