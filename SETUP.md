@@ -156,6 +156,7 @@ PM_NETWORK=local PM_DB_PATH=data/practice.db pnpm dev
 | `http://127.0.0.1:5273` won't load | the dev server is IPv6-only | use `http://localhost:5273` |
 | The app says it can't reach the daemon | the daemon stopped | the message includes the command to restart it |
 | Zero markets on a machine that had some | the daemon opened a different database | check `PM_DB_PATH` in `.env`; relative paths resolve from the repo root |
+| The daemon restarts over and over, naming files in `node_modules` | fixed — `git pull`. `tsx` was watching the dependency tree, because it only excludes `node_modules` under its own folder and the pnpm store sits above it |
 | A page looks stale after an edit | usually a stale process, not your code | check its **age**: `ps -o etime= -p $(lsof -ti :8787 \| head -1)`. Older than your change means it isn't running your change. |
 | `payment: transaction … not on the network yet` | propagation lag | press again — the quote is still valid and you will not be charged twice |
 

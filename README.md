@@ -111,6 +111,7 @@ Then `pnpm dev`. Precedence is: an explicit variable on the command line, then `
 | ~45 tests fail with `NODE_MODULE_VERSION` | native modules built for a different Node | `pnpm rebuild -r` |
 | `Cannot find module …/contracts-scrypt/dist/…` | the contract package hasn't been built — its output is gitignored | `pnpm setup` |
 | `EADDRINUSE`, or a port is busy | something is already running there | `pnpm dev` checks **both** ports before starting and prints what holds them, with its age. Stop it, or `PM_PORT=8788 PM_WEB_PORT=5274 pnpm dev` |
+| The daemon restarts in a loop, logging `change in ./../../node_modules/…` | `tsx watch` excludes `node_modules` only under its own root, and the pnpm store is two levels above `apps/daemon` — so the whole dependency tree was watched. Fixed in `apps/daemon/package.json` via `--exclude` |
 | The page looks stale after an edit | a stale process, not your code | Check the process **age** first: `ps -o etime= -p $(lsof -ti :8787 \| head -1)`. Anything older than your last change isn't running it. |
 | `http://127.0.0.1:5273` doesn't load | the dev server binds IPv6 only | use `http://localhost:5273` |
 

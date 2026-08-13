@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --clear-screen=false src/server.ts",
+    "dev": "tsx watch --clear-screen=false --exclude \"../../node_modules/**\" --exclude \"**/node_modules/**\" src/server.ts",
     "start": "tsx src/server.ts"
   },
   "dependencies": {
