@@ -74,6 +74,8 @@ const FEE_PER_KB = (() => {
  * no expiry and can only ever be right.
  */
 const spentOutpoints = new Set<string>()
+/** Outpoints the CHAIN reports as spent. Cached forever — an output cannot become unspent again. */
+const spentOnChain = new Map<string, boolean>()
 
 class FeeProvider extends DefaultProvider {
     override async getFeePerKb(): Promise<number> {
@@ -90,51 +92,60 @@ class FeeProvider extends DefaultProvider {
     }
 
     /**
-     * MAINNET-017 — never offer an output that is already being spent.
+     * MAINNET-017 — ask the chain whether each output is actually spendable.
      *
-     * WhatsOnChain's `/address/{addr}/unspent` is EVENTUALLY CONSISTENT: for a while after a broadcast it
-     * keeps listing the output that broadcast spent. Sometimes it flags it `isSpentInMempoolTx: true`, and
-     * sometimes — as observed on this very wallet — the flag is simply absent. Either way the default
-     * provider passes it through, the next transaction picks the same input, and the node answers
-     * `258: txn-mempool-conflict`: a double spend, correctly refused.
+     * WhatsOnChain's `/address/{addr}/unspent` LIES, and not merely by lagging. Observed on this wallet:
      *
-     * So the authority is what WE broadcast, not what the explorer has caught up with. The flag is still
-     * honoured as a second line of defence, for outputs spent by someone else or by a previous process.
+     *   f867bcd0…:1   127,844 sat, CONFIRMED at height 962008, listed as unspent — actually spent
+     *   809c10e6…:1         1 sat, confirmed,                   listed as unspent — actually spent
      *
-     * It hides on a wallet with several outputs, because the selector usually reaches for a different one.
-     * On a freshly funded wallet with exactly one it is deterministic: the first spend works, and every
-     * spend after it fails until that first one is mined. Which is exactly what a new machine looks like.
+     * No `isSpentInMempoolTx` flag on either. And because a selector reasonably prefers a large confirmed
+     * output, it picks the worst one available and the node answers `258: txn-mempool-conflict` — a double
+     * spend, correctly refused. The very first broadcast on a brand-new machine fails.
      *
-     * Filtering here rather than at each call site because sCrypt funds transactions internally — this is
-     * the one place every spend passes through.
+     * `/tx/{txid}/{vout}/spent` gives the truth: 200 means something already spends it, 404 means it is free.
+     * So every candidate is checked before it is offered.
+     *
+     * Ordering matters when the endpoint is flaky. Outputs are returned as **verified-unspent first, then
+     * unverifiable** — so selection reaches for something known-good, and only falls back to a maybe when
+     * there is nothing else. Known-spent is dropped outright. Failing closed on an error would strand a
+     * funded wallet; offering a known-spent output guarantees a rejection.
      */
     override async listUnspent(
         address: bsv.Address,
         options?: Parameters<DefaultProvider['listUnspent']>[1],
     ): ReturnType<DefaultProvider['listUnspent']> {
         const fromChain = await super.listUnspent(address, options)
-        // What this process has already spent — authoritative, and immune to the explorer lagging.
-        const utxos = fromChain.filter((u) => !spentOutpoints.has(`${u.txId}:${u.outputIndex}`))
-        if (utxos.length !== fromChain.length) {
+        // What this process has already spent — free, instant, and true before the explorer catches up.
+        const candidates = fromChain.filter((u) => !spentOutpoints.has(`${u.txId}:${u.outputIndex}`))
+
+        const verified: typeof candidates = []
+        const unverifiable: typeof candidates = []
+        let dropped = 0
+        await Promise.all(candidates.map(async (u) => {
+            const key = `${u.txId}:${u.outputIndex}`
+            if (spentOnChain.get(key) === true) { dropped += 1; return }
+            try {
+                const res = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/${u.txId}/${u.outputIndex}/spent`)
+                if (res.status === 200) {
+                    // Spending is irreversible, so this answer never needs re-asking.
+                    spentOnChain.set(key, true)
+                    dropped += 1
+                } else if (res.status === 404) {
+                    verified.push(u)
+                } else {
+                    unverifiable.push(u)
+                }
+            } catch {
+                unverifiable.push(u)
+            }
+        }))
+
+        if (dropped > 0) {
             // eslint-disable-next-line no-console
-            console.warn(`funding: skipped ${fromChain.length - utxos.length} output(s) this process already spent`)
+            console.warn(`funding: dropped ${dropped} output(s) the chain reports as already spent`)
         }
-        let spentInMempool: Set<string>
-        try {
-            const res = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address.toString()}/unspent`)
-            if (!res.ok) return utxos
-            const rows = (await res.json()) as { tx_hash: string; tx_pos: number; isSpentInMempoolTx?: boolean }[]
-            spentInMempool = new Set(rows.filter((r) => r.isSpentInMempoolTx === true).map((r) => `${r.tx_hash}:${r.tx_pos}`))
-        } catch {
-            // If the flag cannot be fetched, hand back what the provider said. Losing the filter risks a
-            // conflict the node will reject for free; inventing an empty list would strand a funded wallet.
-            return utxos
-        }
-        if (spentInMempool.size === 0) return utxos
-        const usable = utxos.filter((u) => !spentInMempool.has(`${u.txId}:${u.outputIndex}`))
-        // eslint-disable-next-line no-console
-        console.warn(`funding: skipped ${utxos.length - usable.length} output(s) already being spent in the mempool`)
-        return usable
+        return [...verified, ...unverifiable]
     }
 }
 

@@ -605,7 +605,12 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     without even setting `isSpentInMempoolTx`. sCrypt's in-process cache would have covered it, but `tsx
     watch` was restarting the daemon every second, so every action started cold. `FeeProvider` now records
     the outpoints each broadcast consumes and filters them from selection; module-level, because the engine
-    drops its provider on failure. Requires a contract rebuild (`pnpm run setup`) since `dist/` is gitignored.
+    drops its provider on failure. **That was not enough** — `authorize #1` still failed on a fresh process,
+    because WoC's unspent list does not merely lag, it returns outputs that are flatly spent: `f867bcd0…:1`,
+    127,844 sat, **confirmed fifty blocks earlier**, listed as unspent with no flag. Every candidate is now
+    checked against `/tx/{txid}/{vout}/spent`, cached forever, returned verified-first so a flaky lookup
+    degrades instead of stranding the wallet. Requires a contract rebuild (`pnpm run setup`) — `dist/` is
+    gitignored.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

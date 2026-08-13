@@ -1951,3 +1951,28 @@ rejection.
 
 Note for whoever hits this: `packages/contracts-scrypt` builds to gitignored output, so pulling the source is
 not enough — `pnpm run setup`, or `npm run build` inside that package.
+
+### Follow-up, same day: the first fix was not enough, because WoC does not merely lag — it is wrong
+
+`authorize #1` still failed on a fresh machine: the FIRST broadcast of a new process, so an in-process record
+of what we had spent was empty and useless. Querying the address directly showed why:
+
+| output | value | `/address/…/unspent` says | `/tx/…/spent` says |
+|---|---|---|---|
+| `f867bcd0…:1` | 127,844 sat, **confirmed** at 962008 | unspent | **spent** |
+| `809c10e6…:1` | 1 sat, confirmed | unspent | **spent** |
+
+No `isSpentInMempoolTx` flag on either, and one had been confirmed in a block for fifty blocks. This is not
+eventual consistency; the endpoint is simply returning spent outputs. And because any sane selector prefers a
+large *confirmed* output, it picks the worst one on offer — which is why the very first broadcast failed.
+
+So every candidate is now checked against `/tx/{txid}/{vout}/spent` (200 = spent, 404 = free) before being
+offered, with the answer cached forever, since spending is irreversible.
+
+**Ordering carries the flakiness**: outputs come back verified-unspent first, then unverifiable, with
+known-spent dropped. Selection reaches for something known-good and only falls back to a maybe when there is
+nothing else. Failing closed on a lookup error would strand a funded wallet; offering a known-spent output
+guarantees a rejection.
+
+Verified against the live wallet: 6 candidates in, 3 dropped as spent, 3 offered, led by the 500,000 sat
+output.
