@@ -6,12 +6,32 @@
 // just plain black. Two very different causes look identical from the outside: the attribute never
 // being set, or being set and having nothing visible to do. This pins the first, so the question can
 // only ever be about the second.
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { applySurface, readSurface } from '../src/theme';
 
-beforeEach(() => { localStorage.clear(); document.documentElement.removeAttribute('data-surface'); });
-afterEach(() => cleanup());
+/*
+ * `fetch` IS STUBBED, and it has to be.
+ *
+ * The toggle lives in the app header, and `App` renders a "cannot reach the daemon" card *instead of* the
+ * header when the health poll fails. So this test quietly depended on a daemon listening on 127.0.0.1:8787 —
+ * it passed for as long as one happened to be running and failed the moment everything was shut down.
+ *
+ * That is worse than a flaky test: `pnpm setup` runs the suite, so a newcomer who has just cloned the
+ * repository and has nothing running would watch setup fail on a component test that has nothing to do with
+ * the network. A unit test that needs a server is not a unit test.
+ */
+const health = { ok: true, service: 'pm-daemon', network: 'local', engine: 'scrypt', operator_auth: false };
+beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute('data-surface');
+  vi.stubGlobal('fetch', vi.fn(async (input: any) => {
+    const url = String(typeof input === 'string' ? input : input?.url ?? '');
+    const body = url.includes('/health') ? health : [];
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }));
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('surface mode', () => {
   it('defaults to solid, and solid means NO attribute (so the base palette applies untouched)', () => {
@@ -37,7 +57,7 @@ describe('surface mode', () => {
     // trim the header, so there is no visible word any more — but the state still has to be readable
     // without seeing the icon, and the accessible name is the thing that actually carries it.
     const name = () => screen.getByRole('button', { name: /Surface:/ }).getAttribute('aria-label') ?? '';
-    await screen.findByRole('button', { name: /Surface:/ });
+    await waitFor(() => screen.getByRole('button', { name: /Surface:/ }));
     expect(name()).toMatch(/solid/);
     fireEvent.click(screen.getByRole('button', { name: /Surface:/ }));
     expect(document.documentElement.getAttribute('data-surface'), 'clicking must reach the DOM').toBe('glass');
