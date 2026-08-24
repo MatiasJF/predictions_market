@@ -611,6 +611,17 @@ Status: ○ todo · ◐ doing · ● done · ⨯ blocked. IDs are `AREA-nnn`, fl
     checked against `/tx/{txid}/{vout}/spent`, cached forever, returned verified-first so a flaky lookup
     degrades instead of stranding the wallet. Requires a contract rebuild (`pnpm run setup`) — `dist/` is
     gitignored.
+  - ● **KB-001 — `docs/LESSONS.md`, and a way to keep it growing.** 69 ADRs is the right record of *why*
+    and the wrong shape for *don't do that again* — chronological, long, and nobody reads it before starting.
+    `LESSONS.md` is the distilled layer: symptom first, cause second, rule last, in eight sections (the three
+    things that lie · toolchain · chain · money path · product surface · tests that lied · CSS · method).
+    Wired into `CLAUDE.md`'s read order, so **every subagent inherits it**, and into Golden Rule 1 as
+    Definition of Done — but only *when something surprised you*, since the file dies if it fills with the
+    obvious. Captured through the **`/lesson`** skill (`.claude/skills/lesson/`), which enforces the format,
+    prefers strengthening an existing entry over duplicating, and requires the claim be verified first.
+    Cross-project BSV facts (WoC reporting spent outputs as unspent, BRC-29 direction, the wallet-toolbox
+    `dotenv` override, BEEF ancestry depth) live in `~/.claude/bsv-field-notes.md`, kept outside any repo and
+    outside the installer-managed global `CLAUDE.md` so neither can drop them.
   - ● **DEMO-001 — a seeded demo database.** `apps/spike/src/seed-demo.ts` drives the real HTTP API to build
     markets with genuine history: signed orders, payment intents, batched settlement, oracle resolution and
     payouts, on `PM_NETWORK=local` so nothing is broadcast and it costs nothing. Refuses to run against a

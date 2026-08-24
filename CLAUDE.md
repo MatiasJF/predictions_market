@@ -3,6 +3,11 @@
 **Read order for cold start (do this first, every time): `CLAUDE.md` → `docs/STATE.md` → `docs/INDEX.md`.**
 Those three reads reconstruct the full project. Everything else is reference.
 
+**Before non-trivial work, also read `docs/LESSONS.md` §1 and whichever section covers what you are about to
+touch.** It is the distilled record of what has actually gone wrong here — wrong diagnoses, tools that lie,
+tests that passed while testing nothing, money stranded. It exists so those are not rediscovered. This
+applies to subagents too: you inherit this file, so you inherit that obligation.
+
 ## What this is
 A **feasibility spike**, not a product. Goal: prove whether a **binary prediction market can run as a
 native on-chain UTXO Automated Market Maker on BSV** — where the LMSR (Logarithmic Market Scoring Rule)
@@ -26,7 +31,11 @@ truth and a local SQLite store (`@pm/persistence`) tracking market/UTXO/token li
 ## Golden Rules (obey these)
 1. **The KB is part of every change (Definition of Done).** No ticket is done until `docs/STATE.md`
    reflects it, `docs/INDEX.md` is updated if files moved, `docs/DECISIONS.md` is appended if a choice
-   was made, and `ARCHITECTURE.md`/`SCHEMA.md` are synced if the model or structure changed.
+   was made, `ARCHITECTURE.md`/`SCHEMA.md` are synced if the model or structure changed, and — **if
+   anything surprised you** — `docs/LESSONS.md` gains an entry via the `/lesson` skill. Surprise means: a
+   symptom that pointed at the wrong cause, a tool behaving differently than documented, a test that passed
+   while wrong, money moving unexpectedly, or a fix that needed a second attempt. Routine work adds nothing;
+   the file is worthless if it fills with what everyone already knew.
 2. **Decisions are logged, not remembered** — append `docs/DECISIONS.md` (ADR template, newest last).
 3. **Verify before claiming done** — typecheck + build + tests pass; for on-chain steps, show the
    txid/broadcast result. Never report "done" on unverified work; report failures honestly with output.
@@ -76,6 +85,8 @@ multi-outcome/categorical markets, order books, leverage, mobile apps, productio
 - `docs/SCHEMA.md` — the SQLite data model, kept in sync with `packages/persistence/migrations`.
 - `docs/ROADMAP.md` — phases M0–M4 and the six feasibility unknowns.
 - `docs/GLOSSARY.md` — LMSR, `b`, `b·ln2`, OP_PUSH_TX, multiplicative-state, Rúnar constraints, etc.
+- `docs/LESSONS.md` — **READ BEFORE BUILDING.** Distilled, categorised record of what has gone wrong and
+  what it cost. `DECISIONS.md` says why things are as they are; this says what to avoid. Grown via `/lesson`.
 - `docs/Runar-bugs.md` — Rúnar/runar-sdk toolchain bugs found + workarounds (append one per bug).
 - `docs/` also holds the two source PDFs and `code_example_runar.js` (original vision; the Rúnar sample
   is all-stubs and not authoritative).
