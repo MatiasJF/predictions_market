@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Stop a broken push. Written because "always run the tests first" was a rule in LESSONS.md that its own
+# author then broke twice within an hour — once pushing a failing suite, once pushing 107 failures. Writing
+# a rule down is not the same as building a gate.
+#
+# Installed by `pnpm run setup` via `git config core.hooksPath .githooks`, because git does not clone hooks.
+# Deliberate escape hatch: `git push --no-verify`.
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+say()  { printf '\033[1m%s\033[0m\n' "$1"; }
+fail() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; }
+
+# ── Node 22, or the run is meaningless ──────────────────────────────────────────────────────────────────
+# The failure this hook exists to catch was itself once a Node-version artifact: 107 tests failed from a
+# shell that had defaulted to Node 20, with the code untouched and fine. A gate that reports a false red is
+# worse than no gate — it trains people to pass --no-verify.
+if [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -lt 22 ]; then
+  NVM_NODE="$HOME/.nvm/versions/node/v$(cat .nvmrc 2>/dev/null)/bin"
+  if [ -x "$NVM_NODE/node" ]; then
+    export PATH="$NVM_NODE:$PATH"
+  else
+    fail "This shell is on Node $(node -v 2>/dev/null || echo '?') and the suite needs Node 22.
+    Run \`nvm use\` and push again — a run under the wrong Node reports failures that are not real.
+    (Deliberate override: git push --no-verify)"
+    exit 1
+  fi
+fi
+
+# ── What is actually being pushed ───────────────────────────────────────────────────────────────────────
+# Documentation-only pushes skip the suite. Not laziness: a gate that taxes every typo is a gate people
+# route around, and the habit of reaching for --no-verify is the thing that would really cost us. The test
+# is conservative — ANY non-markdown file in the range runs the full suite.
+range_files() {
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue   # branch deletion
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+      git diff --name-only "$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "$local_sha~1")" "$local_sha" 2>/dev/null
+    else
+      git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null
+    fi
+  done
+}
+FILES="$(range_files || true)"
+
+if [ -n "$FILES" ] && ! printf '%s\n' "$FILES" | grep -qvE '(\.md$|^docs/)'; then
+  say "→ documentation only — skipping the suite"
+  exit 0
+fi
+
+# ── The gate ────────────────────────────────────────────────────────────────────────────────────────────
+say "→ typecheck"
+if ! pnpm -w typecheck >/tmp/pm-prepush.log 2>&1; then
+  grep -E "error TS" /tmp/pm-prepush.log | head -10
+  fail "Typecheck failed — push blocked. Full output: /tmp/pm-prepush.log
+    (Deliberate override: git push --no-verify)"
+  exit 1
+fi
+
+say "→ tests"
+if ! pnpm vitest run >/tmp/pm-prepush.log 2>&1; then
+  grep -E "FAIL|Tests .*failed" /tmp/pm-prepush.log | head -12
+  fail "Tests failed — push blocked. Full output: /tmp/pm-prepush.log
+    (Deliberate override: git push --no-verify)"
+  exit 1
+fi
+
+grep -E "^ *Tests " /tmp/pm-prepush.log | tail -1
+exit 0

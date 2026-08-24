@@ -101,6 +101,10 @@ Then `pnpm dev`. Precedence is: an explicit variable on the command line, then `
 | `pnpm test` | the full suite |
 | `pnpm typecheck` | types across every package |
 
+**A pre-push hook runs typecheck and the suite before any push** that touches code, and blocks on failure.
+`pnpm run setup` installs it (`core.hooksPath .githooks`). Documentation-only pushes skip it, so it does not
+tax a typo. Deliberate override: `git push --no-verify`.
+
 ---
 
 ## If something goes wrong

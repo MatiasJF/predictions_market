@@ -201,7 +201,15 @@ reported.
 - **Don't chain a push behind `&&` after a test command that doesn't fail the shell.** A failing suite was
   pushed because `vitest`'s output was printed, not gated. **This then happened a second time**, in the very
   commit that first wrote this rule down — 107 failures, pushed. Writing a rule down is not the same as
-  building a gate; if it must not ship broken, the check has to be something that *stops* the push.
+  building a gate; if it must not ship broken, the check has to be something that *stops* the push. **Now
+  it is one**: `.githooks/pre-push` runs typecheck and the suite and refuses on failure. It selects Node 22
+  itself, because the gate that reports a false red is the one that teaches people to pass `--no-verify`,
+  and it skips documentation-only pushes for the same reason.
+- **Restore a deliberately-broken file with `git checkout --`, not a hand-rolled copy.** Testing that the
+  hook blocks meant breaking a test on purpose; the backup captured a *different* file than the one edited,
+  so restoring silently overwrote a real test file with another's contents. The tell was the suite passing
+  with 305 tests instead of 292 — a green run with the wrong number is still a wrong run. Git already has
+  the backup.
 - **State the limits of your evidence.** Some fixes here were diagnosed by reading because no browser in the
   environment renders the app. Say which those are, and what the fallback is if the fix does not hold.
 - **A follow-up "still happening" usually means the diagnosis was half right.** The mempool-conflict fix

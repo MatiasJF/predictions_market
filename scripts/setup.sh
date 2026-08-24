@@ -48,6 +48,11 @@ step "Building the on-chain contract package (npm, outside the workspace — see
   npm run build
 )
 
+# Git does not clone hooks, so every checkout has to opt in. core.hooksPath points at a directory that IS
+# committed, so the gate travels with the repository instead of living on one machine.
+step "Installing the pre-push gate"
+git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks && echo "  runs typecheck + tests before a push (override: git push --no-verify)"
+
 step "Verifying"
 pnpm -w typecheck
 pnpm vitest run --silent >/dev/null && echo "  test suite passes"
