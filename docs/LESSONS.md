@@ -33,6 +33,10 @@ from outside. The port is open, `/health` returns `ok`, and you are talking to a
 **3. A green test suite proves a test ran, not that it tested anything.** Three tests here passed while
 asserting nothing (§6). Mutation-test anything you rely on.
 
+And the converse: **a red suite is not proof the code is broken.** 107 tests failed here because the shell
+had defaulted to Node 20 — the code was untouched and fine. Before debugging a mass failure, check what is
+running it.
+
 ---
 
 ## 2. Environment and toolchain
@@ -40,7 +44,7 @@ asserting nothing (§6). Mutation-test anything you rely on.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Process dies with **exit 139**, no error | `better-sqlite3`'s native binary **segfaults** on Node 20 instead of failing cleanly | Node 22 is a hard floor (`.nvmrc`). Check the version *first* |
-| ~45 tests fail, `NODE_MODULE_VERSION 127 … requires 115` | native modules are built per Node ABI | `pnpm rebuild -r` after ANY Node switch |
+| Many tests fail, `NODE_MODULE_VERSION 127 … requires 115` | native modules are built per Node ABI. **Read it in the right direction**: it names the *binding's* version first, so it sounds like the binding is stale — but `requires 115` means the **runtime** is Node 20. Rebuilding is the wrong fix | Check `node -v` **before** `pnpm rebuild -r`. A shell without `nvm use` silently gives Node 20 |
 | Bindings vanish for no reason | a `pnpm install` in a **sibling clone** disturbed the shared store | `pnpm rebuild -r` |
 | `pnpm setup` does something unexpected | **`setup` is a built-in pnpm command** — it configures pnpm, not your project | `pnpm run setup`. `run` is never wrong |
 | A flag you passed is ignored | `pnpm --filter X dev -- --port N` never reaches the tool; the `--` survives as a literal | pass config by **environment variable**, not argument |
@@ -195,7 +199,9 @@ reported.
 - **`git add -A` sweeps what you did not look at.** It committed a 900 KB unrelated `.docx` and an unrelated
   daemon fix into a UI commit whose message claimed "no money-path change".
 - **Don't chain a push behind `&&` after a test command that doesn't fail the shell.** A failing suite was
-  pushed because `vitest`'s output was printed, not gated.
+  pushed because `vitest`'s output was printed, not gated. **This then happened a second time**, in the very
+  commit that first wrote this rule down — 107 failures, pushed. Writing a rule down is not the same as
+  building a gate; if it must not ship broken, the check has to be something that *stops* the push.
 - **State the limits of your evidence.** Some fixes here were diagnosed by reading because no browser in the
   environment renders the app. Say which those are, and what the fallback is if the fix does not hold.
 - **A follow-up "still happening" usually means the diagnosis was half right.** The mempool-conflict fix
