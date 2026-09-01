@@ -30,3 +30,7 @@ keys/
 
 # LIVE-001: trader wallet WIFs (never commit)
 data/traders.json
+
+# Finder duplicates of env files
+.env *
+*.env *
